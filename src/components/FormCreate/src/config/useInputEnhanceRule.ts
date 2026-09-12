@@ -16,6 +16,7 @@
 import { Ref } from 'vue'
 import { RELATIVE_DATE_OPTIONS } from '@/components/FormInput'
 import { buildScenePropRule } from '@/components/FormWidgets/renderScene'
+import { appendComponentProps } from '../designer/useComponentPropsRegistry'
 
 /**
  * 要加「出现场景」的控件
@@ -44,24 +45,9 @@ const SCENE_CAPABLE_MENUS = [
 // 它们的场景属性由 useOptionSource 一并拼进去。
 
 export const useInputEnhanceRule = (designer: Ref) => {
-  /** 追加属性项：第二参是「原样拿到内置规则再往后加」 */
+  /** 追加属性项。走注册表，与别的模块在同一控件上的追加项自动合并 */
   const appendProps = (name: string, items: () => any[]) => {
-    designer.value?.setComponentRuleConfig(
-      name,
-      (activeRule: any, ctx: any) => {
-        const builtin = activeRule?._menu?.props?.(activeRule, ctx)
-        if (!Array.isArray(builtin)) {
-          // 拿不到内置规则说明内核结构变了。只给我们自己的项，保证面板不白屏 ——
-          // 属性面板整个空白比少一个属性项严重得多
-          if (import.meta.env.DEV) {
-            console.warn(`[InputEnhance] 控件[${name}]的内置属性规则不可用`)
-          }
-          return items()
-        }
-        return [...builtin, ...items()]
-      },
-      false
-    )
+    appendComponentProps(designer, name, () => items(), 'InputEnhance')
   }
 
   /** 数字输入框专有：千分位与金额大写 */
@@ -100,11 +86,12 @@ export const useInputEnhanceRule = (designer: Ref) => {
   ]
 
   /**
-   * 每个控件只注册一次
+   * 一个控件的全部增强项
    *
-   * ⚠️ `setComponentRuleConfig` 对同一个控件调用两次，后一次会覆盖前一次。
-   * 分两轮注册（先给所有控件加场景，再单独给 inputNumber 加千分位）的话，
-   * 数字输入框会丢掉场景开关那一项 —— 而且不报错，只是属性面板里少一项。
+   * 历史上这里必须「一次性给全」：`setComponentRuleConfig` 对同一控件调用两次，
+   * 后一次会静默覆盖前一次，分两轮注册会让数字输入框丢掉场景开关那一项。
+   * 现在追加走 {@link appendComponentProps} 注册表，多次追加会自动合并，
+   * 但仍保持一次给全 —— 这样「这个控件有哪些增强项」在一处看得全。
    */
   const extraPropsOf = (name: string) => {
     const items: any[] = [buildScenePropRule()]

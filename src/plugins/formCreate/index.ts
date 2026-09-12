@@ -87,7 +87,7 @@ import SystemValue from '@/components/FormCreate/src/components/SystemValue.vue'
 import DictSourceConfig from '@/components/FormCreate/src/components/DictSourceConfig.vue'
 import DataInterfaceConfig from '@/components/FormCreate/src/components/DataInterfaceConfig.vue'
 // 属性面板「格式校验」：内置正则库 + 自定义正则，产出 props.validateRules
-import ValidateRulesField from '@/components/FormCreate/src/components/ValidateRulesField.vue'
+import ValidateRulesEditor from '@/components/FormValidation/ValidateRulesEditor.vue'
 // 属性面板「合计行」：产出 props.summaryColumns
 import SubTableSummaryField from '@/components/FormCreate/src/components/SubTableSummaryField.vue'
 // 超链接：纯展示，地址支持字段插值，协议走白名单
@@ -152,7 +152,7 @@ const components = [
   SystemValue,
   DictSourceConfig,
   DataInterfaceConfig,
-  ValidateRulesField,
+  ValidateRulesEditor,
   SubTableSummaryField,
   Link,
   CollapseToggle,

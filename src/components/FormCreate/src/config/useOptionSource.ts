@@ -36,6 +36,7 @@ import {
 } from '@/components/FormCreate/src/utils/optionSource'
 import { collectFormFieldOptions } from '@/components/FormCreate/src/utils'
 import { buildScenePropRule } from '@/components/FormWidgets/renderScene'
+import { appendComponentProps } from '../designer/useComponentPropsRegistry'
 
 /** 六个内置控件的菜单名。elTreeSelect 是「树形选择」，tree 是「树形控件」 */
 const OPTION_SOURCE_MENUS = Object.keys(OPTION_SOURCE_TARGETS)
@@ -249,29 +250,25 @@ export const useOptionSource = (designer: Ref) => {
   const buildOptionSource = () => {
     OPTION_SOURCE_MENUS.forEach((name) => {
       const target = OPTION_SOURCE_TARGETS[name]
-      designer.value?.setComponentRuleConfig(
+      appendComponentProps(
+        designer,
         name,
-        (activeRule: any, ctx: any) => {
-          // 先原样拿到内置属性规则，一行不改
-          const builtin = activeRule?._menu?.props?.(activeRule, ctx)
-          if (!Array.isArray(builtin)) {
+        (activeRule: any, _ctx: any, builtin: any[]) => {
+          if (!builtin.length) {
             // 拿不到内置规则说明内核结构变了，只给我们自己的两项，保证面板不白屏
-            if (import.meta.env.DEV) {
-              console.warn(`[OptionSource] 控件[${name}]的内置属性规则不可用`)
-            }
             return [dictRule(target), interfaceRule(target, activeRule), buildScenePropRule()]
           }
+          // 选项来源不是「追加一项」，而是【原地改写】内置的那一项 ——
+          // 注册表允许贡献者修改 builtin，就是为了容纳这种改造
           injectOptionSource(builtin, activeRule, target)
           // 属性面板每次重建都重挂这两个监听，盯的是当前选中的这条规则
           mirrorStaticOptions(activeRule, target)
           resolveIntoActiveRule(activeRule)
-          // 「出现场景」也在这里拼进去。
-          // ⚠️ 不能另起一次 setComponentRuleConfig —— 同一个控件注册两次，
-          // 后一次会把这里的选项来源改造整个覆盖掉，而且不报错
-          return [...builtin, buildScenePropRule()]
+          // 「出现场景」在这里一并给出。这几个控件不在 useInputEnhanceRule
+          // 的清单里，场景项没有别处会加
+          return [buildScenePropRule()]
         },
-        // 内置规则已经被我们包含进去了，不要再 append
-        false
+        'OptionSource'
       )
     })
   }

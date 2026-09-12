@@ -70,6 +70,25 @@ async function openDemo(page: Page, code: string) {
   await page.goto(`/infra-form-design/preview?code=${code}`)
 }
 
+/**
+ * 表单面板，不关心它被配成了哪种展示模式
+ *
+ * ⚠️ 不要写死 `.el-dialog`。表单呈现方式由 `list_conf.formViewMode` 决定，
+ * 三种模式的容器根本不是同一个元素：
+ *
+ * | 模式     | 容器          |
+ * |----------|---------------|
+ * | DIALOG（默认） | `.el-dialog`   |
+ * | DRAWER   | `.el-drawer`  |
+ * | INLINE   | `.inline-panel`（表单铺满页面，列表整块让位） |
+ *
+ * 控件总览示例配的就是 INLINE —— 用 `.el-dialog` 去等它，会等到超时，
+ * 报错是「element(s) not found」，看起来像「点了新增没反应」，
+ * 但实际上表单早就渲染出来了，只是不在弹窗里。这个误判真实发生过一次。
+ */
+const formPanel = (page: Page) =>
+  page.locator('.el-dialog:visible, .el-drawer:visible, .inline-panel').first()
+
 /** 造一条业务数据，返回主键。用完要删 */
 async function createRow(
   request: APIRequestContext,
@@ -161,7 +180,8 @@ test.describe('示例 1 · 控件总览', () => {
     await expect(page.locator('.el-table').first()).toBeVisible({ timeout: 60_000 })
 
     await page.getByRole('button', { name: '新增' }).click()
-    const dialog = page.locator('.el-dialog')
+    // 本示例配的是 INLINE（页内），不是弹窗。用 formPanel 而不是 .el-dialog
+    const dialog = formPanel(page)
     await expect(dialog).toBeVisible({ timeout: 20_000 })
 
     // 七个分组标题都在

@@ -158,6 +158,18 @@ export interface UniqueCheckContext {
  *
  * 网络抖动、接口 500 都不该表现为「这个值不能用」—— 那会把一个临时故障
  * 变成「用户怎么改都提交不了」。提交时服务端还会查一次，真重复了照样拦得住。
+ *
+ * <h3>⚠️ 提示文案要与服务端那条保持一致</h3>
+ *
+ * 同一条规则有两条路径会报错：失焦时前端查一次（就是这里），
+ * 提交时服务端再查一次（`FORM_DESIGN_UNIQUE_VIOLATION`，文案是
+ * 「以下内容在系统里已存在，不能重复：{字段标题}」）。
+ *
+ * 两边措辞不同的话，用户会以为撞上了两种不同的限制 ——
+ * 先看到「请换一个」，改完提交又看到「不能重复」，很自然会怀疑是不是还有别的规则。
+ * 所以这里用与服务端相同的核心说法「在系统里已存在，不能重复」；
+ * 不带字段名是因为行内错误本来就挂在那个控件上，再念一遍字段名是废话。
+ * 改任何一侧时，另一侧要跟着改。
  */
 export const deriveUniqueValidateRule = (
   field: string,
@@ -176,7 +188,7 @@ export const deriveUniqueValidateRule = (
         context
           .check(field, value)
           .then((available) => {
-            callback(available ? undefined : new Error('该内容已存在，请换一个'))
+            callback(available ? undefined : new Error('该内容在系统里已存在，不能重复'))
           })
           .catch((e) => {
             console.warn('[FormValidation] 唯一性校验请求失败，本次放过', e)

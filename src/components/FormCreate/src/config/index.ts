@@ -11,6 +11,7 @@ import { useFormulaRule } from './useFormulaRule'
 import { useRemotePickerRule, useRelationFormRule } from './useRelationRules'
 import { useOrgPickerRule, useSystemValueRule } from './useOrgRules'
 import { useValidateRule } from './useValidateRule'
+import { useMaskRule } from './useMaskRule'
 import { useInputEnhanceRule } from './useInputEnhanceRule'
 import { useSubTableRule } from './useSubTableRule'
 import { useLinkRule } from './useLinkRule'
@@ -34,6 +35,7 @@ export {
   useOrgPickerRule,
   useSystemValueRule,
   useValidateRule,
+  useMaskRule,
   useInputEnhanceRule,
   useSubTableRule,
   useLinkRule,

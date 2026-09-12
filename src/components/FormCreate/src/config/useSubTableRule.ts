@@ -13,28 +13,22 @@ import { Ref } from 'vue'
 import { SUB_TABLE_WIDGET_TYPE } from '@/components/FormWidgets/contracts'
 import { TITLE_WIDGET_TYPE } from '@/components/FormWidgets/collapseGroup'
 import { TABS_WIDGET_TYPE } from '@/components/FormWidgets/stepValidate'
+import { appendComponentProps } from '../designer/useComponentPropsRegistry'
 
 export const useSubTableRule = (designer: Ref) => {
   const buildSubTableRule = () => {
-    designer.value?.setComponentRuleConfig(
+    appendComponentProps(
+      designer,
       SUB_TABLE_WIDGET_TYPE,
-      (activeRule: any, ctx: any) => {
-        const item = {
+      () => [
+        {
           type: 'SubTableSummaryField',
           field: '__subTableSummary__',
           title: '合计行',
           props: {}
         }
-        const builtin = activeRule?._menu?.props?.(activeRule, ctx)
-        if (!Array.isArray(builtin)) {
-          if (import.meta.env.DEV) {
-            console.warn('[SubTableRule] 子表控件的内置属性规则不可用')
-          }
-          return [item]
-        }
-        return [...builtin, item]
-      },
-      false
+      ],
+      'SubTableRule'
     )
   }
 
@@ -47,33 +41,24 @@ export const useSubTableRule = (designer: Ref) => {
    * 折叠范围是「本标题之后、下一个标题之前的同级控件」，与画布上看到的分组一致。
    */
   const buildTitleRule = () => {
-    designer.value?.setComponentRuleConfig(
+    appendComponentProps(
+      designer,
       TITLE_WIDGET_TYPE,
-      (activeRule: any, ctx: any) => {
-        const items = [
-          {
-            type: 'switch',
-            field: 'collapsible',
-            title: '可折叠',
-            info: '折叠范围是本标题之后、下一个标题之前的控件'
-          },
-          {
-            type: 'switch',
-            field: 'defaultCollapsed',
-            title: '默认折叠',
-            info: '用户手动展开/收起后会被记住，下次以他的选择为准'
-          }
-        ]
-        const builtin = activeRule?._menu?.props?.(activeRule, ctx)
-        if (!Array.isArray(builtin)) {
-          if (import.meta.env.DEV) {
-            console.warn('[SubTableRule] 标题控件的内置属性规则不可用')
-          }
-          return items
+      () => [
+        {
+          type: 'switch',
+          field: 'collapsible',
+          title: '可折叠',
+          info: '折叠范围是本标题之后、下一个标题之前的控件'
+        },
+        {
+          type: 'switch',
+          field: 'defaultCollapsed',
+          title: '默认折叠',
+          info: '用户手动展开/收起后会被记住，下次以他的选择为准'
         }
-        return [...builtin, ...items]
-      },
-      false
+      ],
+      'SubTableRule'
     )
   }
 
@@ -85,27 +70,18 @@ export const useSubTableRule = (designer: Ref) => {
    * 是另一个量级的工作 —— 而「分步」真正稀缺的部分是这条校验，不是那个横条。
    */
   const buildTabsRule = () => {
-    designer.value?.setComponentRuleConfig(
+    appendComponentProps(
+      designer,
       TABS_WIDGET_TYPE,
-      (activeRule: any, ctx: any) => {
-        const items = [
-          {
-            type: 'switch',
-            field: 'stepValidate',
-            title: '分步校验',
-            info: '当前页的字段校验不通过时，不允许切到后面的页；往回退不受限制'
-          }
-        ]
-        const builtin = activeRule?._menu?.props?.(activeRule, ctx)
-        if (!Array.isArray(builtin)) {
-          if (import.meta.env.DEV) {
-            console.warn('[SubTableRule] 标签页容器的内置属性规则不可用')
-          }
-          return items
+      () => [
+        {
+          type: 'switch',
+          field: 'stepValidate',
+          title: '分步校验',
+          info: '当前页的字段校验不通过时，不允许切到后面的页；往回退不受限制'
         }
-        return [...builtin, ...items]
-      },
-      false
+      ],
+      'SubTableRule'
     )
   }
 

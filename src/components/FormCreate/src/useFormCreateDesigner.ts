@@ -13,6 +13,7 @@ import {
   useOrgPickerRule,
   useSystemValueRule,
   useValidateRule,
+  useMaskRule,
   useInputEnhanceRule,
   useSubTableRule,
   useLinkRule,
@@ -25,6 +26,7 @@ import { useOptionSource } from './config/useOptionSource'
 import { useFieldDeduplication } from './designer/useFieldDeduplication'
 import { alignContractWidgetTypes } from './designer/useContractWidgetTypes'
 import { Ref } from 'vue'
+import { resetComponentProps } from './designer/useComponentPropsRegistry'
 import { Menu } from '@/components/FormCreate/src/type'
 
 /**
@@ -41,6 +43,7 @@ import { Menu } from '@/components/FormCreate/src/type'
 export const useFormCreateDesigner = async (designer: Ref) => {
   const { buildOptionSource } = useOptionSource(designer)
   const { buildValidateRule } = useValidateRule(designer)
+  const { buildMaskRule } = useMaskRule(designer)
   const { buildInputEnhance } = useInputEnhanceRule(designer)
   const { buildSubTableRule, buildTitleRule, buildTabsRule } = useSubTableRule(designer)
   const editorRule = useEditorRule()
@@ -150,8 +153,15 @@ export const useFormCreateDesigner = async (designer: Ref) => {
    */
   useFieldDeduplication(designer)
 
+  // 设计器组件卸载时清空属性项注册表。不清的话，同一个 designer ref 被复用
+  // （编辑完一张表单再打开另一张）会让追加项累加一遍，属性面板里出现两个「格式校验」
+  onBeforeUnmount(() => resetComponentProps(designer))
+
   onMounted(async () => {
     await nextTick()
+    // 先清一次再注册：热更新与「同一 ref 重新挂载」两种路径都不会走 onBeforeUnmount，
+    // 而重复注册的表现是属性面板里同一项出现多次
+    resetComponentProps(designer)
     buildFormComponents()
     buildSystemMenu()
     // 内核的密码输入 / 日期区间 / 时间区间三个菜单产出的规则类型与契约对不上，
@@ -162,6 +172,8 @@ export const useFormCreateDesigner = async (designer: Ref) => {
     buildOptionSource()
     // 给输入类控件加上「格式校验」属性（内置正则库 + 自定义正则）
     buildValidateRule()
+    // 「数据脱敏」。控件范围取自契约的 maskable 位，服务端在下发前遮掩，库里仍是明文
+    buildMaskRule()
     // 千分位、金额大写、相对日期默认值
     buildInputEnhance()
     // 子表的「合计行」配置
