@@ -170,7 +170,7 @@ const list = ref<MdWorkstationVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined,
   name: undefined,
   workshopId: undefined,

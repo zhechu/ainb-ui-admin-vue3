@@ -16,7 +16,15 @@ export const CACHE_KEY = {
   LANG: 'lang',
   THEME: 'theme',
   LAYOUT: 'layout',
+  FIXED_MENU: 'fixedMenu',
+  CURRENT_SIZE: 'currentSize',
+  THEME_CONFIG_PREFIX: 'themeConfig:',
+  // 已写入本地、但还没确认落库的偏好快照，用于刷新/关页后恢复
+  THEME_CONFIG_DIRTY_PREFIX: 'themeConfigDirty:',
+  // 菜单折叠属于设备级状态，不参与跨设备同步的用户偏好
+  SIDEBAR_COLLAPSE: 'sidebarCollapse',
   DICT_CACHE: 'dictCache',
+  DICT_VERSION: 'dictVersion',
   // 登录表单
   LoginForm: 'loginForm',
   TenantId: 'tenantId'

@@ -133,9 +133,10 @@
       </div>
 
       <!-- 中间：消息列表 -->
-      <div
-        ref="listRef"
-        class="relative flex-1 py-2 overflow-y-auto bg-[var(--el-bg-color-page)]"
+      <el-scrollbar
+        ref="scrollbarRef"
+        class="relative flex-1 min-h-0 bg-[var(--el-bg-color-page)]"
+        view-class="py-2"
         @scroll="handleScroll"
       >
         <div
@@ -186,7 +187,7 @@
             <span v-else>回到底部</span>
           </div>
         </transition>
-      </div>
+      </el-scrollbar>
 
       <!-- 底部：输入框（频道单向消息无需输入框）；多选模式底栏作为浮层盖在上面，保持下方输入框尺寸不变 -->
       <div v-if="!isChannel" class="relative">
@@ -284,7 +285,15 @@ const uiStore = useImUiStore()
 const groupStore = useGroupStore()
 const message = useMessage()
 const rtcStore = useRtcStore()
-const listRef = ref<HTMLElement>()
+const scrollbarRef = ref<any>()
+/**
+ * 消息列表真正在滚动的那个元素
+ *
+ * 下面有一整套滚动位置计算、querySelector 定位、图片加载完补偿滚动的逻辑，
+ * 都直接操作原生元素。el-scrollbar 把滚动放在内部的 wrap 上，
+ * 这里把 wrap 取出来顶替原来的 ref，那些逻辑一行都不用改
+ */
+const listRef = computed<HTMLElement | undefined>(() => scrollbarRef.value?.wrapRef)
 
 // ==================== 转发 / 合并消息详情：本地 dialog 浮层 ====================
 // MessageItem / MessageMultiSelectBar / MessageHistory 通过 inject 触发；不挂全局 store
@@ -566,10 +575,7 @@ async function doInvite(reqVO: {
   const userId = getCurrentUserId()
   try {
     const data = await createCall(reqVO)
-    if (
-      getCurrentUserId() !== userId ||
-      (rtcStore.isActive && rtcStore.call?.room !== data.room)
-    ) {
+    if (getCurrentUserId() !== userId || (rtcStore.isActive && rtcStore.call?.room !== data.room)) {
       if (getCurrentUserId() === userId) {
         await leaveCall(data.room).catch(() => undefined)
       }

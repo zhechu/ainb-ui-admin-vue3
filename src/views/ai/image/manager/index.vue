@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 绘图创作" url="https://doc.iocoder.cn/ai/image/" />
+  <!-- <doc-alert title="AI 绘图创作" url="https://doc.iocoder.cn/ai/image/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -180,7 +180,7 @@ const list = ref<ImageVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined,
   platform: undefined,
   status: undefined,

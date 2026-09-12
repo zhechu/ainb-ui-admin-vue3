@@ -97,7 +97,7 @@ const queryFormRef = ref() // 搜索的表单
 const formLoading = ref(false) // 表单的加载中：1）修改时的数据加载；2）提交的按钮禁用
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   customerId: props.customerId
 })

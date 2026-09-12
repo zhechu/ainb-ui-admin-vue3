@@ -31,7 +31,7 @@ export default defineComponent({
 
     const fixedMenu = computed(() => appStore.getFixedMenu)
 
-    const layout = computed(() => appStore.getLayout)
+    const layout = computed(() => appStore.getEffectiveLayout)
 
     const headerMixed = computed(() => isHeaderMixedNavLayout(unref(layout)))
 

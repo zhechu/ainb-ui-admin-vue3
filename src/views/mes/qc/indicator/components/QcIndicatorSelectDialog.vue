@@ -171,7 +171,7 @@ const handleRowDblClick = (row: QcIndicatorVO) => {
 // ==================== 指标查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   name: undefined as string | undefined, // 检测项名称
   type: undefined as number | undefined // 检测项类型
 })

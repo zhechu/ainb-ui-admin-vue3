@@ -206,7 +206,7 @@ const handleRowDblClick = (row: WmPackageVO) => {
 // ==================== 装箱单查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 装箱单编号
   salesOrderCode: undefined as string | undefined, // 销售订单编号
   clientId: undefined as number | undefined, // 客户 ID

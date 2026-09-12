@@ -105,6 +105,50 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/infra-form-design',
+    component: Layout,
+    name: 'InfraFormDesignRuntime',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'preview',
+        component: () => import('@/views/infra/formDesign/render/index.vue'),
+        name: 'InfraFormDesignPreview',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '表单预览',
+          activeMenu: '/infra/form-design'
+        }
+      }
+    ]
+  },
+  {
+    path: '/infra-portal',
+    component: Layout,
+    name: 'InfraPortalCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'portal/editor',
+        component: () => import('@/views/infra/portal/editor/index.vue'),
+        name: 'InfraPortalEditor',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '门户设计器',
+          activeMenu: '/infra/portal'
+        }
+      }
+    ]
+  },
+  {
     path: '/dict',
     component: Layout,
     name: 'dict',
@@ -114,7 +158,12 @@ const remainingRouter: AppRouteRecordRaw[] = [
     children: [
       {
         path: 'type/data/:dictType',
-        component: () => import('@/views/system/dict/data/index.vue'),
+        // 字典数据已并入 /system/dict 的左树右表页面。这里保留路由并重定向，
+        // 是为了让存量菜单、浏览器书签仍能落到正确的字典上，而不是撞到 404
+        redirect: (to) => ({
+          path: '/system/dict',
+          query: { dictType: to.params.dictType as string }
+        }),
         name: 'SystemDictData',
         meta: {
           title: '字典数据',

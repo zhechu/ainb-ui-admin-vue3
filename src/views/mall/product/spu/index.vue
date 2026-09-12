@@ -283,7 +283,7 @@ const tabsData = ref([
 
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   tabType: 0,
   name: '',
   categoryId: undefined as number | undefined,

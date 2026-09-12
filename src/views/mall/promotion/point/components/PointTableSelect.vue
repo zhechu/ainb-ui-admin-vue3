@@ -156,7 +156,7 @@ const dialogVisible = ref(false)
 // 查询参数
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: null,
   status: undefined
 })
@@ -210,7 +210,7 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryParams.value = {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     name: null,
     status: undefined
   }

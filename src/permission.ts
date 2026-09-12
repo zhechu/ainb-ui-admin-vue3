@@ -8,6 +8,7 @@ import { usePageLoading } from '@/hooks/web/usePageLoading'
 import { useDictStoreWithOut } from '@/store/modules/dict'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { usePermissionStoreWithOut } from '@/store/modules/permission'
+import { useAppStoreWithOut } from '@/store/modules/app'
 import { parseRouteLocation } from '@/utils/routeParams'
 
 const { start, done } = useNProgress()
@@ -35,6 +36,7 @@ router.beforeEach(async (to, from, next) => {
       const dictStore = useDictStoreWithOut()
       const userStore = useUserStoreWithOut()
       const permissionStore = usePermissionStoreWithOut()
+      const appStore = useAppStoreWithOut()
       // 异步加载字典
       // 另外，间接 issue：https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/ID9FLI
       if (!dictStore.getIsSetDict) {
@@ -43,6 +45,7 @@ router.beforeEach(async (to, from, next) => {
       if (!userStore.getIsSetUser) {
         isRelogin.show = true
         await userStore.setUserInfoAction()
+        await appStore.loadUserThemeConfig(userStore.getUser.id)
         isRelogin.show = false
         // 后端过滤菜单
         await permissionStore.generateRoutes()

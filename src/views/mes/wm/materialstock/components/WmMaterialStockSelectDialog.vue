@@ -237,7 +237,7 @@ const handleNodeClick = (data: MdItemTypeVO | undefined) => {
 // ==================== 库存查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   itemTypeId: undefined as number | undefined, // 物料分类编号
   itemId: undefined as number | undefined, // 物料编号
   vendorId: undefined as number | undefined, // 供应商编号

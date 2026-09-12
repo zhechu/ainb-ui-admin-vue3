@@ -196,7 +196,7 @@ const queryFormRef = ref() // 搜索的表单
 // 查询参数
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   no: null,
   status: '0',
   orderNo: null,

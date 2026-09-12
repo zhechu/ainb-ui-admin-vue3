@@ -157,7 +157,7 @@ const bindSelectedIds = ref<number[]>([]) // 绑定选中的设备ID
 const bindTotal = ref(0) // 可绑定设备总数
 const bindQueryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   productId: undefined as number | undefined,
   deviceName: ''
 })

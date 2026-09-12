@@ -169,7 +169,7 @@ const handleRowDblClick = (row: MdWorkstationVO) => {
 // ==================== 工作站查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 工作站编码
   processId: undefined as number | undefined, // 工序编号
   workshopId: undefined as number | undefined, // 车间编号

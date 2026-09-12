@@ -205,7 +205,7 @@ const handleRowDblClick = (row: MdVendorVO) => {
 // ==================== 供应商查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 供应商编码
   name: undefined as string | undefined, // 供应商名称
   nickname: undefined as string | undefined, // 供应商简称

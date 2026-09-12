@@ -6,6 +6,17 @@ import { useEditorRule } from './useEditorRule'
 import { useSelectRule } from './useSelectRule'
 import { useIframeRule } from './useIframeRule'
 import { useAreaSelectRule } from './useAreaSelectRule'
+import { useBillFieldRule } from './useBillFieldRule'
+import { useFormulaRule } from './useFormulaRule'
+import { useRemotePickerRule, useRelationFormRule } from './useRelationRules'
+import { useOrgPickerRule, useSystemValueRule } from './useOrgRules'
+import { useValidateRule } from './useValidateRule'
+import { useInputEnhanceRule } from './useInputEnhanceRule'
+import { useSubTableRule } from './useSubTableRule'
+import { useLinkRule } from './useLinkRule'
+import { useCodeImageRule } from './useCodeImageRule'
+import { useSignatureRule } from './useSignatureRule'
+import { useFormStepsRule, useFormStepRule } from './useFormStepsRule'
 
 export {
   useUploadFileRule,
@@ -15,5 +26,19 @@ export {
   useEditorRule,
   useSelectRule,
   useIframeRule,
-  useAreaSelectRule
+  useAreaSelectRule,
+  useBillFieldRule,
+  useFormulaRule,
+  useRemotePickerRule,
+  useRelationFormRule,
+  useOrgPickerRule,
+  useSystemValueRule,
+  useValidateRule,
+  useInputEnhanceRule,
+  useSubTableRule,
+  useLinkRule,
+  useCodeImageRule,
+  useSignatureRule,
+  useFormStepsRule,
+  useFormStepRule
 }

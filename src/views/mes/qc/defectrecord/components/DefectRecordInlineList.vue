@@ -127,7 +127,7 @@ const lineId = ref<number>(0) // 检验行 ID
 
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   qcType: undefined as number | undefined,
   qcId: undefined as number | undefined,
   lineId: undefined as number | undefined

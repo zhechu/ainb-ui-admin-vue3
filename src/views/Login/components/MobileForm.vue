@@ -126,7 +126,7 @@ const loginData = reactive({
   },
   loginForm: {
     uuid: '',
-    tenantName: '芋道源码',
+    tenantName: 'X评云',
     mobileNumber: '',
     code: ''
   }

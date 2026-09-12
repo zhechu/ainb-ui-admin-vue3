@@ -44,8 +44,9 @@
         </div>
       </div>
     </div>
-    <div
-      class="px-7 pb-2 flex-grow overflow-y-auto lg:block w-[380px] box-border bg-[#f5f7f9] h-full"
+    <el-scrollbar
+      class="flex-grow lg:block w-[380px] box-border bg-[#f5f7f9] h-full"
+      view-class="px-7 pb-2"
     >
       <div>
         <template v-if="selectedTab === 1">
@@ -96,7 +97,7 @@
           <el-button :loading="isWriting" color="#846af7" @click="submit">生成</el-button>
         </div>
       </div>
-    </div>
+    </el-scrollbar>
   </div>
 </template>
 

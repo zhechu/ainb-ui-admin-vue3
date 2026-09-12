@@ -1,0 +1,265 @@
+<template>
+  <ContentWrap>
+    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true">
+      <el-form-item label="模板名称" prop="name">
+        <el-input
+          v-model="queryParams.name"
+          placeholder="请输入模板名称"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
+      </el-form-item>
+      <el-form-item label="模板编码" prop="code">
+        <el-input
+          v-model="queryParams.code"
+          placeholder="请输入模板编码"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-200px"
+        />
+      </el-form-item>
+      <el-form-item label="分类" prop="category">
+        <el-select v-model="queryParams.category" placeholder="全部" clearable class="!w-140px">
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="生成方式" prop="genType">
+        <el-select v-model="queryParams.genType" placeholder="全部" clearable class="!w-140px">
+          <el-option
+            v-for="item in GEN_TYPE_OPTIONS"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态" prop="status">
+        <el-select v-model="queryParams.status" placeholder="全部" clearable class="!w-120px">
+          <el-option label="开启" :value="0" />
+          <el-option label="停用" :value="1" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
+        <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
+        <el-button
+          type="primary"
+          plain
+          @click="openForm('create')"
+          v-hasPermi="['infra:bill-template:create']"
+        >
+          <Icon icon="ep:plus" class="mr-5px" /> 新建模板
+        </el-button>
+      </el-form-item>
+    </el-form>
+  </ContentWrap>
+
+  <ContentWrap>
+    <el-table v-loading="loading" :data="list">
+      <el-table-column label="编号" align="center" prop="id" width="70" />
+      <el-table-column label="模板名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
+      <el-table-column label="模板编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
+      <el-table-column label="分类" align="center" width="100">
+        <template #default="{ row }">
+          <DictTag
+            v-if="row.category"
+            :type="DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY"
+            :value="row.category"
+          />
+          <span v-else class="text-gray-400">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="生成方式" align="center" width="110">
+        <template #default="{ row }">
+          <el-tag size="small">{{ genTypeLabel(row.genType) }}</el-tag>
+        </template>
+      </el-table-column>
+      <!-- 范例是这张表里最有用的一列：管理员一眼就能确认规则配对了没有 -->
+      <el-table-column label="范例" prop="example" :show-overflow-tooltip="true" min-width="180">
+        <template #default="{ row }">
+          <span class="font-mono">{{ row.example || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="重置周期" align="center" width="110">
+        <template #default="{ row }">
+          {{ resetCycleLabel(row) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="当前流水" align="center" width="100">
+        <template #default="{ row }">
+          <!-- 权威值在 Redis，这里是出号后回写的展示值，可能略滞后，因此加 tooltip 说明 -->
+          <el-tooltip
+            v-if="row.genType === GEN_TYPE.TIME"
+            content="出号后回写的展示值，可能略滞后于实际流水"
+            placement="top"
+          >
+            <span>{{ row.currentNumber ?? 0 }}</span>
+          </el-tooltip>
+          <span v-else class="text-gray-400">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" align="center" width="90">
+        <template #default="{ row }">
+          <el-switch
+            :model-value="row.status === 0"
+            @change="handleStatusChange(row)"
+            v-hasPermi="['infra:bill-template:update']"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="更新时间"
+        align="center"
+        prop="updateTime"
+        width="170"
+        :formatter="dateFormatter"
+      />
+      <el-table-column label="操作" align="center" width="140" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            @click="openForm('update', row.id)"
+            v-hasPermi="['infra:bill-template:update']"
+          >
+            编辑
+          </el-button>
+          <el-button
+            link
+            type="danger"
+            @click="handleDelete(row)"
+            v-hasPermi="['infra:bill-template:delete']"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <Pagination
+      :total="total"
+      v-model:page="queryParams.pageNo"
+      v-model:limit="queryParams.pageSize"
+      @pagination="getList"
+    />
+  </ContentWrap>
+
+  <BillTemplateForm ref="formRef" @success="getList" />
+</template>
+
+<script lang="ts" setup>
+import { ElMessageBox } from 'element-plus'
+import { dateFormatter } from '@/utils/formatTime'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
+import * as BillTemplateApi from '@/api/infra/billTemplate'
+import BillTemplateForm from './BillTemplateForm.vue'
+import { GEN_TYPE, GEN_TYPE_OPTIONS, RESET_CYCLE_OPTIONS } from './constants'
+
+/** 单据模板列表 */
+defineOptions({ name: 'InfraBillTemplate' })
+
+const message = useMessage()
+const { t } = useI18n()
+
+const loading = ref(true)
+const list = ref<BillTemplateApi.BillTemplateVO[]>([])
+const total = ref(0)
+const queryParams = reactive({
+  pageNo: 1,
+  pageSize: 20,
+  name: undefined,
+  code: undefined,
+  category: undefined,
+  genType: undefined,
+  status: undefined
+})
+const queryFormRef = ref()
+
+const genTypeLabel = (genType: number) =>
+  GEN_TYPE_OPTIONS.find((item) => item.value === genType)?.label ?? String(genType)
+
+/**
+ * 重置周期的展示文案
+ *
+ * 用后端下发的 resetCycleActual（AUTO 已解析成具体周期），前端不重复实现解析规则。
+ * 否则列表里一片「跟随日期格式」，管理员还得对着日期格式心算一遍。
+ */
+const resetCycleLabel = (row: BillTemplateApi.BillTemplateVO) => {
+  if (row.genType !== GEN_TYPE.TIME) {
+    return '-'
+  }
+  const cycle = row.resetCycleActual || row.resetCycle
+  return RESET_CYCLE_OPTIONS.find((item) => item.value === cycle)?.label ?? cycle ?? '-'
+}
+
+const getList = async () => {
+  loading.value = true
+  try {
+    const data = await BillTemplateApi.getBillTemplatePage(queryParams)
+    list.value = data.list
+    total.value = data.total
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleQuery = () => {
+  queryParams.pageNo = 1
+  getList()
+}
+
+const resetQuery = () => {
+  queryFormRef.value?.resetFields()
+  handleQuery()
+}
+
+const formRef = ref()
+const openForm = (type: string, id?: number) => {
+  formRef.value.open(type, id)
+}
+
+/** 启用 / 停用 */
+const handleStatusChange = async (row: BillTemplateApi.BillTemplateVO) => {
+  const newStatus = row.status === 0 ? 1 : 0
+  try {
+    await BillTemplateApi.updateStatus(row.id, newStatus)
+    message.success(newStatus === 0 ? '已启用' : '已停用')
+    await getList()
+  } catch {
+    // 失败时不刷新列表，开关会因为重新渲染回到原状态
+  }
+}
+
+/**
+ * 删除模板
+ *
+ * 已出过号的模板后端会直接拒绝，这里先在前端提示一次，省掉一次无谓的请求往返。
+ */
+const handleDelete = async (row: BillTemplateApi.BillTemplateVO) => {
+  if (row.lastNo) {
+    message.warning(`模板「${row.name}」已生成过单号，不允许删除。如需停止使用请改为「停用」`)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认删除单据模板「${row.name}」吗？此操作不可恢复。`, '删除确认', {
+      confirmButtonText: t('common.ok'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  await BillTemplateApi.deleteBillTemplate(row.id)
+  message.success(t('common.delSuccess'))
+  await getList()
+}
+
+onMounted(() => {
+  getList()
+})
+</script>

@@ -124,7 +124,7 @@ const list = ref([]) // 列表的数据
 // 查询条件
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 
 const formRef = ref()

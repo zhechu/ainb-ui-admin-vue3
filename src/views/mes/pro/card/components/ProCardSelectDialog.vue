@@ -178,7 +178,7 @@ const handleRowDblClick = (row: ProCardVO) => {
 // ==================== 流转卡查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 流转卡编号
   workOrderId: undefined as number | undefined, // 生产工单编号
   itemId: undefined as number | undefined, // 产品物料编号

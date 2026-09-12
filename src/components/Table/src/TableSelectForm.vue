@@ -45,7 +45,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const formLoading = ref(false)
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 // 确认选择时的触发事件
 const emits = defineEmits<{

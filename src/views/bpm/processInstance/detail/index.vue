@@ -51,8 +51,13 @@
                       v-loading="processInstanceLoading"
                       class="form-box flex flex-col mb-30px flex-1"
                     >
-                      <!-- 情况一：流程表单 -->
-                      <div v-if="processDefinition?.formType === BpmModelFormType.NORMAL">
+                      <!-- 情况一：流程表单 / 在线表单。两者的 conf/fields 同为 form-create 约定，共用渲染 -->
+                      <div
+                        v-if="
+                          processDefinition?.formType === BpmModelFormType.NORMAL ||
+                          processDefinition?.formType === BpmModelFormType.ONLINE
+                        "
+                      >
                         <form-create
                           v-model="detailForm.value"
                           v-model:api="fApi"
@@ -224,7 +229,12 @@ const getApprovalDetail = async () => {
     processDefinition.value = data.processDefinition
 
     // 设置表单信息
-    if (processDefinition.value.formType === BpmModelFormType.NORMAL) {
+    // 在线表单：formConf / formFields 由后端实时补齐，formVariables 已被后端替换为业务表数据，
+    // 因此这里与流程表单完全同路
+    if (
+      processDefinition.value.formType === BpmModelFormType.NORMAL ||
+      processDefinition.value.formType === BpmModelFormType.ONLINE
+    ) {
       // 获取表单字段权限
       const formFieldsPermission = data.formFieldsPermission
       // 清空可编辑字段为空

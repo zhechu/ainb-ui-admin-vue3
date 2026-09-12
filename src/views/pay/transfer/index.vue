@@ -210,7 +210,7 @@ const total = ref(0) // 列表的总页数
 const list = ref<TransferApi.TransferVO[]>([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   no: null as string | null,
   appId: null as number | null,
   channelId: null as number | null,

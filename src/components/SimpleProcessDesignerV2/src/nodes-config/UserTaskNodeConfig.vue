@@ -454,8 +454,57 @@
           </div>
         </div>
       </el-tab-pane>
-      <el-tab-pane label="表单字段权限" name="fields" v-if="formType === 10">
+      <el-tab-pane
+        label="表单字段权限"
+        name="fields"
+        v-if="formType === BpmModelFormType.NORMAL || formType === BpmModelFormType.ONLINE"
+      >
         <div class="field-setting-pane">
+          <!-- 节点独立表单：仅在线表单类型支持。为空时该节点沿用流程的主表单 -->
+          <template v-if="formType === BpmModelFormType.ONLINE">
+            <div class="field-setting-desc">节点表单</div>
+            <el-select
+              v-model="nodeFormCode"
+              clearable
+              filterable
+              class="mb-16px"
+              placeholder="默认沿用流程主表单，可指定本节点独立填写的表单"
+              @change="handleNodeFormChange"
+            >
+              <el-option
+                v-for="form in nodeFormList"
+                :key="form.code"
+                :label="form.name"
+                :value="form.code"
+                :disabled="!form.flowReady"
+              >
+                <div class="flex items-center justify-between">
+                  <span>{{ form.name }}</span>
+                  <el-tooltip
+                    v-if="!form.flowReady"
+                    :content="form.unavailableReason"
+                    placement="right"
+                  >
+                    <span class="text-#f56c6c text-12px ml-12px">不可用</span>
+                  </el-tooltip>
+                </div>
+              </el-option>
+            </el-select>
+            <el-alert v-if="nodeFormCode" type="warning" :closable="false" class="mb-16px">
+              本节点使用独立表单，下方字段权限针对该表单的字段。
+              该表单绑定的业务表需具备 process_instance_id 列（不要求 status 列）。
+            </el-alert>
+          </template>
+          <el-alert
+            v-if="mergeStat.removed > 0 || mergeStat.added > 0"
+            class="mb-12px"
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            表单已变更：{{ mergeStat.removed }} 个失效字段配置已移除，{{ mergeStat.added }}
+            个新字段已按默认权限加入，请确认后保存。
+          </el-alert>
           <div class="field-setting-desc">字段权限</div>
           <div class="field-permit-title">
             <div class="setting-title-label first-title"> 字段名称 </div>
@@ -471,13 +520,26 @@
               </span>
             </div>
           </div>
+          <!--
+            按子表分组展示：子表控件占一行（管整段明细的权限），
+            其内部字段缩进一层（管明细里的某一列）。
+            平铺成「联系人明细.角色」这样一行行的话看不出层级，也分不清哪些属于同一张明细表。
+          -->
           <div
             class="field-setting-item"
-            v-for="(item, index) in fieldsPermissionConfig"
+            :class="{
+              'field-setting-item--sub-header': row.isSubTable,
+              'field-setting-item--sub-child': row.level > 0
+            }"
+            v-for="(row, index) in fieldsPermissionRows"
             :key="index"
           >
-            <div class="field-setting-item-label"> {{ item.title }} </div>
-            <el-radio-group class="field-setting-item-group" v-model="item.permission">
+            <div class="field-setting-item-label">
+              <Icon v-if="row.isSubTable" icon="ep:tickets" class="mr-4px" />
+              {{ row.level > 0 ? row.item.shortTitle || row.item.title : row.item.title }}
+              <el-tag v-if="row.isSubTable" size="small" type="info" class="ml-4px">明细</el-tag>
+            </div>
+            <el-radio-group class="field-setting-item-group" v-model="row.item.permission">
               <div class="item-radio-wrap">
                 <el-radio
                   :value="FieldPermissionType.READ"
@@ -567,6 +629,8 @@ import { defaultProps } from '@/utils/tree'
 import { cloneDeep } from 'lodash-es'
 import { convertTimeUnit, getApproveTypeText } from '../utils'
 import UserTaskListener from './components/UserTaskListener.vue'
+import * as OnlineFormApi from '@/api/bpm/onlineForm'
+import { BpmModelFormType } from '@/utils/constants'
 defineOptions({
   name: 'UserTaskNodeConfig'
 })
@@ -599,8 +663,54 @@ const { nodeName, showInput, clickIcon, blurEvent } = useNodeName(NodeType.USER_
 // 激活的 Tab 标签页
 const activeTabName = ref('user')
 // 表单字段权限设置
-const { formType, fieldsPermissionConfig, formFieldOptions, getNodeConfigFormFields } =
-  useFormFieldsPermission(FieldPermissionType.READ)
+const {
+  formType,
+  fieldsPermissionConfig,
+  fieldsPermissionRows,
+  formFieldOptions,
+  getNodeConfigFormFields,
+  rebuildFieldsPermission,
+  mergeStat
+} = useFormFieldsPermission(FieldPermissionType.READ)
+
+// ========== 节点独立表单（仅在线表单类型） ==========
+/** 本节点绑定的独立表单编码。为空表示沿用流程主表单 */
+const nodeFormCode = ref<string | undefined>(undefined)
+/** 可选的节点表单列表 */
+const nodeFormList = ref<OnlineFormApi.OnlineFormVO[]>([])
+
+/** 加载可作为节点表单的在线表单。mainForm 传 false：节点表单不要求业务表有 status 列 */
+const loadNodeFormList = async () => {
+  if (nodeFormList.value.length > 0) {
+    return
+  }
+  nodeFormList.value = await OnlineFormApi.getOnlineFormList(false)
+}
+
+/**
+ * 基于节点表单的字段重建字段权限
+ *
+ * 节点换了表单，原来那套按主表单字段生成的权限就不适用了，必须按新表单的字段重建，
+ * 否则会留下一批指向不存在字段的孤儿配置。
+ */
+const rebuildFieldsPermissionByNodeForm = async (
+  code: string,
+  existsPermission?: Array<Record<string, string>>
+) => {
+  const form = await OnlineFormApi.getOnlineForm(code)
+  rebuildFieldsPermission(form?.formFields || [], existsPermission)
+}
+
+/** 切换节点表单：清空原权限并按新表单字段重建 */
+const handleNodeFormChange = async (code?: string) => {
+  if (!code) {
+    // 清空后回到主表单的字段
+    getNodeConfigFormFields(undefined)
+    return
+  }
+  await rebuildFieldsPermissionByNodeForm(code, undefined)
+}
+
 // 表单内用户字段选项, 必须是必填和用户选择器
 const userFieldOnFormOptions = computed(() => {
   // 固定添加发起人 ID 字段
@@ -610,11 +720,12 @@ const userFieldOnFormOptions = computed(() => {
     type: 'UserSelect',
     required: true
   })
-  return formFieldOptions.filter((item) => item.type === 'UserSelect')
+  // 同 CopyTaskNodeConfig：OrgPicker 与历史的 UserSelect 都要认
+  return formFieldOptions.filter((item) => item.type === 'OrgPicker' || item.type === 'UserSelect')
 })
 // 表单内部门字段选项, 必须是必填和部门选择器
 const deptFieldOnFormOptions = computed(() => {
-  return formFieldOptions.filter((item) => item.type === 'DeptSelect')
+  return formFieldOptions.filter((item) => item.type === 'OrgPicker' || item.type === 'DeptSelect')
 })
 // 操作按钮设置
 const { buttonsSetting, btnDisplayNameEdit, changeBtnDisplayName, btnDisplayNameBlurEvent } =
@@ -752,6 +863,9 @@ const saveConfig = async () => {
   currentNode.value.assignStartUserHandlerType = configForm.value.assignStartUserHandlerType
   // 设置表单权限
   currentNode.value.fieldsPermission = fieldsPermissionConfig.value
+  // 设置节点独立表单。仅在线表单类型有意义，其它类型下保持 undefined 避免脏数据进入 simpleModel
+  currentNode.value.formCode =
+    formType.value === BpmModelFormType.ONLINE ? nodeFormCode.value || undefined : undefined
   // 设置按钮权限
   currentNode.value.buttonsSetting = buttonsSetting.value
   // 创建任务监听器
@@ -835,7 +949,15 @@ const showUserTaskNodeConfig = (node: SimpleFlowNode) => {
       ? TRANSACTOR_DEFAULT_BUTTON_SETTING
       : DEFAULT_BUTTON_SETTING)
   // 4. 表单字段权限配置
+  nodeFormCode.value = node.formCode
   getNodeConfigFormFields(node.fieldsPermission)
+  // 4.1 节点配了独立表单时，字段权限要基于该表单的字段重建，而不是主表单的字段
+  if (formType.value === BpmModelFormType.ONLINE) {
+    loadNodeFormList()
+    if (nodeFormCode.value) {
+      rebuildFieldsPermissionByNodeForm(nodeFormCode.value, node.fieldsPermission)
+    }
+  }
   // 5. 监听器
   // 5.1 创建任务
   configForm.value.taskCreateListenerEnable = node.taskCreateListener?.enable

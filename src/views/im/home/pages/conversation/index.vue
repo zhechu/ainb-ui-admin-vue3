@@ -32,7 +32,7 @@
       </div>
 
       <!-- 会话列表主体 -->
-      <div class="flex-1 overflow-y-auto">
+      <el-scrollbar class="flex-1 min-h-0">
         <!-- 置顶会话：数量 < 阈值或搜索中直接铺开；否则进入分组模式（独立浅底 + 可选折叠头） -->
         <template v-if="!showPinnedSection">
           <ConversationItem
@@ -79,7 +79,7 @@
         >
           {{ keyword ? '没有满足条件的会话' : '暂无会话' }}
         </div>
-      </div>
+      </el-scrollbar>
     </ResizableAside>
 
     <!-- 右侧聊天面板 -->

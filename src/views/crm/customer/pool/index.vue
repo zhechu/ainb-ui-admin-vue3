@@ -187,7 +187,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: '',
   mobile: '',
   industryId: undefined,
@@ -222,7 +222,7 @@ const resetQuery = () => {
   queryFormRef.value.resetFields()
   queryParams.value = {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     name: '',
     mobile: '',
     industryId: undefined,

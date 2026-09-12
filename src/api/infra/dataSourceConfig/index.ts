@@ -9,6 +9,18 @@ export interface DataSourceConfigVO {
   createTime?: Date
 }
 
+export interface DataSourceTableVO {
+  tableName: string
+  tableComment: string
+  columns?: ColumnInfo[]
+}
+
+export interface ColumnInfo {
+  columnName: string
+  columnComment: string
+  dataType: string
+}
+
 // 新增数据源配置
 export const createDataSourceConfig = (data: DataSourceConfigVO) => {
   return request.post({ url: '/infra/data-source-config/create', data })
@@ -40,4 +52,9 @@ export const getDataSourceConfig = (id: number) => {
 // 查询数据源配置列表
 export const getDataSourceConfigList = () => {
   return request.get({ url: '/infra/data-source-config/list' })
+}
+
+// 获取数据源的表结构列表
+export const getDataSourceTables = (id: number) => {
+  return request.get({ url: `/infra/data-source-config/${id}/tables` })
 }

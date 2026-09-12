@@ -170,7 +170,7 @@ const total = ref(0) // 总条数
 const ganttTasks = ref<any[]>([]) // 甘特图数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined,
   name: undefined,
   orderSourceCode: undefined,

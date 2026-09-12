@@ -157,7 +157,7 @@ const total = ref(0)
 const list = ref<ManagerFacePackApi.ImManagerFacePackVO[]>([])
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined as string | undefined,
   status: undefined as number | undefined,
   createTime: [] as string[]

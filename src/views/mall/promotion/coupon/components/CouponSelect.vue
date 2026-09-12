@@ -136,7 +136,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 字典表格数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: null,
   discountType: null,
   canTakeTypes: [CouponTemplateTakeTypeEnum.USER.type] // 只获得直接领取的券

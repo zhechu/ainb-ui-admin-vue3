@@ -104,7 +104,8 @@ export interface SimpleFlowNode {
   buttonsSetting?: any[]
   // 表单权限
   fieldsPermission?: Array<Record<string, any>>
-  // 审批任务超时处理
+  // 节点独立表单编码。仅在线表单类型有意义，为空表示该节点沿用流程的主表单
+  formCode?: string  // 审批任务超时处理
   timeoutHandler?: TimeoutHandler
   // 审批任务拒绝处理
   rejectHandler?: RejectHandler

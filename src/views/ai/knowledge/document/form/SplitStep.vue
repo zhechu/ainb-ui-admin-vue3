@@ -62,7 +62,7 @@
       </div>
 
       <!-- 文件内容预览 -->
-      <div class="file-preview bg-gray-50 p-15px rounded-md max-h-600px overflow-y-auto">
+      <el-scrollbar class="file-preview bg-gray-50 p-15px rounded-md" max-height="600px">
         <div v-if="splitLoading" class="flex justify-center items-center py-20px">
           <Icon icon="ep:loading" class="is-loading" />
           <span class="ml-10px">正在加载分段内容...</span>
@@ -79,7 +79,7 @@
           </div>
         </template>
         <el-empty v-else description="暂无预览内容" />
-      </div>
+      </el-scrollbar>
     </div>
 
     <!-- 添加底部按钮 -->

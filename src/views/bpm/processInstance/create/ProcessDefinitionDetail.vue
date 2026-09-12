@@ -74,7 +74,7 @@
   </ContentWrap>
 </template>
 <script lang="ts" setup>
-import { decodeFields, setConfAndFields2 } from '@/utils/formCreate'
+import { decodeFieldsAsync, setConfAndFields2 } from '@/utils/formCreate'
 import { BpmModelType, BpmModelFormType } from '@/utils/constants'
 import {
   CandidateStrategy,
@@ -123,13 +123,18 @@ const initProcessInfo = async (row: any, formVariables?: any) => {
   startUserSelectTasks.value = []
   startUserSelectAssignees.value = {}
 
-  // 情况一：流程表单
-  if (row.formType == BpmModelFormType.NORMAL) {
+  // 情况一：流程表单 / 在线表单
+  // 在线表单的 formConf / formFields 由后端按 formDesignCode 实时补齐，结构与流程表单一致，
+  // 因此渲染逻辑完全共用，不需要为它单开分支
+  if (
+    row.formType == BpmModelFormType.NORMAL ||
+    row.formType == BpmModelFormType.ONLINE
+  ) {
     // 设置表单
     // 注意：需要从 formVariables 中，移除不在 row.formFields 的值。
     // 原因是：后端返回的 formVariables 里面，会有一些非表单的信息。例如说，某个流程节点的审批人。
     //        这样，就可能导致一个流程被审批不通过后，重新发起时，会直接后端报错！！！
-    const formApi = formCreate.create(decodeFields(row.formFields))
+    const formApi = formCreate.create(await decodeFieldsAsync(row.formFields))
     const allowedFields = formApi.fields()
     for (const key in formVariables) {
       if (!allowedFields.includes(key)) {

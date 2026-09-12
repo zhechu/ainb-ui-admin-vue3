@@ -158,7 +158,7 @@ const total = ref(0) // 列表的总页数
 const productList = ref<ProductVO[]>([]) // 产品列表
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   productId: undefined,
   createTime: []

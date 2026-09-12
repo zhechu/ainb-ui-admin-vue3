@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="审批接入（流程表单）" url="https://doc.iocoder.cn/bpm/use-bpm-form/" />
+  <!-- <doc-alert title="审批接入（流程表单）" url="https://doc.iocoder.cn/bpm/use-bpm-form/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -122,7 +122,7 @@ const total = ref(0) // 列表的总页数
 const list = ref<FormApi.FormVO[]>([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: null
 })
 const queryFormRef = ref() // 搜索的表单

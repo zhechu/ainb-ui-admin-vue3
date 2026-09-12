@@ -327,7 +327,7 @@ const handleRowDblClick = (row: BatchVO) => {
 // ==================== 批次查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 批次编码
   itemId: undefined as number | undefined, // 物料 ID（MdItemSelect）
   vendorId: undefined as number | undefined, // 供应商 ID（MdVendorSelect）

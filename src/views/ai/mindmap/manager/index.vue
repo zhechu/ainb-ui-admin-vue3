@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 思维导图" url="https://doc.iocoder.cn/ai/mindmap/" />
+  <!-- <doc-alert title="AI 思维导图" url="https://doc.iocoder.cn/ai/mindmap/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -124,7 +124,7 @@ const list = ref<MindMapVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined,
   prompt: undefined,
   createTime: []

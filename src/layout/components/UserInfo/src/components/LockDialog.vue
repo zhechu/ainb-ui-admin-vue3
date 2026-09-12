@@ -2,7 +2,7 @@
 import { useValidator } from '@/hooks/web/useValidator'
 import { useDesign } from '@/hooks/web/useDesign'
 import { useLockStore } from '@/store/modules/lock'
-import avatarImg from '@/assets/imgs/avatar.gif'
+import avatarAnimationData from '@/assets/animations/avatar-animation.json'
 import { useUserStore } from '@/store/modules/user'
 
 const { getPrefixCls } = useDesign()
@@ -21,7 +21,7 @@ const props = defineProps({
 })
 
 const userStore = useUserStore()
-const avatar = computed(() => userStore.user.avatar || avatarImg)
+const avatar = computed(() => userStore.user.avatar)
 const userName = computed(() => userStore.user.nickname ?? 'Admin')
 
 const emit = defineEmits(['update:modelValue'])
@@ -67,7 +67,14 @@ const handleLock = async () => {
     :title="dialogTitle"
   >
     <div class="flex flex-col items-center">
-      <img :src="avatar" alt="" class="w-70px h-70px rounded-[50%]" />
+      <img v-if="avatar" :src="avatar" alt="" class="w-70px h-70px rounded-[50%]" />
+      <div v-else class="w-70px h-70px rounded-[50%] overflow-hidden">
+        <LottieAnimation
+          :animation-data="avatarAnimationData"
+          :width="70"
+          :height="70"
+        />
+      </div>
       <span class="text-14px my-10px text-[var(--top-header-text-color)]">
         {{ userName }}
       </span>

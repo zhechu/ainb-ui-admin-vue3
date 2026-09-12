@@ -224,7 +224,7 @@ import * as ProcessInstanceApi from '@/api/bpm/processInstance'
 import { CategoryApi, CategoryVO } from '@/api/bpm/category'
 import { ProcessInstanceVO } from '@/api/bpm/processInstance'
 import * as DefinitionApi from '@/api/bpm/definition'
-import { BpmProcessInstanceStatus } from '@/utils/constants'
+import { BpmModelFormType, BpmProcessInstanceStatus } from '@/utils/constants'
 
 defineOptions({ name: 'BpmProcessInstanceMy' })
 
@@ -238,7 +238,7 @@ const list = ref([]) // 列表的数据
 const processDefinitionList = ref<any[]>([]) // 流程定义列表
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: '',
   processDefinitionKey: undefined,
   category: undefined,
@@ -287,8 +287,11 @@ const handleCreate = async (row?: ProcessInstanceVO) => {
           id: row.businessKey
         }
       })
-    } else if (processDefinitionDetail.formType === 10) {
-      //如果是【流程表单】，跳转到流程发起界面
+    } else if (
+      processDefinitionDetail.formType === BpmModelFormType.NORMAL ||
+      processDefinitionDetail.formType === BpmModelFormType.ONLINE
+    ) {
+      //如果是【流程表单】或【在线表单】，跳转到流程发起界面
       await router.push({
         name: 'BpmProcessInstanceCreate',
         query: { processInstanceId: row.id }

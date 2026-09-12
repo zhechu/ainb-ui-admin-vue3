@@ -17,6 +17,7 @@
       :model-name="modelData.name"
       :model-form-id="modelData.formId"
       :model-form-type="modelData.formType"
+      :model-form-design-code="modelData.formDesignCode"
       :start-user-ids="modelData.startUserIds"
       :start-dept-ids="modelData.startDeptIds"
       @success="handleDesignSuccess"

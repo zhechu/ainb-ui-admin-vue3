@@ -125,13 +125,14 @@ defineOptions({ name: 'SystemNotice' })
 
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
+const route = useRoute()
 
 const loading = ref(true) // 列表的加载中
 const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   title: '',
   type: undefined,
   status: undefined
@@ -212,7 +213,12 @@ const handlePush = async (id: number) => {
 }
 
 /** 初始化 **/
-onMounted(() => {
+onMounted(async () => {
   getList()
+  const id = Number(route.query.id)
+  if (Number.isInteger(id) && id > 0) {
+    await nextTick()
+    openForm('update', id)
+  }
 })
 </script>

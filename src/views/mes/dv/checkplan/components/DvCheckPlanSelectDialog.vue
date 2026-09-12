@@ -214,7 +214,7 @@ const handleRowDblClick = (row: DvCheckPlanVO) => {
 // ==================== 查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined,
   name: undefined as string | undefined,
   type: undefined as number | undefined,

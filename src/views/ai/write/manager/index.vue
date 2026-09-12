@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 写作助手" url="https://doc.iocoder.cn/ai/write/" />
+  <!-- <doc-alert title="AI 写作助手" url="https://doc.iocoder.cn/ai/write/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -170,7 +170,7 @@ const list = ref<AiWriteRespVo[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive<AiWritePageReqVO>({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined,
   type: undefined,
   platform: undefined,

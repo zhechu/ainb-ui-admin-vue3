@@ -7,7 +7,6 @@ import { useWindowSize } from '@vueuse/core'
 import { useAppStore } from '@/store/modules/app'
 import { setCssVar } from '@/utils'
 import { useDesign } from '@/hooks/web/useDesign'
-import { normalizeLayout } from '@/utils/layout'
 
 const { variables } = useDesign()
 
@@ -27,20 +26,23 @@ onMounted(() => {
 const { width } = useWindowSize()
 
 // 监听窗口变化
+//
+// 这里只维护「是否移动端」这一运行时状态，绝不写入 layout / collapse 这类会落库的偏好。
+// 之前窗口一旦窄于 768px 就调 setLayout('sidebar-nav') + setCollapse(true)，
+// 用户选的布局会被永久改写并同步到数据库，窗口拉宽后再也恢复不了。
+// 现在移动端的单栏渲染由 store 的 getEffectiveLayout 派生，不触碰用户的原始配置。
 watch(
   () => width.value,
   (width: number) => {
-    if (width < 768) {
-      !appStore.getMobile ? appStore.setMobile(true) : undefined
-      setCssVar('--left-menu-min-width', '0')
-      appStore.setCollapse(true)
-      normalizeLayout(appStore.getLayout) !== 'sidebar-nav'
-        ? appStore.setLayout('sidebar-nav')
-        : undefined
-    } else {
-      appStore.getMobile ? appStore.setMobile(false) : undefined
-      setCssVar('--left-menu-min-width', '64px')
+    const isMobile = width < 768
+    setCssVar('--left-menu-min-width', isMobile ? '0' : '64px')
+    // 只在移动端 / 桌面端真正切换时处理，避免每一像素的 resize 都改一遍状态
+    if (appStore.getMobile === isMobile) {
+      return
     }
+    appStore.setMobile(isMobile)
+    // 进移动端是被动折叠（不记入设备偏好），回到桌面端时恢复用户自己的折叠选择
+    isMobile ? appStore.setCollapse(true, false) : appStore.restoreCollapse()
   },
   {
     immediate: true

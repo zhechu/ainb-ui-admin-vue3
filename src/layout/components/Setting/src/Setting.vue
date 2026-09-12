@@ -1,11 +1,7 @@
 <script lang="ts" setup>
 import { ElMessage } from 'element-plus'
-import { useClipboard, useCssVar } from '@vueuse/core'
+import { useClipboard } from '@vueuse/core'
 
-import { CACHE_KEY, useCache } from '@/hooks/web/useCache'
-
-import { setCssVar, trim } from '@/utils'
-import { colorIsDark, hexToRGB, lighten } from '@/utils/color'
 import { useAppStore } from '@/store/modules/app'
 import { ThemeSwitch } from '@/layout/components/ThemeSwitch'
 import ColorRadioPicker from './components/ColorRadioPicker.vue'
@@ -21,88 +17,26 @@ const appStore = useAppStore()
 const layout = computed(() => appStore.getLayout)
 const { drawerVisible } = useSetting()
 
-// 主题色相关
-const systemTheme = ref(appStore.getTheme.elColorPrimary)
+// 三个颜色选择器都只是把用户的选择转交给 store，派生色（菜单选中态、头部文字色等）
+// 统一在 store 的 action 里推导。
+//
+// 注意：这里不能有任何 setup 期的「修正」逻辑。此前组件挂载时会无条件执行
+// `if (顶部导航布局 && 非暗色) headerTheme = '#fff'`，而 Setting 是常驻渲染的，
+// 于是每次刷新都把用户存的头部色改成白色并写回数据库。
+const systemTheme = computed({
+  get: () => appStore.getTheme.elColorPrimary || '',
+  set: (color: string) => appStore.setPrimaryColor(color)
+})
 
-const setSystemTheme = (color: string) => {
-  setCssVar('--el-color-primary', color)
-  appStore.setTheme({ elColorPrimary: color })
-  const leftMenuBgColor = useCssVar('--left-menu-bg-color', document.documentElement)
-  setMenuTheme(trim(unref(leftMenuBgColor) || ''))
-}
+const headerTheme = computed({
+  get: () => appStore.getTheme.topHeaderBgColor || '',
+  set: (color: string) => appStore.setHeaderThemeColor(color)
+})
 
-// 头部主题相关
-const headerTheme = ref(appStore.getTheme.topHeaderBgColor || '')
-
-const setHeaderTheme = (color: string) => {
-  const isDarkColor = colorIsDark(color)
-  const textColor = isDarkColor ? '#fff' : 'inherit'
-  const textHoverColor = isDarkColor ? lighten(color!, 6) : '#f6f6f6'
-  const topToolBorderColor = isDarkColor ? color : '#eee'
-  setCssVar('--top-header-bg-color', color)
-  setCssVar('--top-header-text-color', textColor)
-  setCssVar('--top-header-hover-color', textHoverColor)
-  appStore.setTheme({
-    topHeaderBgColor: color,
-    topHeaderTextColor: textColor,
-    topHeaderHoverColor: textHoverColor,
-    topToolBorderColor
-  })
-  if (isHeaderNavLayout(unref(layout))) {
-    setMenuTheme(color)
-  }
-}
-
-// 菜单主题相关
-const menuTheme = ref(appStore.getTheme.leftMenuBgColor || '')
-
-const setMenuTheme = (color: string) => {
-  const primaryColor = useCssVar('--el-color-primary', document.documentElement)
-  const isDarkColor = colorIsDark(color)
-  const theme: Recordable = {
-    // 左侧菜单边框颜色
-    leftMenuBorderColor: isDarkColor ? 'inherit' : '#eee',
-    // 左侧菜单背景颜色
-    leftMenuBgColor: color,
-    // 左侧菜单浅色背景颜色
-    leftMenuBgLightColor: isDarkColor ? lighten(color!, 6) : color,
-    // 左侧菜单选中背景颜色
-    leftMenuBgActiveColor: isDarkColor
-      ? 'var(--el-color-primary)'
-      : hexToRGB(unref(primaryColor) || '#409eff', 0.1),
-    // 左侧菜单收起选中背景颜色
-    leftMenuCollapseBgActiveColor: isDarkColor
-      ? 'var(--el-color-primary)'
-      : hexToRGB(unref(primaryColor) || '#409eff', 0.1),
-    // 左侧菜单字体颜色
-    leftMenuTextColor: isDarkColor ? '#bfcbd9' : '#333',
-    // 左侧菜单选中字体颜色
-    leftMenuTextActiveColor: isDarkColor ? '#fff' : 'var(--el-color-primary)',
-    // logo字体颜色
-    logoTitleTextColor: isDarkColor ? '#fff' : 'inherit',
-    // logo边框颜色
-    logoBorderColor: isDarkColor ? color : '#eee'
-  }
-  appStore.setTheme(theme)
-  appStore.setCssVarTheme()
-}
-if (isHeaderNavLayout(layout.value) && !appStore.getIsDark) {
-  headerTheme.value = '#fff'
-  setHeaderTheme('#fff')
-}
-
-// 监听layout变化，重置一些主题色
-watch(
-  () => layout.value,
-  (n) => {
-    if (isHeaderNavLayout(n) && !appStore.getIsDark) {
-      headerTheme.value = '#fff'
-      setHeaderTheme('#fff')
-    } else {
-      setMenuTheme(unref(menuTheme))
-    }
-  }
-)
+const menuTheme = computed({
+  get: () => appStore.getTheme.leftMenuBgColor || '',
+  set: (color: string) => appStore.setMenuThemeColor(color)
+})
 
 // 拷贝
 const copyConfig = async () => {
@@ -137,8 +71,6 @@ const copyConfig = async () => {
       uniqueOpened: ${appStore.getUniqueOpened},
       // 固定header
       fixedHeader: ${appStore.getFixedHeader},
-      // 页脚
-      footer: ${appStore.getFooter},
       // 灰色模式
       greyMode: ${appStore.getGreyMode},
       // layout布局
@@ -191,11 +123,8 @@ const copyConfig = async () => {
 }
 
 // 清空缓存
-const clear = () => {
-  const { wsCache } = useCache()
-  wsCache.delete(CACHE_KEY.LAYOUT)
-  wsCache.delete(CACHE_KEY.THEME)
-  wsCache.delete(CACHE_KEY.IS_DARK)
+const clear = async () => {
+  await appStore.resetUserThemeConfig()
   window.location.reload()
 }
 </script>
@@ -229,7 +158,6 @@ const clear = () => {
           '#9c27b0',
           '#ff9800'
         ]"
-        @change="setSystemTheme"
       />
 
       <!-- 头部主题 -->
@@ -246,7 +174,6 @@ const clear = () => {
           '#009688',
           '#383f45'
         ]"
-        @change="setHeaderTheme"
       />
 
       <!-- 菜单主题 -->
@@ -264,7 +191,6 @@ const clear = () => {
             '#001628',
             '#344058'
           ]"
-          @change="setMenuTheme"
         />
       </template>
     </div>

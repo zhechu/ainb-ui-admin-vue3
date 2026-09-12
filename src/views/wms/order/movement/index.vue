@@ -421,7 +421,7 @@ const total = ref(0) // 列表的总页数
 function getDefaultQueryParams() {
   return {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     no: undefined as string | undefined,
     status: undefined as number | undefined,
     sourceWarehouseId: undefined as number | undefined,

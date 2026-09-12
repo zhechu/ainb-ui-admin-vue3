@@ -126,7 +126,7 @@ const multipleSelection = ref<String[]>([])
 
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   accountId: -1,
   openid: '',
   nickname: ''

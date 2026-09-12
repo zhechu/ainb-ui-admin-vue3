@@ -125,7 +125,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   sceneType: 1, // 我负责的
   pool: true // 固定 公海参数为 true
 })

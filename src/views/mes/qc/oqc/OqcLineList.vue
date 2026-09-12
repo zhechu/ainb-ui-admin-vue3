@@ -55,7 +55,7 @@ const list = ref<QcOqcLineVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   oqcId: undefined as number | undefined
 })
 const defectListRef = ref() // 缺陷记录弹窗 Ref

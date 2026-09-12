@@ -241,7 +241,7 @@ const list = ref([]) // 列表的数据
 const queryFormRef = ref() // 搜索的表单
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   type: undefined,
   status: undefined,
   code: '',

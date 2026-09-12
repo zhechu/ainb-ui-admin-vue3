@@ -127,7 +127,7 @@ const bomList = ref<ProWorkOrderBomVO[]>([]) // 列表的数据
 const bomTotal = ref(0) // 列表的总页数
 const bomQueryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   workOrderId: undefined as number | undefined
 })
 

@@ -208,7 +208,7 @@ const productList = ref<ProductVO[]>([]) // 产品列表
 const deviceList = ref<DeviceVO[]>([]) // 设备列表
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   configId: undefined as number | undefined,
   configLevel: undefined as number | undefined,
   productId: undefined as number | undefined,

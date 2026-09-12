@@ -2,7 +2,7 @@
 import { computed, defineComponent, PropType } from 'vue'
 import { isHexColor } from '@/utils/color'
 import { ElTag } from 'element-plus'
-import { DictDataType, getDictOptions } from '@/utils/dict'
+import { DictDataType, getDictOptions, getDictPathLabels } from '@/utils/dict'
 import { isArray, isBoolean, isNumber, isString } from '@/utils/is'
 
 export default defineComponent({
@@ -25,6 +25,17 @@ export default defineComponent({
     gutter: {
       type: String as PropType<string>,
       default: '5px'
+    },
+    // 树形字典时，是否显示从根到自身的全路径。
+    // 只显示叶子名称往往认不出来——多个分支下都可能有「其它」「未知」这种同名节点
+    showPath: {
+      type: Boolean as PropType<boolean>,
+      default: false
+    },
+    // 全路径各级之间的分隔符
+    pathSeparator: {
+      type: String as PropType<string>,
+      default: ' / '
     }
   },
   setup(props) {
@@ -43,6 +54,16 @@ export default defineComponent({
       }
       return []
     })
+
+    /** 取标签文案：开启 showPath 时拼成全路径 */
+    const renderLabel = (dict: DictDataType) => {
+      if (!props.showPath) {
+        return dict?.label
+      }
+      const labels = getDictPathLabels(props.type, dict.value)
+      return labels.length > 0 ? labels.join(props.pathSeparator) : dict?.label
+    }
+
     const renderDictTag = () => {
       if (!props.type) {
         return null
@@ -65,18 +86,20 @@ export default defineComponent({
         >
           {dictOptions.map((dict: DictDataType) => {
             if (valueArr.value.includes(dict.value)) {
-              if (dict.colorType + '' === 'primary' || dict.colorType + '' === 'default') {
-                dict.colorType = ''
-              }
+              // primary / default 用 el-tag 的默认样式。这里只能算出一个局部变量，
+              // 绝不能回写 dict.colorType —— dict 是字典缓存里的共享对象，
+              // 改了它等于把缓存中的颜色永久抹掉，其它用到同一份字典的地方也会跟着变
+              const colorType =
+                dict.colorType === 'primary' || dict.colorType === 'default' ? '' : dict.colorType
               return (
                 // 添加标签的文字颜色为白色，解决自定义背景颜色时标签文字看不清的问题
                 <ElTag
                   style={dict?.cssClass ? 'color: #fff' : ''}
-                  type={dict?.colorType || null}
+                  type={colorType || null}
                   color={dict?.cssClass && isHexColor(dict?.cssClass) ? dict?.cssClass : ''}
                   disableTransitions={true}
                 >
-                  {dict?.label}
+                  {renderLabel(dict)}
                 </ElTag>
               )
             }

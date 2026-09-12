@@ -10,9 +10,10 @@
       <el-button @click="handleViewPublic">绘画作品</el-button>
     </template>
     <!-- 图片列表 -->
-    <div
-      class="relative flex flex-row flex-wrap content-start h-full overflow-auto p-5 pb-[140px] box-border [&>div]:mr-5 [&>div]:mb-5"
-      ref="imageListRef"
+    <el-scrollbar
+      ref="scrollbarRef"
+      class="relative h-full"
+      view-class="flex flex-row flex-wrap content-start p-5 pb-[140px] box-border [&>div]:mr-5 [&>div]:mb-5"
     >
       <ImageCard
         v-for="image in imageList"
@@ -21,7 +22,7 @@
         @on-btn-click="handleImageButtonClick"
         @on-mj-btn-click="handleImageMidjourneyButtonClick"
       />
-    </div>
+    </el-scrollbar>
     <div
       class="absolute bottom-[60px] h-[50px] leading-[90px] w-full z-[999] bg-white flex flex-row justify-center items-center"
     >
@@ -60,12 +61,14 @@ const router = useRouter() // 路由
 // 图片分页相关的参数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 const pageTotal = ref<number>(0) // page size
 const imageList = ref<ImageVO[]>([]) // image 列表
 const imageListLoadingInstance = ref<any>() // image 列表是否正在加载中
-const imageListRef = ref<any>() // ref
+const scrollbarRef = ref<any>() // 滚动条组件 ref
+// 加载遮罩要挂在真实 DOM 上，取 el-scrollbar 内部那个在滚动的 wrap
+const imageListRef = computed<any>(() => scrollbarRef.value?.wrapRef)
 // 图片轮询相关的参数（正在生成中的）
 const inProgressImageMap = ref<{}>({}) // 监听的 image 映射，一般是生成中（需要轮询），key 为 image 编号，value 为 image
 const inProgressTimer = ref<any>() // 生成中的 image 定时器，轮询生成进展

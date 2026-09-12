@@ -114,7 +114,7 @@ const list = ref([]) // 字典表格数据
 // 查询参数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   createTime: [],
   status: undefined,
   userIds: undefined as number | undefined

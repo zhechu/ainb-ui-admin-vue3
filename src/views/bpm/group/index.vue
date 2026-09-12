@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="工作流手册" url="https://doc.iocoder.cn/bpm/" />
+  <!-- <doc-alert title="工作流手册" url="https://doc.iocoder.cn/bpm/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -131,7 +131,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: null,
   status: null,
   createTime: []

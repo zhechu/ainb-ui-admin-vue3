@@ -186,7 +186,7 @@ const total = ref(0) // 列表的总页数
 const filterZero = ref(false) // 是否过滤库存为 0 的商品
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   type: INVENTORY_DIMENSION.WAREHOUSE as InventoryDimension,
   itemCode: undefined as string | undefined,
   itemName: undefined as string | undefined,

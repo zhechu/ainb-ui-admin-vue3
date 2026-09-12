@@ -14,7 +14,7 @@ const list = ref<any>([]) // 列表
 const total = ref(0) // 总数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: 0
 })
 const skipGetMessageList = computed(() => {

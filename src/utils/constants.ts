@@ -1,5 +1,5 @@
 /**
- * Created by 芋道源码
+ * Created by
  *
  * 枚举类
  */
@@ -456,7 +456,8 @@ export const BpmModelType = {
 
 export const BpmModelFormType = {
   NORMAL: 10, // 流程表单
-  CUSTOM: 20 // 业务表单
+  CUSTOM: 20, // 业务表单
+  ONLINE: 30 // 在线表单，即「表单设计」（infra/formDesign）模块设计的表单
 }
 
 export const BpmProcessInstanceStatus = {

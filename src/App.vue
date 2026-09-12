@@ -2,7 +2,6 @@
 import { isDark } from '@/utils/is'
 import { useAppStore } from '@/store/modules/app'
 import { useDesign } from '@/hooks/web/useDesign'
-import { CACHE_KEY, useCache } from '@/hooks/web/useCache'
 import routerSearch from '@/components/RouterSearch/index.vue'
 
 defineOptions({ name: 'APP' })
@@ -12,15 +11,13 @@ const prefixCls = getPrefixCls('app')
 const appStore = useAppStore()
 const currentSize = computed(() => appStore.getCurrentSize)
 const greyMode = computed(() => appStore.getGreyMode)
-const { wsCache } = useCache()
 
-// 根据浏览器当前主题设置系统主题色
+// 未登录（如登录页）时按浏览器偏好给个初始主题；已登录时 loadUserThemeConfig 已在
+// router.isReady() 阶段完成，themeConfigLoaded 为 true，这里不会覆盖用户配置。
 const setDefaultTheme = () => {
-  let isDarkTheme = wsCache.get(CACHE_KEY.IS_DARK)
-  if (isDarkTheme === null) {
-    isDarkTheme = isDark()
+  if (!appStore.getThemeConfigLoaded) {
+    appStore.setIsDark(isDark())
   }
-  appStore.setIsDark(isDarkTheme)
 }
 setDefaultTheme()
 </script>

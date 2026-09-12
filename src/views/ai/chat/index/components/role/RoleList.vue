@@ -1,7 +1,8 @@
 <template>
-  <div
-    class="flex flex-row flex-wrap relative h-full overflow-auto pb-140px items-start content-start justify-start"
-    ref="tabsRef"
+  <el-scrollbar
+    ref="scrollbarRef"
+    class="relative h-full"
+    view-class="flex flex-row flex-wrap pb-140px items-start content-start justify-start"
     @scroll="handleTabsScroll"
   >
     <div v-for="role in roleList" :key="role.id">
@@ -48,7 +49,7 @@
         </div>
       </el-card>
     </div>
-  </div>
+  </el-scrollbar>
 </template>
 
 <script setup lang="ts">
@@ -56,7 +57,9 @@ import { ChatRoleVO } from '@/api/ai/model/chatRole'
 import { PropType, ref } from 'vue'
 import { More } from '@element-plus/icons-vue'
 
-const tabsRef = ref<any>() // tabs ref
+const scrollbarRef = ref<any>() // 滚动条组件 ref
+// 真正在滚动的是 el-scrollbar 内部的 wrap，下面的触底判断要拿它的尺寸
+const tabsRef = computed<any>(() => scrollbarRef.value?.wrapRef)
 
 // 定义属性
 const props = defineProps({

@@ -66,8 +66,22 @@
           </el-text>
         </div>
       </el-tab-pane>
-      <el-tab-pane label="表单字段权限" name="fields" v-if="formType === 10">
+      <el-tab-pane
+        label="表单字段权限"
+        name="fields"
+        v-if="formType === BpmModelFormType.NORMAL || formType === BpmModelFormType.ONLINE"
+      >
         <div class="field-setting-pane">
+          <el-alert
+            v-if="mergeStat.removed > 0 || mergeStat.added > 0"
+            class="mb-12px"
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            表单已变更：{{ mergeStat.removed }} 个失效字段配置已移除，{{ mergeStat.added }}
+            个新字段已按默认权限加入，请确认后保存。
+          </el-alert>
           <div class="field-setting-desc">字段权限</div>
           <div class="field-permit-title">
             <div class="setting-title-label first-title"> 字段名称 </div>
@@ -85,11 +99,19 @@
           </div>
           <div
             class="field-setting-item"
-            v-for="(item, index) in fieldsPermissionConfig"
+            :class="{
+              'field-setting-item--sub-header': row.isSubTable,
+              'field-setting-item--sub-child': row.level > 0
+            }"
+            v-for="(row, index) in fieldsPermissionRows"
             :key="index"
           >
-            <div class="field-setting-item-label"> {{ item.title }} </div>
-            <el-radio-group class="field-setting-item-group" v-model="item.permission">
+            <div class="field-setting-item-label">
+              <Icon v-if="row.isSubTable" icon="ep:tickets" class="mr-4px" />
+              {{ row.level > 0 ? row.item.shortTitle || row.item.title : row.item.title }}
+              <el-tag v-if="row.isSubTable" size="small" type="info" class="ml-4px">明细</el-tag>
+            </div>
+            <el-radio-group class="field-setting-item-group" v-model="row.item.permission">
               <div class="item-radio-wrap">
                 <el-radio
                   :value="FieldPermissionType.READ"
@@ -136,6 +158,7 @@ import { SimpleFlowNode, NodeType, FieldPermissionType, START_USER_BUTTON_SETTIN
 import { useWatchNode, useDrawer, useNodeName, useFormFieldsPermission } from '../node'
 import * as UserApi from '@/api/system/user'
 import * as DeptApi from '@/api/system/dept'
+import { BpmModelFormType } from '@/utils/constants'
 defineOptions({
   name: 'StartUserNodeConfig'
 })
@@ -162,7 +185,7 @@ const { nodeName, showInput, clickIcon, blurEvent } = useNodeName(NodeType.COPY_
 // 激活的 Tab 标签页
 const activeTabName = ref('user')
 // 表单字段权限配置
-const { formType, fieldsPermissionConfig, getNodeConfigFormFields } = useFormFieldsPermission(
+const { formType, fieldsPermissionConfig, fieldsPermissionRows, getNodeConfigFormFields, mergeStat } = useFormFieldsPermission(
   FieldPermissionType.WRITE
 )
 const getUserNicknames = (userIds: number[]): string => {

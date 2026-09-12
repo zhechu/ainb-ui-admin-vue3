@@ -175,7 +175,7 @@ const recordList = ref<OtaTaskRecord[]>([]) // 记录列表数据
 const recordTotal = ref(0) // 记录总数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   taskId: undefined as number | undefined,
   status: undefined as number | undefined
 }) // 查询参数

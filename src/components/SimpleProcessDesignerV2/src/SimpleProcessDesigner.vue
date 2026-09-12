@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="loading" class="overflow-auto">
+  <el-scrollbar v-loading="loading">
     <SimpleProcessModel
       ref="simpleProcessModelRef"
       v-if="processNodeTree"
@@ -20,13 +20,14 @@
         <el-button type="primary" @click="errorDialogVisible = false">知道了</el-button>
       </template>
     </Dialog>
-  </div>
+  </el-scrollbar>
 </template>
 
 <script setup lang="ts">
 import SimpleProcessModel from './SimpleProcessModel.vue'
 import { SimpleFlowNode, NodeType, NodeId, NODE_DEFAULT_TEXT } from './consts'
 import { getForm } from '@/api/bpm/form'
+import { getOnlineForm } from '@/api/bpm/onlineForm'
 import { handleTree } from '@/utils/tree'
 import * as RoleApi from '@/api/system/role'
 import * as DeptApi from '@/api/system/dept'
@@ -58,6 +59,12 @@ const props = defineProps({
     required: false,
     default: BpmModelFormType.NORMAL
   },
+  // 在线表单编码。表单类型为 ONLINE 时使用，关联「表单设计」的 code
+  modelFormDesignCode: {
+    type: String,
+    required: false,
+    default: undefined
+  },
   // 可发起流程的人员编号
   startUserIds: {
     type: Array,
@@ -87,13 +94,32 @@ watch(
 watch(
   () => props.modelFormId,
   async (newVal) => {
-    if (newVal) {
+    if (newVal && props.modelFormType === BpmModelFormType.NORMAL) {
       const form = await getForm(newVal)
       formFields.value = form?.fields
-    } else {
+    } else if (props.modelFormType !== BpmModelFormType.ONLINE) {
       // 如果 modelFormId 为空，清空表单字段
       formFields.value = []
     }
+  },
+  { immediate: true }
+)
+
+// 监听在线表单编码变化
+// 在线表单与流程表单的 fields 是同一套 form-create 约定，所以下游 4 个消费方
+//（节点字段权限、条件表达式左值、表单内用户字段候选人、表单数据触发器）无需任何改动
+watch(
+  () => [props.modelFormDesignCode, props.modelFormType],
+  async ([newCode, newType]) => {
+    if (newType !== BpmModelFormType.ONLINE) {
+      return
+    }
+    if (!newCode) {
+      formFields.value = []
+      return
+    }
+    const form = await getOnlineForm(newCode as string)
+    formFields.value = form?.formFields || []
   },
   { immediate: true }
 )

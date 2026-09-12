@@ -125,7 +125,7 @@ const taskList = ref<OtaTask[]>([])
 const taskTotal = ref(0)
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: '',
   firmwareId: props.firmwareId
 })

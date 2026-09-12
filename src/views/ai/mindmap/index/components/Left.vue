@@ -2,7 +2,7 @@
   <div class="w-[350px] p-5 flex flex-col bg-[#f5f7f9]">
     <h3 class="w-full h-full h-7 text-5 text-center leading-[28px] title">思维导图创作中心</h3>
     <!--下面表单部分-->
-    <div class="flex-grow overflow-y-auto">
+    <el-scrollbar class="flex-grow min-h-0">
       <div class="mt-[30ppx]">
         <el-text tag="b">您的需求？</el-text>
         <el-input
@@ -45,7 +45,7 @@
           直接生成
         </el-button>
       </div>
-    </div>
+    </el-scrollbar>
   </div>
 </template>
 

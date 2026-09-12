@@ -13,13 +13,6 @@ export interface Menu {
 }
 
 // 通用下拉组件 Props 类型
-export interface ApiSelectProps {
-  name: string // 组件名称
-  labelField?: string // 选项标签
-  valueField?: string // 选项的值
-  url?: string // url 接口
-  isDict?: boolean // 是否字典选择器
-}
 
 // 选择组件规则配置类型
 export interface SelectRuleOption {

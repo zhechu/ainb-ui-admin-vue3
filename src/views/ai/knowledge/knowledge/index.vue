@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 知识库" url="https://doc.iocoder.cn/ai/knowledge/" />
+  <!-- <doc-alert title="AI 知识库" url="https://doc.iocoder.cn/ai/knowledge/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -147,7 +147,7 @@ const list = ref<KnowledgeVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   status: undefined,
   createTime: []

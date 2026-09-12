@@ -12,7 +12,7 @@
     :close-on-click-modal="false"
     class="im-group-request-list__dialog"
   >
-    <div v-loading="loading" class="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
+    <el-scrollbar v-loading="loading" max-height="60vh" view-class="flex flex-col gap-3 pr-1">
       <!-- 空态 -->
       <el-empty v-if="!loading && list.length === 0" description="暂无进群申请" />
 
@@ -162,7 +162,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </el-scrollbar>
   </el-dialog>
 </template>
 

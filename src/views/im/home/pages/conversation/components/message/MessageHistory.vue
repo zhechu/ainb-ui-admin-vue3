@@ -115,7 +115,7 @@
                 <Icon icon="ant-design:search-outlined" />
               </template>
             </el-input>
-            <div class="max-h-[360px] overflow-y-auto mt-2">
+            <el-scrollbar class="mt-2" max-height="360px">
               <GroupMember
                 v-for="member in filteredMembersForPicker"
                 :key="member.userId"
@@ -131,13 +131,13 @@
               >
                 没有匹配的成员
               </div>
-            </div>
+            </el-scrollbar>
           </div>
         </el-popover>
       </div>
 
       <!-- 消息列表 -->
-      <div class="flex-1 overflow-y-auto">
+      <el-scrollbar class="flex-1 min-h-0">
         <template v-for="message in currentList" :key="message.id || message.clientMessageId">
           <!-- 好友会话事件（FRIEND_ADD / FRIEND_DELETE）：居中灰色，不挂头像 / sender，
                跟主聊天面板里 MessageItem 的渲染语义对齐 -->
@@ -234,7 +234,7 @@
         >
           没有更早的消息了
         </div>
-      </div>
+      </el-scrollbar>
     </div>
   </el-dialog>
 </template>

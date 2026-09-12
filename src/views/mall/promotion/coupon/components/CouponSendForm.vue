@@ -105,7 +105,7 @@ const sendLoading = ref(false) // 发送按钮的加载中
 const dialogVisible = ref(false) // 弹窗的是否展示
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: null,
   canTakeTypes: [CouponTemplateTakeTypeEnum.ADMIN.type]
 }) // 查询参数

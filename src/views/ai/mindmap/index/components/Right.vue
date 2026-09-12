@@ -15,9 +15,9 @@
 
     <div ref="contentRef" class="hide-scroll-bar h-full box-border">
       <!--展示 markdown 的容器，最终生成的是 html 字符串，直接用 v-html 嵌入-->
-      <div v-if="isGenerating" ref="mdContainerRef" class="wh-full overflow-y-auto">
+      <el-scrollbar v-if="isGenerating" ref="mdScrollbarRef" class="wh-full">
         <div class="flex flex-col items-center justify-center" v-html="html"></div>
-      </div>
+      </el-scrollbar>
 
       <div ref="mindMapRef" class="wh-full">
         <svg ref="svgRef" :style="{ height: `${contentAreaHeight}px` }" class="w-full" />
@@ -44,7 +44,9 @@ const props = defineProps<{
   isStart: boolean // 开始状态，开始时需要清除 html
 }>()
 const contentRef = ref<HTMLDivElement>() // 右侧出来 header 以下的区域
-const mdContainerRef = ref<HTMLDivElement>() // markdown 的容器，用来滚动到底下的
+const mdScrollbarRef = ref<any>() // markdown 容器的滚动条组件
+// 滚动到底靠的是原生 API，取 el-scrollbar 内部真正在滚的那个 wrap
+const mdContainerRef = computed<any>(() => mdScrollbarRef.value?.wrapRef)
 const mindMapRef = ref<HTMLDivElement>() // 思维导图的容器
 const svgRef = ref<SVGElement>() // 思维导图的渲染 svg
 const toolBarRef = ref<HTMLDivElement>() // 思维导图右下角的工具栏，缩放等
@@ -143,8 +145,6 @@ defineExpose({
   flex-direction: column;
 
   :deep(.el-card__body) {
-    @extend .hide-scroll-bar;
-
     padding: 0;
     overflow-y: auto;
     box-sizing: border-box;

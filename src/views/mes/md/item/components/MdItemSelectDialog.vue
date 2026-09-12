@@ -201,7 +201,7 @@ const handleNodeClick = (data: MdItemTypeVO | undefined) => {
 // ==================== 物料查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 物料编码
   name: undefined as string | undefined, // 物料名称
   itemTypeId: undefined as number | undefined, // 物料分类编号

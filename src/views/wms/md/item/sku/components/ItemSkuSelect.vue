@@ -178,7 +178,7 @@ const queryFormRef = ref() // 搜索的表单
 function getDefaultQueryParams() {
   return {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     itemName: undefined as string | undefined,
     itemCode: undefined as string | undefined,
     name: undefined as string | undefined,

@@ -16,7 +16,7 @@ const show = ref(true)
 
 const title = computed(() => appStore.getTitle)
 
-const layout = computed(() => appStore.getLayout)
+const layout = computed(() => appStore.getEffectiveLayout)
 
 const collapse = computed(() => appStore.getCollapse)
 

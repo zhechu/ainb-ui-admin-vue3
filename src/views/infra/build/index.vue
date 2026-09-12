@@ -1,5 +1,5 @@
 <template>
-  <ContentWrap :body-style="{ padding: '0px' }" class="!mb-0">
+  <ContentWrap :body-style="{ padding: '0px' }" class="form-builder-page !mb-0">
     <!-- 表单设计器 -->
     <div
       class="h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height)-var(--app-content-padding)-var(--app-content-padding)-2px)]"
@@ -71,7 +71,11 @@ const designerConfig = ref({
   showFormConfig: true, // 是否显示表单配置
   showInputData: true, // 是否显示录入按钮
   showDevice: true, // 是否显示多端适配选项
-  appendConfigData: [] // 定义渲染规则所需的formData
+  appendConfigData: [], // 定义渲染规则所需的formData
+  showAi: true,
+  ai: {
+    token: 'fc-59ed6ba7dd6a9e1495ef9890f19e79ef/29219051'
+  }
 })
 const designer = ref() // 表单设计器
 const dialogVisible = ref(false) // 弹窗的是否展示
@@ -180,5 +184,10 @@ onMounted(async () => {
   ._fc-r {
     border-top: none;
   }
+}
+
+.dark .form-builder-page .hljs {
+  color: var(--el-text-color-primary);
+  background-color: var(--el-bg-color-page);
 }
 </style>

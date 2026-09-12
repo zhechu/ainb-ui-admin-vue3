@@ -134,7 +134,10 @@
         <el-table-column label="表单信息" prop="formType" min-width="150">
           <template #default="scope">
             <el-button
-              v-if="scope.row.formType === BpmModelFormType.NORMAL"
+              v-if="
+                scope.row.formType === BpmModelFormType.NORMAL ||
+                scope.row.formType === BpmModelFormType.ONLINE
+              "
               type="primary"
               link
               @click="handleFormDetail(scope.row)"
@@ -284,6 +287,7 @@ import Sortable from 'sortablejs'
 import { formatDate } from '@/utils/formatTime'
 import * as ModelApi from '@/api/bpm/model'
 import * as FormApi from '@/api/bpm/form'
+import * as OnlineFormApi from '@/api/bpm/onlineForm'
 import { setConfAndFields2 } from '@/utils/formCreate'
 import { BpmModelFormType } from '@/utils/constants'
 import { checkPermi } from '@/utils/permission'
@@ -511,6 +515,16 @@ const handleFormDetail = async (row: any) => {
     const data = await FormApi.getForm(row.formId)
     setConfAndFields2(formDetailPreview, data.conf, data.fields)
     // 弹窗打开
+    formDetailVisible.value = true
+  } else if (row.formType == BpmModelFormType.ONLINE && row.formDesignCode) {
+    // 在线表单：按 formDesignCode 取最新版本，不走快照
+    const data = await OnlineFormApi.getOnlineForm(row.formDesignCode)
+    // 表单可能已被删除或尚未设计内容，此时不弹空白窗，给出明确提示
+    if (!data?.formConf || !data?.formFields?.length) {
+      message.warning('该在线表单不存在或尚未设计内容')
+      return
+    }
+    setConfAndFields2(formDetailPreview, data.formConf, data.formFields)
     formDetailVisible.value = true
   } else {
     await push({

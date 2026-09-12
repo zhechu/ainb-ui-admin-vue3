@@ -225,7 +225,7 @@ const handleRowDblClick = (row: ProWorkOrderVO) => {
 // ==================== 工单查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 工单编码
   name: undefined as string | undefined, // 工单名称
   productId: undefined as number | undefined, // 产品编号

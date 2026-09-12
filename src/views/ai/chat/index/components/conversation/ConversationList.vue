@@ -25,7 +25,7 @@
       </el-input>
 
       <!-- 左中间：对话列表 -->
-      <div class="overflow-auto h-full">
+      <el-scrollbar class="h-full">
         <!-- 情况一：加载中 -->
         <el-empty v-if="loading" description="." :v-loading="loading" />
         <!-- 情况二：按照 group 分组，展示聊天会话 list 列表 -->
@@ -96,7 +96,7 @@
         </div>
         <!-- 底部占位  -->
         <div class="h-160px w-100%"></div>
-      </div>
+      </el-scrollbar>
     </div>
 
     <!-- 左底部：工具栏 -->

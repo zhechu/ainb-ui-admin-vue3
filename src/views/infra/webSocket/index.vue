@@ -52,7 +52,7 @@
           <span>消息记录</span>
         </div>
       </template>
-      <div class="max-h-80 overflow-auto">
+      <el-scrollbar max-height="320px">
         <ul>
           <li v-for="msg in messageReverseList" :key="msg.time" class="mt-2">
             <div class="flex items-center">
@@ -64,7 +64,7 @@
             </div>
           </li>
         </ul>
-      </div>
+      </el-scrollbar>
     </el-card>
   </div>
 </template>

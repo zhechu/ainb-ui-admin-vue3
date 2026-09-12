@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 对话聊天" url="https://doc.iocoder.cn/ai/chat/" />
+  <!-- <doc-alert title="AI 对话聊天" url="https://doc.iocoder.cn/ai/chat/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -144,7 +144,7 @@ const list = ref<ChatRoleVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   category: undefined,
   publicStatus: true

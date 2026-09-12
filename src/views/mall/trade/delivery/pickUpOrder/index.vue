@@ -263,7 +263,7 @@ const INIT_QUERY_PARAMS = {
   // 页数
   pageNo: 1,
   // 每页显示数量
-  pageSize: 10,
+  pageSize: 20,
   // 创建时间
   createTime: undefined,
   // 配送方式

@@ -179,7 +179,7 @@ const formFields = ref()
 const processDefinitionId = query.processDefinitionId as string
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   startUserId: undefined,
   name: '',
   processDefinitionKey: query.processDefinitionKey,

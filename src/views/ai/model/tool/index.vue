@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 工具调用（function calling）" url="https://doc.iocoder.cn/ai/tool/" />
+  <!-- <doc-alert title="AI 工具调用（function calling）" url="https://doc.iocoder.cn/ai/tool/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -119,7 +119,7 @@ const list = ref<ToolVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   description: undefined,
   status: undefined,

@@ -33,13 +33,13 @@ const hamburger = computed(() => appStore.getHamburger)
 const screenfull = computed(() => appStore.getScreenfull)
 
 // 搜索图片
-const search = computed(() => appStore.search)
+const search = computed(() => appStore.getSearch)
 
 // 尺寸图标
 const size = computed(() => appStore.getSize)
 
-// 布局
-const layout = computed(() => appStore.getLayout)
+// 布局：移动端强制单栏，但不改写用户保存的配置
+const layout = computed(() => appStore.getEffectiveLayout)
 
 // 多语言图标
 const locale = computed(() => appStore.getLocale)
@@ -138,5 +138,24 @@ $prefix-cls: #{$namespace}-tool-header;
 
 .#{$prefix-cls} {
   transition: left var(--transition-time-02);
+
+  :deep(.custom-hover) {
+    min-width: 40px;
+    justify-content: center;
+  }
+
+  .v-setting {
+    display: flex;
+    width: 40px;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background var(--transition-time-02);
+
+    &:hover {
+      background-color: var(--top-header-hover-color);
+    }
+  }
 }
 </style>

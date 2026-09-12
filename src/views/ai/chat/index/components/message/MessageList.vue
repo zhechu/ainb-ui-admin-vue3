@@ -1,5 +1,5 @@
 <template>
-  <div ref="messageContainer" class="h-100% overflow-y-auto relative">
+  <el-scrollbar ref="scrollbarRef" class="h-100% relative">
     <div class="flex flex-col overflow-y-hidden px-20px" v-for="(item, index) in list" :key="index">
       <!-- 靠左 message：system、assistant 类型 -->
       <div class="flex flex-row mt-50px" v-if="item.type !== 'user'">
@@ -48,7 +48,10 @@
       <!-- 靠右 message：user 类型 -->
       <div class="flex flex-row-reverse justify-start mt-50px" v-if="item.type === 'user'">
         <div class="avatar">
-          <el-avatar :src="userAvatar" />
+          <el-avatar v-if="userAvatar" :src="userAvatar" />
+          <el-avatar v-else>
+            <LottieAnimation :animation-data="avatarAnimationData" width="100%" height="100%" />
+          </el-avatar>
         </div>
         <div class="flex flex-col text-left mx-15px">
           <div>
@@ -103,7 +106,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </el-scrollbar>
   <!-- 回到底部 -->
   <div v-if="isScrolling" class="absolute z-1000 bottom-0 right-50%" @click="handleGoBottom">
     <el-button :icon="ArrowDownBold" circle />
@@ -122,18 +125,26 @@ import { ArrowDownBold, Edit, RefreshRight } from '@element-plus/icons-vue'
 import { ChatMessageApi, ChatMessageVO } from '@/api/ai/chat/message'
 import { ChatConversationVO } from '@/api/ai/chat/conversation'
 import { useUserStore } from '@/store/modules/user'
-import userAvatarDefaultImg from '@/assets/imgs/avatar.gif'
+import avatarAnimationData from '@/assets/animations/avatar-animation.json'
 import roleAvatarDefaultImg from '@/assets/ai/gpt.svg'
 
 const message = useMessage() // 消息弹窗
 const { copy } = useClipboard({ legacy: true }) // 初始化 copy 到粘贴板
 const userStore = useUserStore()
 
-// 判断“消息列表”滚动的位置(用于判断是否需要滚动到消息最下方)
-const messageContainer: any = ref(null)
+// 判断”消息列表”滚动的位置(用于判断是否需要滚动到消息最下方)
+const scrollbarRef = ref()
+/**
+ * 真正在滚动的那个元素
+ *
+ * el-scrollbar 把原生滚动放在内部的 wrap 上，自己的根节点是 overflow: hidden。
+ * 下面几处滚动位置计算仍然直接操作原生元素，所以这里把 wrap 取出来复用，
+ * 不必为了换一个滚动条把滚动逻辑重写一遍
+ */
+const messageContainer = computed<any>(() => scrollbarRef.value?.wrapRef)
 const isScrolling = ref(false) //用于判断用户是否在滚动
 
-const userAvatar = computed(() => userStore.user.avatar || userAvatarDefaultImg)
+const userAvatar = computed(() => userStore.user.avatar)
 const roleAvatar = computed(() => props.conversation.roleAvatar ?? roleAvatarDefaultImg)
 
 // 定义 props

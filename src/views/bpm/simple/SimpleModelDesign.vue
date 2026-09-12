@@ -3,6 +3,7 @@
     <SimpleProcessDesigner
       :model-form-id="modelFormId"
       :model-form-type="modelFormType"
+      :model-form-design-code="modelFormDesignCode"
       :start-user-ids="startUserIds"
       :start-dept-ids="startDeptIds"
       @success="handleSuccess"
@@ -21,6 +22,8 @@ defineProps<{
   modelName?: string
   modelFormId?: number
   modelFormType?: number
+  /** 在线表单编码，表单类型为 ONLINE 时使用 */
+  modelFormDesignCode?: string
   startUserIds?: number[]
   startDeptIds?: number[]
 }>()

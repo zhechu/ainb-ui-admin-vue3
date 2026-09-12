@@ -213,7 +213,7 @@ const total = ref(0)
 const exportLoading = ref(false)
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined,
   name: undefined,
   type: undefined,

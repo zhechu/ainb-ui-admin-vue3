@@ -97,6 +97,25 @@ const uploadNumber = ref<number>(0)
 
 const { uploadUrl, httpRequest } = useUpload(props.directory)
 
+/**
+ * 从文件地址里取出给人看的文件名
+ *
+ * 文件服务的存储路径是「日期目录 / 原文件名」，地址里的中文文件名是**百分号编码**的，
+ * 直接取最后一段显示出来就是一串 `%E4%B8%AD%E6%96%87...` —— 用户看到的就是乱码。
+ * （后端没有问题：库里存的是原文件名，地址也只是按 URL 规范编码过。）
+ *
+ * 解码失败时退回原串而不是抛错：地址里出现孤立的 `%` 时 decodeURIComponent 会抛
+ * URIError，让它冒出去会把整个文件列表的渲染带崩，代价远大于「这一条显示得难看」。
+ */
+const fileNameOf = (url: string): string => {
+  const segment = url.substring(url.lastIndexOf('/') + 1)
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
 // 文件上传之前判断
 const beforeUpload: UploadProps['beforeUpload'] = (file: UploadRawFile) => {
   if (fileList.value.length >= props.limit) {
@@ -138,7 +157,9 @@ const handleFileSuccess: UploadProps['onSuccess'] = (res: any): void => {
     (item) => (item.response as { data?: string } | undefined)?.data === response.data
   )
   fileList.value.splice(index, 1)
-  uploadList.value.push({ name: response.data, url: response.data })
+  // 名字用 fileNameOf 而不是整条 URL：原先显示的是 http://host/dir/20260912/xxx.txt 一整串，
+  // 与刷新后（取最后一段）显示的还不是同一个东西
+  uploadList.value.push({ name: fileNameOf(response.data), url: response.data })
   if (uploadList.value.length == uploadNumber.value) {
     fileList.value.push(...uploadList.value)
     uploadList.value = []
@@ -158,7 +179,11 @@ const excelUploadError: UploadProps['onError'] = (): void => {
 }
 // 删除上传文件
 const handleRemove = (file: UploadFile) => {
-  const index = fileList.value.map((f) => f.name).indexOf(file.name)
+  // 优先按 url 匹配：文件名解码后可能重名（两个不同目录下的「说明.txt」），
+  // 只按名字找会把先加进来的那个删掉，而用户点的是另一个
+  const index = file.url
+    ? fileList.value.findIndex((f) => f.url === file.url)
+    : fileList.value.map((f) => f.name).indexOf(file.name)
   if (index > -1) {
     fileList.value.splice(index, 1)
     emitUpdateModelValue()
@@ -180,15 +205,11 @@ watch(
     fileList.value = [] // 保障数据为空
     // 情况1：字符串
     if (isString(val)) {
-      fileList.value.push(
-        ...val.split(',').map((url) => ({ name: url.substring(url.lastIndexOf('/') + 1), url }))
-      )
+      fileList.value.push(...val.split(',').map((url) => ({ name: fileNameOf(url), url })))
       return
     }
     // 情况2：数组
-    fileList.value.push(
-      ...(val as string[]).map((url) => ({ name: url.substring(url.lastIndexOf('/') + 1), url }))
-    )
+    fileList.value.push(...(val as string[]).map((url) => ({ name: fileNameOf(url), url })))
   },
   { immediate: true, deep: true }
 )

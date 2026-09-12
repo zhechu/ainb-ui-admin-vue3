@@ -42,7 +42,7 @@
       @mouseleave="hideTooltipHandler"
     >
       <div class="tooltip-arrow"></div>
-      <div class="max-h-200px overflow-y-auto file-list">
+      <el-scrollbar class="file-list" max-height="200px">
         <div
           v-for="(file, index) in fileList"
           :key="index"
@@ -79,7 +79,7 @@
             </el-button>
           </div>
         </div>
-      </div>
+      </el-scrollbar>
     </div>
   </div>
 </template>

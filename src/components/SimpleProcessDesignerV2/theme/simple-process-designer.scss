@@ -109,6 +109,28 @@
       }
     }
   }
+
+  /* 子表控件所在行：管整段明细的权限，加底色与加粗与内部字段区分开 */
+  .field-setting-item--sub-header {
+    background-color: var(--el-fill-color-light);
+
+    .field-setting-item-label {
+      font-weight: 600;
+    }
+  }
+
+  /* 子表内部字段：缩进一层，左侧留一条竖线示意归属 */
+  .field-setting-item--sub-child {
+    padding-left: 28px;
+
+    .field-setting-item-label {
+      /* 缩进吃掉了宽度，label 相应收窄，避免把单选列挤歪 */
+      width: 94px;
+      color: var(--el-text-color-regular);
+      border-left: 2px solid var(--el-border-color);
+      padding-left: 8px;
+    }
+  }
 }
 
 // 节点连线气泡卡片样式

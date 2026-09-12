@@ -1,261 +1,184 @@
 <template>
-  <!-- 搜索工作栏 -->
-  <ContentWrap>
-    <el-form
-      ref="queryFormRef"
-      :inline="true"
-      :model="queryParams"
-      class="-mb-15px"
-      label-width="68px"
-    >
-      <el-form-item label="字典名称" prop="name">
-        <el-input
-          v-model="queryParams.name"
-          class="!w-240px"
-          clearable
-          placeholder="请输入字典名称"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="字典类型" prop="type">
-        <el-input
-          v-model="queryParams.type"
-          class="!w-240px"
-          clearable
-          placeholder="请输入字典类型"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="状态" prop="status">
-        <el-select
-          v-model="queryParams.status"
-          class="!w-240px"
-          clearable
-          placeholder="请选择字典状态"
-        >
-          <el-option
-            v-for="dict in getIntDictOptions(DICT_TYPE.COMMON_STATUS)"
-            :key="dict.value"
-            :label="dict.label"
-            :value="dict.value"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="创建时间" prop="createTime">
-        <el-date-picker
-          v-model="queryParams.createTime"
-          :default-time="[new Date('1 00:00:00'), new Date('1 23:59:59')]"
-          class="!w-240px"
-          end-placeholder="结束日期"
-          start-placeholder="开始日期"
-          type="daterange"
-          value-format="YYYY-MM-DD HH:mm:ss"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button @click="handleQuery">
-          <Icon class="mr-5px" icon="ep:search" />
-          搜索
-        </el-button>
-        <el-button @click="resetQuery">
-          <Icon class="mr-5px" icon="ep:refresh" />
-          重置
-        </el-button>
-        <el-button
-          v-hasPermi="['system:dict:create']"
-          plain
-          type="primary"
-          @click="openForm('create')"
-        >
-          <Icon class="mr-5px" icon="ep:plus" />
-          新增
-        </el-button>
-        <el-button
-          v-hasPermi="['system:dict:export']"
-          :loading="exportLoading"
-          plain
-          type="success"
-          @click="handleExport"
-        >
-          <Icon class="mr-5px" icon="ep:download" />
-          导出
-        </el-button>
-        <el-button
-          v-hasPermi="['system:dict:delete']"
-          :disabled="checkedIds.length === 0"
-          plain
-          type="danger"
-          @click="handleDeleteBatch"
-        >
-          <Icon class="mr-5px" icon="ep:delete" />
-          批量删除
-        </el-button>
-      </el-form-item>
-    </el-form>
-  </ContentWrap>
-
-  <!-- 列表 -->
-  <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
-      <el-table-column type="selection" width="55" />
-      <el-table-column align="center" label="字典编号" prop="id" />
-      <el-table-column align="center" label="字典名称" prop="name" show-overflow-tooltip />
-      <el-table-column align="center" label="字典类型" prop="type" width="300" />
-      <el-table-column align="center" label="状态" prop="status">
-        <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
-        </template>
-      </el-table-column>
-      <el-table-column align="center" label="备注" prop="remark" />
-      <el-table-column
-        :formatter="dateFormatter"
-        align="center"
-        label="创建时间"
-        prop="createTime"
-        width="180"
+  <div
+    ref="pageRef"
+    :style="{ height: pageHeight ? pageHeight + 'px' : undefined }"
+    class="flex gap-16px"
+  >
+    <!-- 左：字典分类树 -->
+    <ContentWrap :body-style="panelBodyStyle" class="w-280px flex-none h-full !mb-0">
+      <DictTypeTree
+        ref="treeRef"
+        :default-type="defaultType"
+        @create="handleCreateType"
+        @manage="handleManageType"
+        @select="handleSelectType"
       />
-      <el-table-column align="center" label="操作">
-        <template #default="scope">
-          <el-button
-            v-hasPermi="['system:dict:update']"
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-          >
-            修改
-          </el-button>
-          <router-link :to="'/dict/type/data/' + scope.row.type">
-            <el-button link type="primary">数据</el-button>
-          </router-link>
-          <el-button
-            v-hasPermi="['system:dict:delete']"
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <!-- 分页 -->
-    <Pagination
-      v-model:limit="queryParams.pageSize"
-      v-model:page="queryParams.pageNo"
-      :total="total"
-      @pagination="getList"
-    />
-  </ContentWrap>
+    </ContentWrap>
 
-  <!-- 表单弹窗：添加/修改 -->
-  <DictTypeForm ref="formRef" @success="getList" />
+    <!-- 右：查询区与列表区两张卡片，与用户管理页保持一致 -->
+    <div class="min-w-0 h-full flex flex-1 flex-col">
+      <ContentWrap v-if="!currentType" class="flex-1 !mb-0">
+        <el-empty description="请从左侧选择一个字典" />
+      </ContentWrap>
+      <DictDataTable
+        v-else
+        ref="tableRef"
+        :dict="currentType"
+        @create="handleCreateData"
+        @edit="handleEditData"
+        @import="handleImportData"
+      />
+    </div>
+
+    <DictTypeManageDrawer
+      ref="manageDrawerRef"
+      @create="handleCreateType"
+      @edit="handleEditType"
+      @import="handleImportType"
+      @closed="handleManageClosed"
+    />
+    <DictTypeForm ref="typeFormRef" @success="handleTypeSuccess" />
+    <DictTypeImportForm ref="typeImportFormRef" @success="handleTypeSuccess" />
+    <DictDataForm ref="dataFormRef" @success="handleDataSuccess" />
+    <DictDataImportForm ref="importFormRef" @success="handleDataSuccess" />
+  </div>
 </template>
 
 <script lang="ts" setup>
-import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
-import { dateFormatter } from '@/utils/formatTime'
 import * as DictTypeApi from '@/api/system/dict/dict.type'
+import { useDictStoreWithOut } from '@/store/modules/dict'
+import DictTypeTree from './components/DictTypeTree.vue'
+import DictDataTable from './components/DictDataTable.vue'
 import DictTypeForm from './DictTypeForm.vue'
-import download from '@/utils/download'
+import DictTypeImportForm from './components/DictTypeImportForm.vue'
+import DictTypeManageDrawer from './components/DictTypeManageDrawer.vue'
+import DictDataForm from './data/DictDataForm.vue'
+import DictDataImportForm from './components/DictDataImportForm.vue'
 
 defineOptions({ name: 'SystemDictType' })
 
-const message = useMessage() // 消息弹窗
-const { t } = useI18n() // 国际化
+const dictStore = useDictStoreWithOut()
+const route = useRoute()
 
-const loading = ref(true) // 列表的加载中
-const total = ref(0) // 列表的总页数
-const list = ref([]) // 字典表格数据
-const queryParams = reactive({
-  pageNo: 1,
-  pageSize: 10,
-  name: '',
-  type: '',
-  status: undefined,
-  createTime: []
-})
-const queryFormRef = ref() // 搜索的表单
-const exportLoading = ref(false) // 导出的加载中
+// 从旧的 /dict/type/data/:dictType 路由重定向过来时，直接定位到对应字典
+const defaultType = route.query.dictType as string | undefined
 
-/** 查询字典类型列表 */
-const getList = async () => {
-  loading.value = true
-  try {
-    const data = await DictTypeApi.getDictTypePage(queryParams)
-    list.value = data.list
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
+/**
+ * 让整页贴合浏览器可视区
+ *
+ * 左树有 270+ 个节点，若不给页面一个确定高度，它会把整页撑得很高：
+ * 页面出一根滚动条，右侧表格卡片又按视口算自己的高度、再出一根，
+ * 于是同屏两根滚动条，左树还得滚很久才到底。
+ * 给外层定高之后，左右两栏各自在内部滚动，行为才符合预期。
+ */
+const pageRef = ref<HTMLElement>()
+const pageHeight = ref(0)
+// 卡片内容区撑满卡片，内部才能做 flex 布局与独立滚动
+const panelBodyStyle = { padding: '10px', overflow: 'hidden', height: '100%' }
+
+const updatePageHeight = () => {
+  const el = pageRef.value
+  if (!el) return
+  const top = el.getBoundingClientRect().top
+  const footerTop = document.querySelector('.v-footer')?.getBoundingClientRect().top
+  const bottom = Math.min(window.innerHeight, footerTop ?? Number.POSITIVE_INFINITY)
+  // 留一点下边距；给个下限，避免窄屏下被压成几像素
+  pageHeight.value = Math.max(360, Math.floor(bottom - top - 16))
 }
 
-/** 搜索按钮操作 */
-const handleQuery = () => {
-  queryParams.pageNo = 1
-  getList()
-}
-
-/** 重置按钮操作 */
-const resetQuery = () => {
-  queryFormRef.value.resetFields()
-  handleQuery()
-}
-
-/** 添加/修改操作 */
-const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
-}
-
-/** 删除按钮操作 */
-const handleDelete = async (id: number) => {
-  try {
-    // 删除的二次确认
-    await message.delConfirm()
-    // 发起删除
-    await DictTypeApi.deleteDictType(id)
-    message.success(t('common.delSuccess'))
-    // 刷新列表
-    await getList()
-  } catch {}
-}
-
-/** 批量删除按钮操作 */
-const checkedIds = ref<number[]>([])
-const handleRowCheckboxChange = (rows: DictTypeApi.DictTypeVO[]) => {
-  checkedIds.value = rows.map((row) => row.id!)
-}
-
-const handleDeleteBatch = async () => {
-  try {
-    // 删除的二次确认
-    await message.delConfirm()
-    // 发起批量删除
-    await DictTypeApi.deleteDictTypeList(checkedIds.value)
-    checkedIds.value = []
-    message.success(t('common.delSuccess'))
-    // 刷新列表
-    await getList()
-  } catch {}
-}
-
-/** 导出按钮操作 */
-const handleExport = async () => {
-  try {
-    // 导出的二次确认
-    await message.exportConfirm()
-    // 发起导出
-    exportLoading.value = true
-    const data = await DictTypeApi.exportDictType(queryParams)
-    download.excel(data, '字典类型.xls')
-  } catch {
-  } finally {
-    exportLoading.value = false
-  }
-}
-
-/** 初始化 **/
 onMounted(() => {
-  getList()
+  nextTick(updatePageHeight)
+  window.addEventListener('resize', updatePageHeight)
 })
+onBeforeUnmount(() => window.removeEventListener('resize', updatePageHeight))
+
+const treeRef = ref()
+const tableRef = ref()
+const typeFormRef = ref()
+const typeImportFormRef = ref()
+const manageDrawerRef = ref()
+const dataFormRef = ref()
+const importFormRef = ref()
+const currentType = ref<DictTypeApi.DictTypeVO>()
+
+const handleSelectType = (row?: DictTypeApi.DictTypeVO) => {
+  currentType.value = row
+}
+
+// ========== 分类 ==========
+
+const handleCreateType = (nodeType: number, parentId: number) => {
+  typeFormRef.value.open('create', undefined, { nodeType, parentId })
+}
+
+const handleEditType = (row: DictTypeApi.DictTypeVO) => {
+  typeFormRef.value.open('update', row.id)
+}
+
+const handleImportType = (parentId?: number) => {
+  typeImportFormRef.value.open(parentId)
+}
+
+const handleManageType = () => {
+  manageDrawerRef.value.open()
+}
+
+/** 抽屉里的增删改都会改到左树，关掉时统一刷一次 */
+const handleManageClosed = async () => {
+  await treeRef.value?.loadList()
+  await refreshDictCache()
+}
+
+const handleTypeSuccess = async () => {
+  await treeRef.value?.loadList()
+  // 抽屉开着的时候，改完要让它自己也跟着变，不能等到关掉才刷新
+  await manageDrawerRef.value?.loadList()
+  // 改了分类可能改到当前选中的这个，右侧的标题、树形标记都要跟着更新
+  if (currentType.value?.id) {
+    currentType.value = await DictTypeApi.getDictType(currentType.value.id)
+  }
+  await refreshDictCache()
+}
+
+// ========== 数据 ==========
+
+const handleCreateData = (parentId: number) => {
+  dataFormRef.value.open('create', undefined, currentType.value?.type, {
+    treeEnabled: !!currentType.value?.treeEnable,
+    parentId
+  })
+}
+
+const handleEditData = (id: number) => {
+  dataFormRef.value.open('update', id, currentType.value?.type, {
+    treeEnabled: !!currentType.value?.treeEnable
+  })
+}
+
+const handleImportData = () => {
+  importFormRef.value.open(
+    currentType.value?.type,
+    currentType.value?.name,
+    !!currentType.value?.treeEnable
+  )
+}
+
+const handleDataSuccess = async () => {
+  await tableRef.value?.getList()
+  await refreshDictCache()
+}
+
+/**
+ * 刷新前端的字典缓存
+ *
+ * 不刷的话，管理员刚在这个页面上改完字典，切到别的页面看到的还是旧标签，
+ * 要等到下次整站刷新才生效——这正是版本号机制想避免的体验
+ */
+const refreshDictCache = async () => {
+  try {
+    await dictStore.resetDict()
+  } catch {
+    // 缓存刷新失败不该让「保存成功」变成一个错误提示
+  }
+}
 </script>

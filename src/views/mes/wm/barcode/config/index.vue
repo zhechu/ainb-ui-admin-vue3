@@ -166,7 +166,7 @@ const list = ref([])
 const total = ref(0)
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   format: undefined,
   bizType: undefined
 })

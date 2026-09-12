@@ -199,7 +199,7 @@ const handleRowDblClick = (row: TmToolVO) => {
 // ==================== 查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 工具编码
   name: undefined as string | undefined, // 工具名称
   toolTypeId: undefined as number | undefined, // 工具类型

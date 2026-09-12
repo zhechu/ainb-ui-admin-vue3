@@ -25,9 +25,13 @@
           :rules="approveReasonRule"
           label-width="100px"
         >
-          <el-card v-if="runningTask?.formId > 0" class="mb-15px !-mt-10px">
+          <!-- 节点表单：流程表单类型下由 formId 指向 bpm_form；在线表单类型下没有数字 formId，
+               只有 formConf/formFields，因此判断条件用 approveForm.rule 是否有内容 -->
+          <el-card v-if="approveForm?.rule?.length > 0" class="mb-15px !-mt-10px">
             <template #header>
-              <span class="el-icon-picture-outline"> 填写表单【{{ runningTask?.formName }}】 </span>
+              <span class="el-icon-picture-outline">
+                填写表单{{ runningTask?.formName ? `【${runningTask.formName}】` : '' }}
+              </span>
             </template>
             <form-create
               v-model="approveForm.value"
@@ -563,7 +567,8 @@
       v-if="
         userId === processInstance?.startUser?.id &&
         isEndProcessStatus(processInstance?.status) &&
-        processDefinition?.formType === 10
+        (processDefinition?.formType === BpmModelFormType.NORMAL ||
+          processDefinition?.formType === BpmModelFormType.ONLINE)
       "
     >
       <Icon :size="14" icon="ep:refresh" />&nbsp; 再次提交
@@ -810,7 +815,8 @@ const openPopover = async (type: string) => {
   if (type === 'approve') {
     // 当前任务有节点表单时，等 form-create 的 fApi 就绪后再计算下一个节点；
     // 没有节点表单时，approveFormFApi 永远不会被赋值，跳过等待
-    if (runningTask.value?.formId > 0) {
+    // 用 approveForm.rule 判断而非 formId：在线表单没有数字 formId
+    if (approveForm.value?.rule?.length > 0) {
       // 1s 兜底超时；超时 until 会抛错，这里静默吞掉，让首次计算照常进行
       await until(() => typeof approveFormFApi.value?.validate === 'function')
         .toBeTruthy({ timeout: 1000 })
@@ -1238,7 +1244,9 @@ const loadTodoTask = (task: any) => {
   reasonRequire.value = task?.reasonRequire ?? false
   nodeTypeName.value = task?.nodeType === NodeType.TRANSACTOR_NODE ? '办理' : '审批'
   // 处理 approve 表单
-  if (task && task.formId && task.formConf) {
+  // 判断条件用 formConf 而非 formId：在线表单（节点独立表单）不来自 bpm_form，没有数字编号，
+  // 只有 formConf / formFields
+  if (task && task.formConf) {
     const tempApproveForm: { option?: any; rule?: any; value?: any } = {}
     setConfAndFields2(tempApproveForm, task.formConf, task.formFields, task.formVariables)
     // 为表单添加 onChange 事件，当表单值变化时，重新计算下一个节点的信息；网关分支可能依赖表单字段

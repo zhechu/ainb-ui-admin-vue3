@@ -13,7 +13,7 @@ import {
   getIntDictOptions,
   getStrDictOptions
 } from '@/utils/dict'
-import { decodeFields } from '@/utils/formCreate'
+import { decodeFieldsAsync } from '@/utils/formCreate'
 import { registerComponent } from '@/utils/routerHelper'
 
 interface FormFieldItem {
@@ -85,7 +85,7 @@ const initBusinessFormComponent = () => {
 const parseFormFields = async () => {
   if (!printData.value) return
 
-  const formFieldsObj = decodeFields(
+  const formFieldsObj = await decodeFieldsAsync(
     printData.value.processInstance.processDefinition?.formFields || []
   ) as FormFieldRule[]
   const processVariables = printData.value.processInstance.formVariables ?? {}
@@ -278,8 +278,13 @@ const getTypedDictOptions = (dictType: string, valueType: string) => {
 
 const loadPrintLookupMaps = async (formFieldsObj: FormFieldRule[]) => {
   const hasAreaSelect = formFieldsObj.some((item) => item.type === 'AreaSelect')
-  const hasUserSelect = formFieldsObj.some((item) => item.type === 'UserSelect')
-  const hasDeptSelect = formFieldsObj.some((item) => item.type === 'DeptSelect')
+  // OrgPicker 勾选了「用户」时等价于 UserSelect，打印时同样需要用户名称字典
+  const hasUserSelect = formFieldsObj.some(
+    (item) => item.type === 'UserSelect' || item.type === 'OrgPicker'
+  )
+  const hasDeptSelect = formFieldsObj.some(
+    (item) => item.type === 'DeptSelect' || item.type === 'OrgPicker'
+  )
 
   const [areaList, userList, deptList] = await Promise.all([
     hasAreaSelect ? AreaApi.getAreaTree() : Promise.resolve([]),
@@ -374,6 +379,24 @@ const formatPrintField = (rule: FormFieldRule, value: unknown, lookupMaps: Print
         return formatPrimitiveValue(value)
       }
       return mapValueWithLabelMap(value, lookupMaps.userMap)
+    }
+    case 'OrgPicker': {
+      // OrgPicker 的值是 {type, id} 或它的数组，不是裸 id ——
+      // 直接丢给 userMap 查会全部查不到，打印出来是一串空白。
+      // 按 type 分派到对应的名称字典
+      const items = Array.isArray(value) ? value : isEmptyValue(value) ? [] : [value]
+      const names = items.map((item: any) => {
+        if (!item || typeof item !== 'object') {
+          // 兼容历史数据：老表单可能存的是裸 id，按用户查
+          return mapValueWithLabelMap(item, lookupMaps.userMap)
+        }
+        const map = item.type === 'dept' ? lookupMaps.deptMap : lookupMaps.userMap
+        const name = mapValueWithLabelMap(item.id, map)
+        // 岗位与角色没有现成的名称字典，退化成显示 id ——
+        // 显示一个 id 比显示空白好，至少能追溯
+        return name || String(item.id ?? '')
+      })
+      return names.filter(Boolean).join('、')
     }
     default:
       return formatPrimitiveValue(value)

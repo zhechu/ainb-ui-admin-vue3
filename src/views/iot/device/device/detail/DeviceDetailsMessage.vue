@@ -109,7 +109,7 @@ const queryParams = reactive({
   method: undefined,
   upstream: undefined,
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 
 // 列表数据

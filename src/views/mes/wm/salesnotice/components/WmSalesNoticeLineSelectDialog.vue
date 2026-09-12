@@ -139,7 +139,7 @@ const handleRowDblClick = (row: WmSalesNoticeLineVO) => {
 // ==================== 查询 ====================
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   noticeId: undefined as number | undefined
 })
 

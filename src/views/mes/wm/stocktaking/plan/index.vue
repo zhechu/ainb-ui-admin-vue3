@@ -186,7 +186,7 @@ const total = ref(0) // 列表的总页数
 const exportLoading = ref(false) // 导出的加载中
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined,
   name: undefined,
   type: undefined

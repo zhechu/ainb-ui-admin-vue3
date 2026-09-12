@@ -183,7 +183,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   sceneType: '1', // 自己负责的
   expiryType: 1
 })

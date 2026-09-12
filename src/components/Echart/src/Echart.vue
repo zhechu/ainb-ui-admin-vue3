@@ -4,7 +4,7 @@ import echarts from '@/plugins/echarts'
 import { debounce } from 'lodash-es'
 import 'echarts-wordcloud'
 import { propTypes } from '@/utils/propTypes'
-import { PropType } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, PropType } from 'vue'
 import { useAppStore } from '@/store/modules/app'
 import { isString } from '@/utils/is'
 import { useDesign } from '@/hooks/web/useDesign'
@@ -47,6 +47,7 @@ const options = computed(() => {
 const elRef = ref<ElRef>()
 
 let echartRef: Nullable<echarts.ECharts> = null
+let resizeObserver: ResizeObserver | undefined
 
 const contentEl = ref<Element>()
 
@@ -61,19 +62,21 @@ const styles = computed(() => {
 })
 
 const initChart = () => {
-  if (unref(elRef) && props.options) {
-    echartRef = echarts.init(unref(elRef) as HTMLElement)
-    echartRef?.setOption(unref(options))
-  }
+  const element = unref(elRef) as HTMLElement | undefined
+  if (!element || !props.options || !element.clientWidth || !element.clientHeight) return
+  if (!echartRef) echartRef = echarts.init(element)
+  echartRef.setOption(unref(options))
 }
 
 watch(
   () => options.value,
   (options) => {
-    if (echartRef) {
-      echartRef?.setOption(options)
-      echartRef?.resize()
+    if (!echartRef) {
+      initChart()
+      return
     }
+    echartRef.setOption(options)
+    echartRef.resize()
   },
   {
     deep: true
@@ -93,7 +96,15 @@ const contentResizeHandler = async (e: TransitionEvent) => {
 }
 
 onMounted(() => {
-  initChart()
+  void nextTick(initChart)
+
+  if (typeof ResizeObserver !== 'undefined' && unref(elRef)) {
+    resizeObserver = new ResizeObserver(() => {
+      if (!echartRef) initChart()
+      else echartRef.resize()
+    })
+    resizeObserver.observe(unref(elRef) as HTMLElement)
+  }
 
   window.addEventListener('resize', resizeHandler)
 
@@ -103,9 +114,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = undefined
   window.removeEventListener('resize', resizeHandler)
   unref(contentEl) &&
     (unref(contentEl) as Element).removeEventListener('transitionend', contentResizeHandler)
+  echartRef?.dispose()
+  echartRef = null
 })
 
 onActivated(() => {

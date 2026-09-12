@@ -10,7 +10,7 @@
           {{ attachments.length }} 个附件
         </el-button>
       </template>
-      <div class="max-h-260px overflow-auto">
+      <el-scrollbar max-height="260px">
         <div
           v-for="attachment in attachments"
           :key="attachment"
@@ -39,7 +39,7 @@
             <span class="truncate">{{ getFileNameFromUrl(attachment) }}</span>
           </el-link>
         </div>
-      </div>
+      </el-scrollbar>
     </el-popover>
     <div v-if="signPicUrl" class="inline-flex items-center gap-6px">
       <span class="text-12px text-[var(--el-text-color-secondary)]">签名</span>

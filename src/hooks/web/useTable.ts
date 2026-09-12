@@ -37,11 +37,11 @@ interface TableObject<T = any> {
 export const useTable = <T = any>(config?: UseTableConfig<T>) => {
   const tableObject = reactive<TableObject<T>>({
     // 页数
-    pageSize: 10,
+    pageSize: 20,
     // 当前页
     currentPage: 1,
     // 总条数
-    total: 10,
+    total: 0,
     // 表格数据
     tableList: [],
     // AxiosConfig 配置

@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 手册" url="https://doc.iocoder.cn/ai/build/" />
+  <!-- <doc-alert title="AI 手册" url="https://doc.iocoder.cn/ai/build/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -132,7 +132,7 @@ const list = ref<ModelVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined,
   model: undefined,
   platform: undefined

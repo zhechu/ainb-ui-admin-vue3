@@ -3,6 +3,7 @@
  */
 import { useDictStoreWithOut } from '@/store/modules/dict'
 import { ElementPlusInfoType } from '@/types/elementPlus'
+import { handleTree } from '@/utils/tree'
 
 const dictStore = useDictStoreWithOut()
 
@@ -16,8 +17,30 @@ export interface DictDataType {
   dictType: string
   label: string
   value: string | number | boolean
-  colorType: ElementPlusInfoType | ''
+  /**
+   * 标签颜色
+   *
+   * ⚠️ 不能只写 `ElementPlusInfoType | ''`。字典的颜色是在字典管理页由用户选的，
+   * 可选项里包含 primary 与 default，而 ElementPlusInfoType 只有
+   * success / info / warning / danger 四个 —— 库里实际存着大量 primary 与 default 的行。
+   *
+   * 类型写窄了会造成一个隐蔽的后果：DictTag 里那句
+   * `colorType === 'primary' || colorType === 'default' ? '' : colorType`
+   * 会被 TypeScript 判成恒假（TS2367），看起来像一段可以删掉的死代码。
+   * 一旦照提示删掉，这两种颜色的字典项就会把 primary / default 原样传给 el-tag，
+   * 其中 default 并不是 el-tag 支持的 type，标签样式会坏掉。
+   */
+  colorType: ElementPlusInfoType | 'primary' | 'default' | ''
   cssClass: string
+  /** 字典数据编号。树形字典靠它和 parentId 建树 */
+  id?: number
+  /** 父节点编号，0 表示根 */
+  parentId?: number
+}
+
+/** 树形字典的节点 */
+export interface DictTreeNode extends DictDataType {
+  children?: DictTreeNode[]
 }
 
 export interface NumberDictDataType extends DictDataType {
@@ -111,6 +134,105 @@ export const getDictLabel = (dictType: string, value: any): string => {
   return dictLabel.value
 }
 
+// ========== 树形字典 ==========
+
+/**
+ * 建树结果与 id 索引的缓存
+ *
+ * 这两个都会被表格里的每一行、表单里的每个下拉框反复调用，每次重建一遍是浪费。
+ * 用「字典数据源数组的引用」当键：dictStore 刷新时会整体换掉数组对象，
+ * 引用一变缓存自然失效，不需要额外的失效通知。WeakMap 保证旧数组能被回收。
+ */
+const dictTreeCache = new WeakMap<object, DictTreeNode[]>()
+const dictIdIndexCache = new WeakMap<object, Map<number, DictDataType>>()
+
+/** 取（并缓存）字典数据的 id 索引 */
+const getDictIdIndex = (options: DictDataType[]) => {
+  const cached = dictIdIndexCache.get(options)
+  if (cached) {
+    return cached
+  }
+  const byId = new Map<number, DictDataType>()
+  options.forEach((dict) => dict.id != null && byId.set(dict.id, dict))
+  dictIdIndexCache.set(options, byId)
+  return byId
+}
+
+/**
+ * 获取树形字典的树结构
+ *
+ * @param dictType 字典类型
+ * @return 树；平铺字典会得到一棵全是根节点的树，这是合理的退化而不是错误
+ */
+export const getDictTree = (dictType: string): DictTreeNode[] => {
+  const options: DictDataType[] = getDictOptions(dictType)
+  if (!options || options.length === 0) {
+    return []
+  }
+  const cached = dictTreeCache.get(options)
+  if (cached) {
+    return cached
+  }
+  // 浅拷贝每个节点再建树：handleTree 会往节点上挂 children，
+  // 直接建会污染 dictStore 里那份共享数据，导致别处拿到带 children 的「平铺」选项
+  const tree = handleTree(options.map((item) => ({ ...item }))) as DictTreeNode[]
+  dictTreeCache.set(options, tree)
+  return tree
+}
+
+/**
+ * 获取某个字典值的全路径文案，如 ['电子产品', '手机', '智能机']
+ *
+ * 用于树形字典的回显：只显示叶子名称往往认不出来（多个分支下可能都有「其它」）
+ *
+ * @param dictType 字典类型
+ * @param value 字典数据的值
+ * @return 从根到自身的标签数组；找不到时返回空数组
+ */
+export const getDictPathLabels = (dictType: string, value: any): string[] => {
+  const options: DictDataType[] = getDictOptions(dictType)
+  if (!options || options.length === 0) {
+    return []
+  }
+  const target = options.find((dict) => dict.value === value + '')
+  if (!target) {
+    return []
+  }
+  const byId = getDictIdIndex(options)
+  const labels: string[] = []
+  let node: DictDataType | undefined = target
+  // 循环上限兜底：字典数据被改坏形成环时，这里不能把页面卡死
+  for (let i = 0; i < 64 && node; i++) {
+    labels.unshift(node.label)
+    if (node.parentId == null || node.parentId === 0) {
+      break
+    }
+    node = byId.get(node.parentId)
+  }
+  return labels
+}
+
+/**
+ * 获取某个字典值的直接子级
+ *
+ * @param dictType 字典类型
+ * @param value 父节点的值；不传表示取根节点
+ */
+export const getDictChildren = (dictType: string, value?: any): DictDataType[] => {
+  const options: DictDataType[] = getDictOptions(dictType)
+  if (!options || options.length === 0) {
+    return []
+  }
+  if (value === undefined || value === null) {
+    return options.filter((dict) => !dict.parentId)
+  }
+  const parent = options.find((dict) => dict.value === value + '')
+  if (!parent || parent.id == null) {
+    return []
+  }
+  return options.filter((dict) => dict.parentId === parent.id)
+}
+
 export enum DICT_TYPE {
   USER_TYPE = 'user_type',
   COMMON_STATUS = 'common_status',
@@ -145,6 +267,9 @@ export enum DICT_TYPE {
   INFRA_CODEGEN_SCENE = 'infra_codegen_scene',
   INFRA_FILE_STORAGE = 'infra_file_storage',
   INFRA_OPERATE_TYPE = 'infra_operate_type',
+  INFRA_FORM_TYPE = 'infra_form_type', // 数据接口分类
+  INFRA_FORM_DESIGN_CATEGORY = 'infra_form_design_category', // 表单设计分类
+  INFRA_BILL_TEMPLATE_CATEGORY = 'infra_bill_template_category', // 单据模板分类
 
   // ========== BPM 模块 ==========
   BPM_MODEL_TYPE = 'bpm_model_type',

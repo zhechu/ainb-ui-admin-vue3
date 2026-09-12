@@ -130,7 +130,7 @@ const queryParams = reactive({
   identifier: '',
   times: [] as any[],
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 const queryFormRef = ref() // 搜索的表单
 

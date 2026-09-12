@@ -42,7 +42,7 @@ const loading = ref(false)
 // 查询文章列表
 const queryArticleList = async (title?: string) => {
   loading.value = true
-  const { list } = await ArticleApi.getArticlePage({ title, pageSize: 10 })
+  const { list } = await ArticleApi.getArticlePage({ title, pageSize: 20 })
   articles.value = list
   loading.value = false
 }

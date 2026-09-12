@@ -97,7 +97,7 @@ const list = ref<any[]>([]) // 当前页的列表数据
 // 搜索参数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   openid: '',
   accountId: -1,
   type: MsgType.Text,

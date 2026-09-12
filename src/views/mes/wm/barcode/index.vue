@@ -203,7 +203,7 @@ const total = ref(0)
 const selectedIds = ref<number[]>([])
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   bizType: undefined,
   bizCode: undefined,
   bizName: undefined,

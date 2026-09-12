@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="AI 音乐创作" url="https://doc.iocoder.cn/ai/music/" />
+  <!-- <doc-alert title="AI 音乐创作" url="https://doc.iocoder.cn/ai/music/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
@@ -220,7 +220,7 @@ const list = ref<MusicVO[]>([]) // 列表的数据
 const total = ref(0) // 列表的总页数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined,
   title: undefined,
   status: undefined,

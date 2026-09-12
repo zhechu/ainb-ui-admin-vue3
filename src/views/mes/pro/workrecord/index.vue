@@ -120,7 +120,7 @@ const list = ref<ProWorkRecordLogVO[]>([]) // 列表的数据
 const exportLoading = ref(false) // 导出的加载中
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined,
   workstationId: undefined,
   type: undefined,

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { getAccessToken, removeToken } from '@/utils/auth'
 import { CACHE_KEY, useCache, deleteUserCache } from '@/hooks/web/useCache'
 import { getInfo, loginOut } from '@/api/login'
+import { useAppStoreWithOut } from '@/store/modules/app'
 
 const { wsCache } = useCache()
 
@@ -84,12 +85,14 @@ export const useUserStore = defineStore('admin-user', {
       wsCache.set(CACHE_KEY.USER, userInfo)
     },
     async loginOut() {
+      useAppStoreWithOut().stopThemePersistence()
       await loginOut()
       removeToken()
       deleteUserCache() // 删除用户缓存
       this.resetState()
     },
     resetState() {
+      useAppStoreWithOut().stopThemePersistence()
       this.permissions = new Set<string>()
       this.roles = []
       this.isSetUser = false

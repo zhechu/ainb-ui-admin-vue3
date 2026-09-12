@@ -4,8 +4,10 @@
     class="relative h-[100%] lt-md:px-10px lt-sm:px-10px lt-xl:px-10px lt-xl:px-10px"
   >
     <div class="relative mx-auto h-full flex">
-      <div
-        :class="`${prefixCls}__left flex-1 bg-gray-500 bg-opacity-20 relative p-30px lt-xl:hidden overflow-x-hidden overflow-y-auto`"
+      <el-scrollbar
+        :class="`${prefixCls}__left flex-1 bg-gray-500 bg-opacity-20 relative p-30px lt-xl:hidden`"
+        view-class="h-full"
+        wrap-class="overflow-x-hidden"
       >
         <!-- 左上角的 logo + 系统标题 -->
         <div class="relative flex items-center text-white">
@@ -26,9 +28,11 @@
             </div>
           </TransitionGroup>
         </div>
-      </div>
-      <div
-        class="relative flex-1 p-30px dark:bg-[var(--login-bg-color)] lt-sm:p-10px overflow-x-hidden overflow-y-auto"
+      </el-scrollbar>
+      <el-scrollbar
+        class="relative flex-1 p-30px dark:bg-[var(--login-bg-color)] lt-sm:p-10px"
+        view-class="h-full"
+        wrap-class="overflow-x-hidden"
       >
         <!-- 右上角的主题、语言选择 -->
         <div
@@ -145,7 +149,7 @@
             </el-form>
           </div>
         </Transition>
-      </div>
+      </el-scrollbar>
     </div>
   </div>
 </template>
@@ -200,7 +204,7 @@ const loginData = reactive({
   captchaEnable: import.meta.env.VITE_APP_CAPTCHA_ENABLE !== 'false',
   tenantEnable: import.meta.env.VITE_APP_TENANT_ENABLE !== 'false',
   loginForm: {
-    tenantName: '芋道源码',
+    tenantName: 'X评云',
     username: 'admin',
     password: 'admin123',
     captchaVerification: '',

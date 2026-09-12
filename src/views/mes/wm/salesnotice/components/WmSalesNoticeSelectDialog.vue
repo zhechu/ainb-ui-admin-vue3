@@ -211,7 +211,7 @@ const handleRowDblClick = (row: WmSalesNoticeVO) => {
 // ==================== 查询 ====================
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined as string | undefined,
   name: undefined as string | undefined,
   salesOrderCode: undefined as string | undefined,

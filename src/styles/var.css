@@ -1,41 +1,41 @@
 :root {
   --login-bg-color: #293146;
 
-  --left-menu-max-width: 200px;
+  --left-menu-max-width: 216px;
 
   --left-menu-min-width: 64px;
 
-  --left-menu-bg-color: #001529;
+  --left-menu-bg-color: #202a36;
 
-  --left-menu-bg-light-color: #0f2438;
+  --left-menu-bg-light-color: #263442;
 
-  --left-menu-bg-active-color: var(--el-color-primary);
+  --left-menu-bg-active-color: rgb(52 115 255 / 18%);
 
   --left-menu-text-color: #bfcbd9;
 
   --left-menu-text-active-color: #fff;
 
-  --left-menu-collapse-bg-active-color: var(--el-color-primary);
+  --left-menu-collapse-bg-active-color: rgb(52 115 255 / 24%);
   /* left menu end */
 
   /* logo start */
-  --logo-height: 50px;
+  --logo-height: 56px;
 
   --logo-title-text-color: #fff;
   /* logo end */
 
   /* header start */
-  --top-header-bg-color: '#fff';
+  --top-header-bg-color: #fff;
 
-  --top-header-text-color: 'inherit';
+  --top-header-text-color: #344054;
 
-  --top-header-hover-color: #f6f6f6;
+  --top-header-hover-color: #f2f5f9;
 
-  --top-tool-height: var(--logo-height);
+  --top-tool-height: 56px;
 
   --top-tool-p-x: 0;
 
-  --tags-view-height: 35px;
+  --tags-view-height: 36px;
   /* header start */
 
   /* tab menu start */
@@ -46,17 +46,71 @@
   --tab-menu-collapse-height: 36px;
   /* tab menu end */
 
-  --app-content-padding: 20px;
+  --app-content-padding: 12px;
 
-  --app-content-bg-color: #f5f7f9;
+  --app-content-bg-color: #f4f6f8;
 
-  --app-footer-height: 50px;
+  /*
+   * 页脚已下线（原本只用来展示一行版权），保留变量置 0 是因为流程详情、
+   * 表单设计器等页面的 calc 高度表达式还引用着它，置 0 后这些页面自动多出这段高度。
+   */
+  --app-footer-height: 0px;
 
   --transition-time-02: 0.2s;
 }
 
 .dark {
   --app-content-bg-color: var(--el-bg-color);
+}
+
+.portal-theme {
+  --portal-page-bg: #f4f7fb;
+  --portal-surface: #fff;
+  --portal-surface-soft: #f8fafc;
+  --portal-surface-muted: #f7f9fc;
+  --portal-surface-hover: #f8fbff;
+  --portal-surface-accent: #eef4ff;
+  --portal-border: #e6ebf2;
+  --portal-border-light: #eef1f5;
+  --portal-border-muted: #f0f2f5;
+  --portal-text-primary: #172033;
+  --portal-text-strong: #1f2937;
+  --portal-text-on-strong: #fff;
+  --portal-text-regular: #344054;
+  --portal-text-secondary: #667085;
+  --portal-text-tertiary: #475467;
+  --portal-text-muted: #98a2b3;
+  --portal-grid-bg: #fbfcfe;
+  --portal-grid-dot: #dce3ee;
+  --portal-selection-bg: rgb(52 115 255 / 20%);
+  --portal-rank-highlight: #fffaf0;
+}
+
+.dark .portal-theme {
+  --portal-page-bg: var(--el-bg-color-page);
+  --portal-surface: var(--el-bg-color-overlay);
+  --portal-surface-soft: var(--el-fill-color-light);
+  --portal-surface-muted: var(--el-fill-color);
+  --portal-surface-hover: var(--el-fill-color-light);
+  --portal-surface-accent: color-mix(
+    in srgb,
+    var(--el-color-primary) 18%,
+    var(--el-bg-color-overlay)
+  );
+  --portal-border: var(--el-border-color);
+  --portal-border-light: var(--el-border-color-light);
+  --portal-border-muted: var(--el-border-color-lighter);
+  --portal-text-primary: var(--el-text-color-primary);
+  --portal-text-strong: var(--el-text-color-primary);
+  --portal-text-on-strong: #fff;
+  --portal-text-regular: var(--el-text-color-regular);
+  --portal-text-secondary: var(--el-text-color-secondary);
+  --portal-text-tertiary: var(--el-text-color-secondary);
+  --portal-text-muted: var(--el-text-color-placeholder);
+  --portal-grid-bg: var(--el-bg-color);
+  --portal-grid-dot: var(--el-border-color-lighter);
+  --portal-selection-bg: color-mix(in srgb, var(--el-color-primary) 24%, transparent);
+  --portal-rank-highlight: color-mix(in srgb, #f59e0b 12%, var(--el-bg-color-overlay));
 }
 
 html,

@@ -42,7 +42,7 @@
 </template>
 
 <script lang="ts" setup>
-import { getBoolDictOptions, getIntDictOptions, getStrDictOptions } from '@/utils/dict'
+import { buildDictOptions } from '@/components/FormCreate/src/utils/optionSource'
 
 defineOptions({ name: 'DictSelect' })
 
@@ -76,19 +76,16 @@ watch(
   { immediate: true }
 )
 
-// 获得字典配置
-const getDictOptions = computed(() => {
-  switch (props.valueType) {
-    case 'str':
-      return getStrDictOptions(props.dictType)
-    case 'int':
-      return getIntDictOptions(props.dictType)
-    case 'bool':
-      return getBoolDictOptions(props.dictType)
-    default:
-      return []
-  }
-})
+/**
+ * 获得字典配置
+ *
+ * 复用 buildDictOptions，与内置控件的「数据字典」选项来源走同一套解析。
+ * 这样一来，历史表单里绑的字典如果后来被改成了树形，这里也会按全路径展平，
+ * 而不是铺成一列看不出层级的同名选项。
+ */
+const getDictOptions = computed(() =>
+  buildDictOptions({ dictType: props.dictType, valueType: props.valueType }, false)
+)
 
 const handleChange = (value: any) => {
   emit('update:modelValue', value)

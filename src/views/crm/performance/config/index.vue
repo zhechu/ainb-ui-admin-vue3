@@ -229,7 +229,7 @@ const deptList = ref<Tree[]>([]) // 部门树形结构
 const userList = ref<UserApi.UserVO[]>([]) // 全量用户清单
 const queryParams = reactive<any>({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   year: String(new Date().getFullYear()),
   bizType: undefined,
   objectType: undefined,

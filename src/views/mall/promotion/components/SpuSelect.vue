@@ -139,7 +139,7 @@ const dialogVisible = ref(false) // 弹窗的是否展示
 const dialogTitle = ref('') // 弹窗的标题
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   tabType: 0, // 默认获取上架的商品
   name: '',
   categoryId: null,
@@ -295,7 +295,7 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryParams.value = {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     tabType: 0, // 默认获取上架的商品
     name: '',
     categoryId: null,

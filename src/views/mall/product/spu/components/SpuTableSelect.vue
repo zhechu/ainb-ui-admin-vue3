@@ -148,7 +148,7 @@ const dialogVisible = ref(false)
 // 查询参数
 const queryParams = ref({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   // 默认获取上架的商品
   tabType: 0,
   name: '',
@@ -204,7 +204,7 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryParams.value = {
     pageNo: 1,
-    pageSize: 10,
+    pageSize: 20,
     // 默认获取上架的商品
     tabType: 0,
     name: '',

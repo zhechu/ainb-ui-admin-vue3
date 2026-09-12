@@ -107,7 +107,7 @@ provide('accountId', accountId)
 // 查询参数
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   accountId: accountId,
   permanent: true
 })

@@ -144,7 +144,7 @@ const loading = ref(true) // 列表的加载中
 const list = ref<any[]>([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   status: undefined,
   phone: undefined,
   name: undefined,

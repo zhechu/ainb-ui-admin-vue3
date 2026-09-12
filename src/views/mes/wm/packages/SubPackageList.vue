@@ -82,7 +82,7 @@ const list = ref<WmPackageVO[]>([])
 const total = ref(0)
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   parentId: undefined as number | undefined
 })
 

@@ -1,0 +1,187 @@
+<template>
+  <div ref="editorContainer" class="code-editor"></div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useVModel } from '@vueuse/core'
+import { EditorView, basicSetup } from 'codemirror'
+import { EditorState } from '@codemirror/state'
+import { sql, MySQL } from '@codemirror/lang-sql'
+import { javascript } from '@codemirror/lang-javascript'
+import { oneDark } from '@codemirror/theme-one-dark'
+
+defineOptions({ name: 'CodeEditor' })
+
+interface CodeEditorProps {
+  modelValue: string
+  language?: 'sql' | 'javascript' | 'json'
+  theme?: 'light' | 'dark'
+  readonly?: boolean
+  height?: string
+  placeholder?: string
+  /** 最小行数，启用动态高度时有效 */
+  minLines?: number
+  /** 最大行数，启用动态高度时有效 */
+  maxLines?: number
+}
+
+const props = withDefaults(defineProps<CodeEditorProps>(), {
+  modelValue: '',
+  language: 'sql',
+  theme: 'light',
+  readonly: false,
+  height: '200px',
+  placeholder: '',
+  minLines: 0,
+  maxLines: 0
+})
+
+const emit = defineEmits(['update:modelValue', 'change'])
+const value = useVModel(props, 'modelValue', emit)
+
+const editorContainer = ref<HTMLElement | null>(null)
+let editorView: EditorView | null = null
+
+// 获取语言扩展
+const getLanguageExtension = () => {
+  switch (props.language) {
+    case 'sql':
+      return sql({ dialect: MySQL })
+    case 'javascript':
+      return javascript()
+    default:
+      return sql({ dialect: MySQL })
+  }
+}
+
+// 初始化编辑器
+const initEditor = () => {
+  if (!editorContainer.value) return
+
+  const useDynamicHeight = props.minLines > 0 && props.maxLines > 0
+  const lineHeight = 24 // 每行高度（px）
+  const minHeight = useDynamicHeight ? props.minLines * lineHeight : undefined
+  const maxHeight = useDynamicHeight ? props.maxLines * lineHeight : undefined
+
+  const extensions = [
+    basicSetup,
+    getLanguageExtension(),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        const newValue = update.state.doc.toString()
+        if (newValue !== value.value) {
+          value.value = newValue
+          emit('change', newValue)
+        }
+        // 动态高度：根据内容行数调整编辑器高度
+        if (useDynamicHeight && editorView) {
+          updateDynamicHeight(editorView, lineHeight, minHeight!, maxHeight!)
+        }
+      }
+    }),
+    EditorView.editable.of(!props.readonly),
+    EditorView.theme({
+      '&': {
+        height: useDynamicHeight ? `${minHeight}px` : props.height,
+        fontSize: '14px'
+      },
+      '.cm-scroller': {
+        overflow: 'auto',
+        fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+        // 动态高度模式下：最小高度撑满，超过最大高度出滚动条
+        ...(useDynamicHeight ? {
+          minHeight: `${minHeight}px`,
+          maxHeight: `${maxHeight}px`
+        } : {})
+      }
+    })
+  ]
+
+  if (props.theme === 'dark') {
+    extensions.push(oneDark)
+  }
+
+  const state = EditorState.create({
+    doc: props.modelValue || '',
+    extensions
+  })
+
+  editorView = new EditorView({
+    state,
+    parent: editorContainer.value
+  })
+
+  // 初始化时也触发一次高度调整
+  if (useDynamicHeight && props.modelValue) {
+    updateDynamicHeight(editorView, lineHeight, minHeight!, maxHeight!)
+  }
+}
+
+/**
+ * 根据内容行数动态调整编辑器高度
+ *
+ * @param view 编辑器实例
+ * @param lineHeight 行高（px）
+ * @param minHeight 最小高度（px）
+ * @param maxHeight 最大高度（px）
+ */
+const updateDynamicHeight = (view: EditorView, lineHeight: number, minHeight: number, maxHeight: number) => {
+  const lineCount = view.state.doc.lines
+  const contentHeight = lineCount * lineHeight
+  const targetHeight = Math.max(minHeight, Math.min(contentHeight, maxHeight))
+
+  // 通过修改容器的样式来调整高度
+  if (editorContainer.value) {
+    const cmEditor = editorContainer.value.querySelector('.cm-editor') as HTMLElement
+    if (cmEditor) {
+      cmEditor.style.height = `${targetHeight}px`
+    }
+  }
+}
+
+// 销毁编辑器
+const destroyEditor = () => {
+  if (editorView) {
+    editorView.destroy()
+    editorView = null
+  }
+}
+
+// 监听外部值变化
+watch(() => props.modelValue, (newValue) => {
+  if (editorView && newValue !== editorView.state.doc.toString()) {
+    editorView.dispatch({
+      changes: {
+        from: 0,
+        to: editorView.state.doc.length,
+        insert: newValue || ''
+      }
+    })
+  }
+})
+
+onMounted(() => {
+  initEditor()
+})
+
+onBeforeUnmount(() => {
+  destroyEditor()
+})
+</script>
+
+<style scoped>
+.code-editor {
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.code-editor :deep(.cm-editor) {
+  height: 100%;
+}
+
+.code-editor :deep(.cm-scroller) {
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+}
+</style>

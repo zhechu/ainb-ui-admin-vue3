@@ -22,7 +22,7 @@
       加载中…
     </div>
     <div v-else class="flex flex-col h-full bg-[var(--el-bg-color)]">
-      <div class="flex-1 overflow-y-auto bg-[var(--el-fill-color-light)]">
+      <el-scrollbar class="flex-1 min-h-0 bg-[var(--el-fill-color-light)]">
         <!-- 好友宫格：原 tile + "+" tile，对齐 GroupSide 视觉，让两种抽屉看起来是一家的 -->
         <div class="flex flex-wrap gap-1 px-4 pt-4 pb-[14px] bg-[var(--el-bg-color)]">
           <div class="flex flex-col items-center w-[66px]">
@@ -145,7 +145,7 @@
             <el-switch :model-value="!!conversation?.top" @change="handleTopChange" />
           </div>
         </div>
-      </div>
+      </el-scrollbar>
     </div>
 
     <!-- 子对话框：发起群聊（锁定对方为已选） -->

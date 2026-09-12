@@ -32,9 +32,7 @@
               {{ recentRemoveMode ? '完成' : '移除' }}
             </span>
           </div>
-          <div
-            class="flex gap-2 pl-3 pr-2 pt-1 pb-2 overflow-x-auto im-conversation-picker__recent"
-          >
+          <el-scrollbar view-class="flex gap-2 pl-3 pr-2 pt-1 pb-2">
             <div
               v-for="conversation in recentForwardConversations"
               :key="getConversationKey(conversation)"
@@ -89,7 +87,7 @@
                 {{ conversation.name }}
               </span>
             </div>
-          </div>
+          </el-scrollbar>
         </template>
 
         <!-- 创建聊天入口：keyword 为空 + showCreateChat=true 时展示 -->
@@ -360,12 +358,4 @@ function handleToggle(conversation: Conversation) {
 
 <style scoped>
 /* 横向滚动条做窄一点避免占视觉；走 ::-webkit-scrollbar 浏览器伪元素 */
-.im-conversation-picker__recent::-webkit-scrollbar {
-  height: 4px;
-}
-
-.im-conversation-picker__recent::-webkit-scrollbar-thumb {
-  background-color: var(--el-border-color);
-  border-radius: 2px;
-}
 </style>

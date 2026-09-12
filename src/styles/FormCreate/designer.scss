@@ -1,0 +1,390 @@
+/* 表单设计器的第三方界面不使用 Element Plus 的主题变量，这里统一接入项目主题。 */
+.dark {
+  ._fc-designer {
+    --form-create-primary: var(--el-color-primary);
+    --fc-tool-border-color: var(--el-color-primary);
+
+    color: var(--el-text-color-regular);
+    background-color: var(--el-bg-color);
+
+    > .el-main {
+      background-color: var(--el-bg-color);
+    }
+
+    ._fc-l,
+    ._fc-m,
+    ._fc-r {
+      border-color: var(--el-border-color);
+      background-color: var(--el-bg-color);
+      color: var(--el-text-color-regular);
+    }
+
+    ._fc-l-menu,
+    ._fc-l-menu-form,
+    ._fc-l-tabs,
+    ._fc-r ._fc-r-tabs,
+    ._fc-m-tools {
+      border-color: var(--el-border-color);
+    }
+
+    ._fc-l-menu-item,
+    ._fc-l-menu-item i,
+    ._fc-l-label,
+    ._fc-l-title,
+    ._fc-l-tab,
+    ._fc-r-tab,
+    ._fc-r-title,
+    ._fc-r .el-form-item__label,
+    ._fc-l .el-tree-node__label,
+    ._fc-l .el-tree-node__content > .el-tree-node__expand-icon {
+      color: var(--el-text-color-regular);
+    }
+
+    ._fc-l-info,
+    ._fc-r-tools-close,
+    ._fc-m-tools-l .fc-icon.disabled,
+    ._fc-r-name-input .el-input-group__append {
+      color: var(--el-text-color-secondary);
+    }
+
+    ._fc-l-menu-item.active,
+    ._fc-l-menu-item i:hover,
+    ._fc-l ._fc-l-tab.active,
+    ._fc-r ._fc-r-tab.active,
+    ._fc-tree-node.active,
+    ._fc-tree-node.active .icon-more,
+    ._fc-m-tools-l .devices .fc-icon.active,
+    ._fc-r-name-input .icon-group:hover {
+      color: var(--form-create-primary);
+    }
+
+    ._fc-l-close,
+    ._fc-r-close,
+    ._fc-l-open,
+    ._fc-r-open {
+      background-color: var(--el-bg-color-overlay);
+      color: var(--el-text-color-secondary);
+    }
+
+    ._fc-m .form-create ._fc-l-item,
+    ._fc-l-item {
+      background-color: var(--el-fill-color-light);
+      border-color: var(--el-border-color);
+      color: var(--el-text-color-regular);
+    }
+
+    ._fc-m .form-create ._fc-l-item:hover,
+    ._fc-l-item:hover {
+      background-color: var(--form-create-primary);
+      border-color: var(--form-create-primary);
+      color: var(--el-color-white);
+    }
+
+    ._fc-l-group {
+      border-color: var(--el-border-color);
+    }
+
+    ._fc-r {
+      --el-color-primary: var(--form-create-primary);
+    }
+
+    ._fc-r-sub > ._fd-config-item > ._fd-ci-head:before {
+      background-color: var(--el-text-color-secondary);
+    }
+
+    ._fc-m-tools {
+      background-color: var(--el-bg-color);
+    }
+
+    ._fc-m-tools .line {
+      background-color: var(--el-border-color);
+    }
+
+    ._fc-m-tools ._fd-m-extend {
+      border-color: var(--el-border-color);
+      background-color: var(--el-fill-color-light);
+      color: var(--el-text-color-regular);
+    }
+
+    ._fc-r .el-tabs__nav-wrap::after,
+    ._fc-tabs .el-tabs__nav-wrap::after {
+      background-color: var(--el-border-color);
+    }
+
+    ._fc-m-con {
+      background-color: var(--el-bg-color-page);
+    }
+
+    ._fc-m-input-handle,
+    ._fc-m-drag,
+    .draggable-drag,
+    ._fd-draggable-drag.drag-holder {
+      background-color: var(--el-bg-color-overlay);
+    }
+
+    ._fc-m-input-handle {
+      box-shadow: 0 2px 10px 0 rgb(0 0 0 / 24%);
+    }
+
+    ._fd-draggable-drag.drag-holder,
+    ._fd-tableFormColumn-drag.drag-holder,
+    ._fd-elTabPane-drag.drag-holder,
+    ._fd-group-drag.drag-holder,
+    ._fd-subForm-drag.drag-holder,
+    ._fd-elCard-drag.drag-holder,
+    ._fd-elCollapseItem-drag.drag-holder {
+      background-color: var(--el-fill-color-light);
+    }
+
+    ._fc-child-empty:after,
+    ._fd-draggable-drag.drag-holder:after,
+    ._fd-tableFormColumn-drag.drag-holder:after,
+    ._fd-elTabPane-drag.drag-holder:after,
+    ._fd-group-drag.drag-holder:after,
+    ._fd-subForm-drag.drag-holder:after,
+    ._fd-elCard-drag.drag-holder:after,
+    ._fd-elCollapseItem-drag.drag-holder:after {
+      color: var(--el-text-color-placeholder);
+    }
+
+    ._fd-drag-tool.active {
+      outline-color: var(--form-create-primary);
+    }
+
+    ._fd-drag-btn {
+      background-color: var(--form-create-primary);
+    }
+
+    ._fd-drag-hidden {
+      background: rgb(0 0 0 / 58%);
+    }
+
+    ._fd-drag-tool:hover {
+      outline-color: color-mix(in srgb, var(--form-create-primary) 60%, transparent);
+    }
+
+    ._fc-r .el-table__cell .cell {
+      color: var(--el-text-color-regular);
+    }
+
+    ._fc-manage-text {
+      color: var(--form-create-primary);
+    }
+
+    ._fc-config-item,
+    ._fd-config-item,
+    ._fc-r ._fc-group-container {
+      color: var(--el-text-color-regular);
+    }
+
+    .el-main,
+    .el-form,
+    .el-tabs__content,
+    .el-tab-pane {
+      color: var(--el-text-color-regular);
+    }
+  }
+
+  ._fc-message-error {
+    background-color: var(--el-bg-color-overlay);
+    border-color: var(--el-border-color);
+    box-shadow: var(--el-box-shadow);
+  }
+
+  ._fc-message-error .el-message__content {
+    color: var(--el-text-color-primary);
+  }
+
+  ._fd-preview-dialog {
+    background-color: var(--el-bg-color-overlay);
+  }
+
+  ._fd-preview-copy {
+    background-color: color-mix(in srgb, var(--el-color-primary) 20%, transparent);
+    color: var(--el-color-primary);
+  }
+
+  ._fd-preview-code .hljs,
+  ._fc-designer .hljs {
+    background-color: var(--el-bg-color-page);
+    color: var(--el-text-color-primary);
+  }
+
+  ._fd-ai-panel {
+    background-color: var(--el-bg-color);
+    color: var(--el-text-color-regular);
+  }
+
+  ._fd-ai-header,
+  ._fd-ai-input-container,
+  ._fd-ai-suggestion-item,
+  ._fd-ai-message-bubble,
+  ._fd-ai-welcome-suggestions {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+    color: var(--el-text-color-regular);
+  }
+
+  ._fd-ai-content,
+  ._fd-ai-message-text,
+  ._fd-ai-welcome p,
+  ._fd-ai-suggestions-header span {
+    color: var(--el-text-color-regular);
+  }
+
+  ._fd-ai-action-btn,
+  ._fd-ai-refresh-btn {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fd-ai-suggestion-item:hover,
+  ._fd-ai-action-btn:hover,
+  ._fd-ai-refresh-btn:hover {
+    background-color: var(--el-fill-color-light);
+    color: var(--el-color-primary);
+  }
+
+  ._fd-config-item {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fd-ci-label {
+    color: var(--el-text-color-regular);
+  }
+
+  ._fd-ci-append {
+    background-color: var(--el-fill-color-light);
+  }
+
+  ._fd-event-l,
+  ._fd-event-r,
+  ._fd-fn-list-l,
+  ._fd-fn-list-r {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color);
+  }
+
+  ._fd-event-head,
+  ._fd-fn-list-head {
+    border-color: var(--el-border-color);
+    background-color: var(--el-fill-color-light);
+  }
+
+  ._fd-event-item ._fd-label,
+  ._fd-fn-list-method ._fd-label {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fd-event-l .el-menu-item,
+  ._fd-fn-list-l .el-menu-item {
+    border-color: var(--el-border-color);
+    color: var(--el-text-color-regular);
+  }
+
+  ._fd-event-l .el-menu-item.is-active,
+  ._fd-fn-list-l .el-menu-item.is-active {
+    background-color: var(--el-fill-color);
+    color: var(--el-text-color-primary);
+  }
+
+  ._fd-fetch-preview {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+  }
+
+  ._fd-fetch-preview-header,
+  ._fd-fetch-preview-data,
+  ._fd-fetch-preview-empty {
+    border-color: var(--el-border-color);
+    background-color: var(--el-fill-color-light);
+  }
+
+  ._fd-fetch-preview-title {
+    color: var(--el-text-color-primary);
+  }
+
+  ._fd-fetch-preview-empty,
+  ._fd-fetch-preview-time,
+  ._fd-fetch-preview-data pre {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fd-language-header {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+    color: var(--el-text-color-primary);
+  }
+
+  ._fd-language-header,
+  ._fd-language-item {
+    border-color: var(--el-border-color);
+  }
+
+  ._fd-language-input .el-input-group__append,
+  ._fc-json-preview {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fd-table-form {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+  }
+
+  ._fc-table-form {
+    color: var(--el-text-color-secondary);
+  }
+
+  ._fc-signature-btn,
+  ._fc-signature-preview {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+    color: var(--el-text-color-placeholder);
+  }
+
+  ._fd-table-view > table,
+  ._fd-table-view td {
+    border-color: var(--el-border-color);
+  }
+
+  ._fd-table-view-cell.selected > ._fd-drag-tool {
+    background-color: color-mix(in srgb, var(--el-color-primary) 14%, transparent);
+    outline-color: var(--el-color-primary);
+  }
+
+  ._fd-table-context-menu {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-overlay);
+    color: var(--el-text-color-regular);
+    box-shadow: var(--el-box-shadow);
+  }
+
+  ._fd-table-context-menuitem:hover {
+    background-color: var(--el-fill-color-light);
+  }
+
+  .CodeMirror,
+  .CodeMirror-gutters {
+    border-color: var(--el-border-color);
+    background-color: var(--el-bg-color-page);
+    color: var(--el-text-color-primary);
+  }
+}
+
+._fd-event-dialog,
+._fd-fn-list-dialog,
+._fd-gfc-dialog {
+  background-color: var(--el-bg-color-overlay);
+  color: var(--el-text-color-regular);
+}
+
+._fd-event .el-button,
+._fd-fn-list .el-button {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+}
+
+._fd-event-head .el-button.is-link,
+._fd-fn-list-head .el-button.is-link,
+._fd-language-input.is-variable input {
+  color: var(--el-color-primary);
+}

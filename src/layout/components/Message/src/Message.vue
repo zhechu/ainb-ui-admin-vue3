@@ -3,6 +3,7 @@ import { formatDate } from '@/utils/formatTime'
 import * as NotifyMessageApi from '@/api/system/notify/message'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { propTypes } from '@/utils/propTypes'
+import avatarAnimationData from '@/assets/animations/avatar-animation.json'
 
 defineOptions({ name: 'Message' })
 
@@ -75,7 +76,13 @@ onBeforeUnmount(() => {
           <el-scrollbar class="message-list">
             <template v-for="item in list" :key="item.id">
               <div class="message-item">
-                <img alt="" class="message-icon" src="@/assets/imgs/avatar.gif" />
+                <div class="message-icon">
+                  <LottieAnimation
+                    :animation-data="avatarAnimationData"
+                    :width="40"
+                    :height="40"
+                  />
+                </div>
                 <div class="message-content">
                   <span class="message-title">
                     {{ item.templateNickname }}：{{ item.templateContent }}

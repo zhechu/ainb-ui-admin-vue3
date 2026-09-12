@@ -5,7 +5,7 @@
     v-model:current-page="currentPage"
     v-model:page-size="pageSize"
     :background="true"
-    :page-sizes="[10, 20, 30, 50, 100]"
+    :page-sizes="[20, 50, 80, 100]"
     :pager-count="pagerCount"
     :total="total"
     :small="isSmall"
@@ -24,9 +24,9 @@ defineOptions({ name: 'Pagination' })
 // 此处解决了当全局size为small的时候分页组件样式太大的问题
 const appStore = useAppStore()
 const layoutCurrentSize = computed(() => appStore.currentSize)
-const isSmall = ref<boolean>(layoutCurrentSize.value === 'small')
+const isSmall = ref<boolean>(layoutCurrentSize.value !== 'large')
 watchEffect(() => {
-  isSmall.value = layoutCurrentSize.value === 'small'
+  isSmall.value = layoutCurrentSize.value !== 'large'
 })
 
 const props = defineProps({

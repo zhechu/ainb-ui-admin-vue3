@@ -247,7 +247,7 @@ const queryFormRef = ref<FormInstance>() // 搜索的表单
 // 表单搜索
 const queryParams = ref({
   pageNo: 1, // 页数
-  pageSize: 10, // 每页显示数量
+  pageSize: 20, // 每页显示数量
   status: undefined, // 订单状态
   payChannelCode: undefined, // 支付方式
   createTime: undefined, // 创建时间
@@ -305,7 +305,7 @@ const resetQuery = () => {
   queryFormRef.value?.resetFields()
   queryParams.value = {
     pageNo: 1, // 页数
-    pageSize: 10, // 每页显示数量
+    pageSize: 20, // 每页显示数量
     status: undefined, // 订单状态
     payChannelCode: undefined, // 支付方式
     createTime: undefined, // 创建时间

@@ -185,7 +185,7 @@ const handleRowDblClick = (row: ManagerGroupApi.ImManagerGroupVO) => {
 // ==================== 群查询 ====================
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: undefined as string | undefined,
   status: undefined as number | undefined
 })

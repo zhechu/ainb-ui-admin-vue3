@@ -203,7 +203,7 @@ const handleRowDblClick = (row: StockTakingPlanVO) => {
 // ==================== 盘点方案查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 方案编码
   name: undefined as string | undefined, // 方案名称
   type: undefined as number | undefined, // 盘点类型

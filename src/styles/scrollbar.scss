@@ -1,0 +1,78 @@
+/**
+ * 全局滚动条基线
+ *
+ * <h3>它解决什么问题</h3>
+ * 页面里能滚动的东西分成两类：
+ * 一类是我们自己写的容器，已经统一换成了 <el-scrollbar>，滚动条不占位、鼠标移上去才浮现；
+ * 另一类是我们碰不到的——element-plus 组件内部的滚动区、bpmn 画布、CodeMirror、
+ * 富文本编辑器、可编辑区域（contenteditable / textarea）。这些要么由第三方渲染，
+ * 要么必须保留原生滚动才能让光标跟随，包不进 el-scrollbar。
+ *
+ * 这个文件负责第二类：把浏览器默认那根 17px 的常驻灰条，压成一根 8px、
+ * 平时完全透明、鼠标进入容器才浮现的细条，观感与 el-scrollbar 对齐。
+ *
+ * <h3>为什么第二类做不到完全不占位</h3>
+ * Chromium 已经移除了 `overflow: overlay`，纯 CSS 没有办法让原生滚动条悬浮在内容之上。
+ * 唯一能做到不占位的方式就是像 el-scrollbar 那样用 JS 自己画一根——
+ * 所以能包的地方都包了，包不了的地方在这里做到「尽量窄 + 不打扰」。
+ */
+
+:root {
+  /* 平时透明，hover 时才是这个颜色；取的是 element-plus 的边框色，深浅两套主题都跟着走 */
+  --xpy-scrollbar-thumb: rgb(0 0 0 / 20%);
+  --xpy-scrollbar-thumb-hover: rgb(0 0 0 / 35%);
+  --xpy-scrollbar-size: 8px;
+}
+
+html.dark {
+  --xpy-scrollbar-thumb: rgb(255 255 255 / 20%);
+  --xpy-scrollbar-thumb-hover: rgb(255 255 255 / 35%);
+}
+
+/* Firefox：没有伪元素可用，只能靠这两个属性。thin 约等于 8px */
+* {
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+/* 指针在容器里，或者容器内有焦点（键盘操作时），才把滑块显出来 */
+:hover,
+:focus-within {
+  scrollbar-color: var(--xpy-scrollbar-thumb) transparent;
+}
+
+/* WebKit / Chromium */
+::-webkit-scrollbar {
+  width: var(--xpy-scrollbar-size);
+  height: var(--xpy-scrollbar-size);
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+
+  /* 透明边框 + padding-box 裁剪：轨道仍是 8px，看得见的滑块只有 4px，
+     既留住了足够大的鼠标命中区域，视觉上又足够克制 */
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: var(--xpy-scrollbar-size);
+  transition: background-color 0.2s ease-in-out;
+}
+
+:hover::-webkit-scrollbar-thumb,
+:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--xpy-scrollbar-thumb);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--xpy-scrollbar-thumb-hover);
+}
+
+/* 纵横两根同时出现时右下角那块空白 */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

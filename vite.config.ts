@@ -84,7 +84,13 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
             minify: 'oxc',
             outDir: env.VITE_OUT_DIR || 'dist',
             reportCompressedSize: false,
-            sourcemap: env.VITE_SOURCEMAP === 'true' ? 'inline' : false,
+            // 用独立的 .map 文件，不要内联。
+            // 内联时 vite 的 build-import-analysis 会走
+            // chunk.code.replace(convertSourceMap.mapFileCommentRegex, '')，
+            // 而这个正则在本项目这种体量的 chunk 上会回溯到爆栈：
+            // RangeError: Maximum call stack size exceeded，构建直接失败。
+            // 内联本身也不合适 —— 它把整份 base64 sourcemap 塞进每个 chunk，产物膨胀好几倍。
+            sourcemap: env.VITE_SOURCEMAP === 'true',
             rollupOptions: {
                 output: {
                     minify: {
@@ -97,7 +103,8 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
                         groups: [
                             { name: 'echarts', test: /node_modules[\\/]echarts[\\/]/ }, // 将 echarts 单独打包，参考 https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IAB1SX 讨论
                             { name: 'form-create', test: /node_modules[\\/]@form-create[\\/]element-ui[\\/]/ }, // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
-                            { name: 'form-designer', test: /node_modules[\\/]@form-create[\\/]designer[\\/]/ }
+                            { name: 'form-designer', test: /node_modules[\\/]@form-create[\\/]designer[\\/]/ },
+                            { name: 'monaco-editor', test: /node_modules[\\/]monaco-editor[\\/]/ } // Monaco Editor 单独打包
                         ]
                     }
                 },

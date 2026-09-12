@@ -13,7 +13,7 @@
       </h3>
     </template>
 
-    <div ref="contentRef" class="hide-scroll-bar h-full box-border overflow-y-auto">
+    <el-scrollbar ref="scrollbarRef" class="h-full box-border" view-class="h-full">
       <div class="w-full min-h-full relative flex-grow bg-white box-border p-3 sm:p-7">
         <!-- 终止生成内容的按钮 -->
         <el-button
@@ -37,7 +37,7 @@
           placeholder="生成的内容……"
         />
       </div>
-    </div>
+    </el-scrollbar>
   </el-card>
 </template>
 
@@ -73,7 +73,9 @@ const compContent = computed({
 })
 
 /** 滚动 */
-const contentRef = ref<HTMLDivElement>()
+const scrollbarRef = ref<any>()
+// 生成过程中要一直贴着底部，滚动位置仍然操作原生元素
+const contentRef = computed<any>(() => scrollbarRef.value?.wrapRef)
 defineExpose({
   scrollToBottom() {
     contentRef.value?.scrollTo(0, contentRef.value?.scrollHeight)
@@ -95,23 +97,11 @@ watch(copied, (val) => {
 </script>
 
 <style lang="scss" scoped>
-.hide-scroll-bar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-}
-
 .my-card {
   display: flex;
   flex-direction: column;
 
   :deep(.el-card__body) {
-    @extend .hide-scroll-bar;
-
     padding: 0;
     overflow-y: auto;
     box-sizing: border-box;

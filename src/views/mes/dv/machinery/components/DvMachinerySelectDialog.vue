@@ -195,7 +195,7 @@ const handleRowDblClick = (row: DvMachineryVO) => {
 // ==================== 查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 设备编码
   name: undefined as string | undefined, // 设备名称
   workshopId: undefined as number | undefined, // 所属车间

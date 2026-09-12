@@ -11,7 +11,7 @@ import { Pagination, TableColumn, TableSetPropsType, TableSlotDefault } from '@/
 export default defineComponent({
   name: 'Table',
   props: {
-    pageSize: propTypes.number.def(10),
+    pageSize: propTypes.number.def(20),
     currentPage: propTypes.number.def(1),
     // 是否多选
     selection: propTypes.bool.def(false),
@@ -111,10 +111,10 @@ export default defineComponent({
           background: true,
           pagerCount: document.body.clientWidth < 992 ? 5 : 7,
           layout: 'total, sizes, prev, pager, next, jumper',
-          pageSizes: [10, 20, 30, 50, 100],
+          pageSizes: [20, 50, 80, 100],
           disabled: false,
           hideOnSinglePage: false,
-          total: 10
+          total: 0
         },
         unref(getProps).pagination
       )
@@ -269,10 +269,11 @@ export default defineComponent({
     }
 
     return () => (
-      <div v-loading={unref(getProps).loading}>
+      <div class="v-table-container" v-loading={unref(getProps).loading}>
         <ElTable
           // @ts-ignore
           ref={elTableRef}
+          class="min-h-0 flex-1"
           data={unref(getProps).data}
           onSelection-change={selectionChange}
           {...unref(getBindValue)}

@@ -9,7 +9,7 @@
           class="w-[350px] !bg-[#ececec] [--el-border-radius-base:16px] [--el-segmented-item-selected-color:#fff]"
         />
       </div>
-      <div class="h-full overflow-y-auto">
+      <el-scrollbar class="h-full">
         <Common
           v-if="selectPlatform === 'common'"
           ref="commonRef"
@@ -34,7 +34,7 @@
           :models="models"
           @on-draw-complete="handleDrawComplete"
         />
-      </div>
+      </el-scrollbar>
     </div>
     <div class="flex-1 bg-white">
       <ImageList ref="imageListRef" @on-regeneration="handleRegeneration" />

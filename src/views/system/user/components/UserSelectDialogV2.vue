@@ -22,125 +22,129 @@
         </ContentWrap>
       </el-col>
       <!-- 右侧：搜索表单 + 用户表格 -->
-      <el-col class="h-full overflow-auto" :span="19" :xs="24">
-        <ContentWrap>
-          <el-form class="-mb-[15px]" :inline="true" :model="queryParams" label-width="72px">
-            <el-form-item label="用户名称">
-              <el-input
-                v-model="queryParams.username"
-                placeholder="请输入用户名称"
-                clearable
-                @keyup.enter="handleQuery"
-                class="!w-240px"
-              />
-            </el-form-item>
-            <el-form-item label="用户昵称">
-              <el-input
-                v-model="queryParams.nickname"
-                placeholder="请输入用户昵称"
-                clearable
-                @keyup.enter="handleQuery"
-                class="!w-240px"
-              />
-            </el-form-item>
-            <el-form-item label="手机号码">
-              <el-input
-                v-model="queryParams.mobile"
-                placeholder="请输入手机号码"
-                clearable
-                @keyup.enter="handleQuery"
-                class="!w-240px"
-              />
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-select
-                v-model="queryParams.status"
-                placeholder="请选择状态"
-                clearable
-                class="!w-240px"
-              >
-                <el-option
-                  v-for="dict in getIntDictOptions(DICT_TYPE.COMMON_STATUS)"
-                  :key="dict.value"
-                  :label="dict.label"
-                  :value="dict.value"
+      <el-col class="h-full" :span="19" :xs="24">
+        <!-- view-class 给内层视图撑满高度：下面的表格卡片是用 calc(100% - ...) 算高的，
+             el-scrollbar 的视图默认是自适应高度，不撑满会让百分比高度全部塌成 0 -->
+        <el-scrollbar view-class="h-full">
+          <ContentWrap>
+            <el-form class="-mb-[15px]" :inline="true" :model="queryParams" label-width="72px">
+              <el-form-item label="用户名称">
+                <el-input
+                  v-model="queryParams.username"
+                  placeholder="请输入用户名称"
+                  clearable
+                  @keyup.enter="handleQuery"
+                  class="!w-240px"
                 />
-              </el-select>
-            </el-form-item>
-            <el-form-item>
-              <el-button @click="handleQuery">
-                <Icon icon="ep:search" class="mr-5px" /> 搜索
-              </el-button>
-              <el-button @click="resetQuery">
-                <Icon icon="ep:refresh" class="mr-5px" /> 重置
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </ContentWrap>
-        <!-- 数据表格：单选 radio / 多选 checkbox 统一在一个 table 内 -->
-        <ContentWrap
-          class="h-[calc(100%-var(--content-wrap-padding,10px)*2-var(--content-wrap-margin,15px)*2-32px*2-3px*2-2px)] !mb-0"
-          :body-style="{ height: '100%', padding: 'var(--content-wrap-padding,10px)' }"
-        >
-          <el-table
-            ref="tableRef"
-            class="!h-[calc(100%-32px-30px+var(--content-wrap-padding,10px))]"
-            v-loading="loading"
-            :data="list"
-            :stripe="true"
-            :show-overflow-tooltip="true"
-            row-key="id"
-            :highlight-current-row="!multiple"
-            @selection-change="handleSelectionChange"
-            @row-click="handleRowClick"
-            @row-dblclick="handleRowDblClick"
+              </el-form-item>
+              <el-form-item label="用户昵称">
+                <el-input
+                  v-model="queryParams.nickname"
+                  placeholder="请输入用户昵称"
+                  clearable
+                  @keyup.enter="handleQuery"
+                  class="!w-240px"
+                />
+              </el-form-item>
+              <el-form-item label="手机号码">
+                <el-input
+                  v-model="queryParams.mobile"
+                  placeholder="请输入手机号码"
+                  clearable
+                  @keyup.enter="handleQuery"
+                  class="!w-240px"
+                />
+              </el-form-item>
+              <el-form-item label="状态">
+                <el-select
+                  v-model="queryParams.status"
+                  placeholder="请选择状态"
+                  clearable
+                  class="!w-240px"
+                >
+                  <el-option
+                    v-for="dict in getIntDictOptions(DICT_TYPE.COMMON_STATUS)"
+                    :key="dict.value"
+                    :label="dict.label"
+                    :value="dict.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item>
+                <el-button @click="handleQuery">
+                  <Icon icon="ep:search" class="mr-5px" /> 搜索
+                </el-button>
+                <el-button @click="resetQuery">
+                  <Icon icon="ep:refresh" class="mr-5px" /> 重置
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </ContentWrap>
+          <!-- 数据表格：单选 radio / 多选 checkbox 统一在一个 table 内 -->
+          <ContentWrap
+            class="h-[calc(100%-var(--content-wrap-padding,10px)*2-var(--content-wrap-margin,15px)*2-32px*2-3px*2-2px)] !mb-0"
+            :body-style="{ height: '100%', padding: 'var(--content-wrap-padding,10px)' }"
           >
-            <!-- 多选：checkbox（reserve-selection 保证跨页勾选不丢失） -->
-            <el-table-column
-              v-if="multiple"
-              type="selection"
-              :selectable="selectable"
-              :reserve-selection="true"
-              width="50"
-              align="center"
+            <el-table
+              ref="tableRef"
+              class="!h-[calc(100%-32px-30px+var(--content-wrap-padding,10px))]"
+              v-loading="loading"
+              :data="list"
+              :stripe="true"
+              :show-overflow-tooltip="true"
+              row-key="id"
+              :highlight-current-row="!multiple"
+              @selection-change="handleSelectionChange"
+              @row-click="handleRowClick"
+              @row-dblclick="handleRowDblClick"
+            >
+              <!-- 多选：checkbox（reserve-selection 保证跨页勾选不丢失） -->
+              <el-table-column
+                v-if="multiple"
+                type="selection"
+                :selectable="selectable"
+                :reserve-selection="true"
+                width="50"
+                align="center"
+              />
+              <!-- 单选：radio -->
+              <el-table-column v-else width="50" align="center">
+                <template #default="{ row }">
+                  <el-radio
+                    v-model="selectedRadioId"
+                    :value="row.id"
+                    class="radio-no-label"
+                    :disabled="row.disabled"
+                    @change="handleRadioChange(row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="用户编号" align="center" prop="id" width="150" />
+              <el-table-column label="用户名称" align="center" prop="username" width="150" />
+              <el-table-column label="用户昵称" align="left" prop="nickname" min-width="150" />
+              <el-table-column label="部门" align="center" prop="deptName" width="150" />
+              <el-table-column label="手机号码" align="center" prop="mobile" width="130" />
+              <el-table-column label="状态" align="center" prop="status" width="80">
+                <template #default="scope">
+                  <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+                </template>
+              </el-table-column>
+              <el-table-column
+                label="创建时间"
+                align="center"
+                prop="createTime"
+                :formatter="dateFormatter"
+                width="180"
+              />
+            </el-table>
+            <Pagination
+              :total="total"
+              v-model:page="queryParams.pageNo"
+              v-model:limit="queryParams.pageSize"
+              @pagination="getList"
             />
-            <!-- 单选：radio -->
-            <el-table-column v-else width="50" align="center">
-              <template #default="{ row }">
-                <el-radio
-                  v-model="selectedRadioId"
-                  :value="row.id"
-                  class="radio-no-label"
-                  :disabled="row.disabled"
-                  @change="handleRadioChange(row)"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="用户编号" align="center" prop="id" width="150" />
-            <el-table-column label="用户名称" align="center" prop="username" width="150" />
-            <el-table-column label="用户昵称" align="left" prop="nickname" min-width="150" />
-            <el-table-column label="部门" align="center" prop="deptName" width="150" />
-            <el-table-column label="手机号码" align="center" prop="mobile" width="130" />
-            <el-table-column label="状态" align="center" prop="status" width="80">
-              <template #default="scope">
-                <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
-              </template>
-            </el-table-column>
-            <el-table-column
-              label="创建时间"
-              align="center"
-              prop="createTime"
-              :formatter="dateFormatter"
-              width="180"
-            />
-          </el-table>
-          <Pagination
-            :total="total"
-            v-model:page="queryParams.pageNo"
-            v-model:limit="queryParams.pageSize"
-            @pagination="getList"
-          />
-        </ContentWrap>
+          </ContentWrap>
+        </el-scrollbar>
       </el-col>
     </el-row>
     <template #footer>
@@ -249,7 +253,7 @@ const handleRowDblClick = (row: UserSelectRow) => {
 // ==================== 用户查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   username: undefined as string | undefined, // 用户名称
   nickname: undefined as string | undefined, // 用户昵称
   mobile: undefined as string | undefined, // 手机号码

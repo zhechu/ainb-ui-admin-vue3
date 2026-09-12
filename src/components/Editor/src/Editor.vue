@@ -124,6 +124,19 @@ const editorConfig = computed((): IEditorConfig => {
           // 选择文件时的类型限制，默认为 ['image/*'] 。如不想限制，则设置为 []
           allowedFileTypes: ['image/*'],
 
+          /**
+           * ⚠️ 不要在这里加 base64LimitSize
+           *
+           * 编辑器内部的分支顺序是「先看 base64LimitSize，再看 customUpload」：
+           * 一旦配上它，小于该体积的图片会走 base64 内联而【不会】调用下面的 customUpload。
+           * 单张 20–100KB 的 base64 直接进表单值，映射到 varchar 列写不进去、
+           * 映射到 TEXT 则让列表查询把整串一起捞出来。
+           *
+           * 原先这里写的是 `uploadImgShowBase64: true` —— 那是 wangEditor v4 的配置项，
+           * @wangeditor-next 里全包零引用，即完全不生效。删掉它而不是改成 false：
+           * 留着一个不存在的开关，会让下一个人以为 base64 的行为由这里控制。
+           */
+
           // 使用 customUpload 实现逐个文件上传，复用项目的 httpRequest
           async customUpload(file: File, insertFn: InsertFnType) {
             try {
@@ -168,8 +181,18 @@ const editorConfig = computed((): IEditorConfig => {
             }
           }
         }
-      },
-      uploadImgShowBase64: true
+      }
+      /**
+       * 关于「粘贴一整段 HTML，里面的图片是 data:base64」这种情形
+       *
+       * 编辑器没有可用的拦截点：parseImageSrc 只在 insertImage / editImage 两个菜单里生效，
+       * 粘贴 HTML 走的是另一条解析链路，不经过它。剪贴板里是【图片文件】时（截图后 Ctrl+V）
+       * 走的是上面的 customUpload，那条已经上传到文件服务了。
+       *
+       * 所以剩下的这一种由服务端兜住：表单提交时 RichContentGuard 会把内联 base64
+       * 图片转存文件服务再落库。那里是唯一能保证「库里不出现 base64」的地方 ——
+       * 前端这一层无论怎么补都能被绕过。
+       */
     },
     props.editorConfig || {}
   )

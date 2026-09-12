@@ -55,12 +55,35 @@ export function useFormFieldsPermission(defaultPermission: FieldPermissionType) 
 
   const formFields = inject<Ref<string[]>>('formFields', ref([])) // 流程表单字段
 
+  /**
+   * 最近一次合并的差异统计
+   *
+   * 因为流程始终使用表单的最新版本、不冻结快照，表单字段随时可能增删，
+   * 节点上已保存的字段权限会随之失效或缺漏。合并本身是静默完成的，
+   * 这里把差异暴露出来，供节点配置面板提示用户 —— 否则配置漂移了用户无从察觉。
+   */
+  const mergeStat = ref({ removed: 0, added: 0 })
+
   const getNodeConfigFormFields = (nodeFormFields?: Array<Record<string, string>>) => {
     nodeFormFields = toRaw(nodeFormFields)
     if (!nodeFormFields || nodeFormFields.length === 0) {
+      mergeStat.value = { removed: 0, added: 0 }
       fieldsPermissionConfig.value = getDefaultFieldsPermission(unref(formFields))
     } else {
       fieldsPermissionConfig.value = mergeFieldsPermission(nodeFormFields, unref(formFields))
+    }
+  }
+
+  /** 计算并记录字段差异：已保存配置里有、但当前表单已无的字段数；当前表单有、但配置里缺的字段数 */
+  const calcMergeStat = (
+    savedPermission: Array<Record<string, string>>,
+    currentFields?: string[]
+  ) => {
+    const currentFieldNames = parseFormCreateFields(currentFields || []).map((item) => item.field)
+    const savedFieldNames = savedPermission.map((item) => item.field)
+    mergeStat.value = {
+      removed: savedFieldNames.filter((f) => !currentFieldNames.includes(f)).length,
+      added: currentFieldNames.filter((f) => !savedFieldNames.includes(f)).length
     }
   }
   // 合并已经设置的表单字段权限，当前流程表单字段 (可能新增，或删除了字段)
@@ -68,6 +91,7 @@ export function useFormFieldsPermission(defaultPermission: FieldPermissionType) 
     formFieldsPermisson: Array<Record<string, string>>,
     formFields?: string[]
   ) => {
+    calcMergeStat(formFieldsPermisson, formFields)
     let mergedFieldsPermission: Array<Record<string, any>> = []
     if (formFields) {
       mergedFieldsPermission = parseFormCreateFields(formFields).map((item) => {
@@ -77,6 +101,10 @@ export function useFormFieldsPermission(defaultPermission: FieldPermissionType) 
         return {
           field: item.field,
           title: item.title,
+          // 透传给权限配置界面按子表分组展示用。不带下去的话子表字段会退化成
+          // 「联系人明细.角色」这样的平铺行，看不出层级
+          shortTitle: item.shortTitle,
+          subTableField: item.subTableField,
           permission: found ? found.permission : defaultPermission
         }
       })
@@ -92,6 +120,8 @@ export function useFormFieldsPermission(defaultPermission: FieldPermissionType) 
         return {
           field: item.field,
           title: item.title,
+          shortTitle: item.shortTitle,
+          subTableField: item.subTableField,
           permission: defaultPermission
         }
       })
@@ -102,11 +132,60 @@ export function useFormFieldsPermission(defaultPermission: FieldPermissionType) 
   // 获取表单的所有字段，作为下拉框选项
   const formFieldOptions = parseFormCreateFields(unref(formFields))
 
+  /**
+   * 基于指定的表单字段重建权限配置
+   *
+   * 用于「节点独立表单」：该节点的字段权限应基于它自己绑定的表单字段，而不是流程主表单的字段。
+   * 复用与主表单相同的合并规则 —— 已配置的沿用原权限，新增字段取默认权限，已删除字段自动丢弃。
+   *
+   * @param nodeFormFields  节点表单的 form-create 字段规则数组
+   * @param existsPermission 已保存的字段权限配置
+   */
+  const rebuildFieldsPermission = (
+    nodeFormFields: string[],
+    existsPermission?: Array<Record<string, string>>
+  ) => {
+    const raw = toRaw(existsPermission)
+    if (raw && raw.length > 0) {
+      fieldsPermissionConfig.value = mergeFieldsPermission(raw, nodeFormFields)
+    } else {
+      mergeStat.value = { removed: 0, added: 0 }
+      fieldsPermissionConfig.value = getDefaultFieldsPermission(nodeFormFields)
+    }
+  }
+
+  /**
+   * 字段权限的分组展示视图
+   *
+   * 子表控件的内部字段在配置里是 `contacts.contactRole` 这样的层级 key，
+   * 平铺成一行行「联系人明细.角色」既看不出层级，也没法一眼分辨哪些字段属于同一张明细表。
+   * 这里把它整理成「子表控件一行 + 其内部字段缩进一层」。
+   *
+   * ⚠️ row.item 必须是 fieldsPermissionConfig 里的原始对象引用，
+   * 界面上的 v-model 才能写回去。做深拷贝会让用户的改动落不到实际配置上。
+   */
+  const fieldsPermissionRows = computed(() => {
+    const all = fieldsPermissionConfig.value
+    const rows: Array<{ item: Record<string, any>; level: number; isSubTable: boolean }> = []
+    all
+      .filter((item) => !item.subTableField)
+      .forEach((item) => {
+        // 有字段声明归属于它，说明它是个子表控件
+        const children = all.filter((child) => child.subTableField === item.field)
+        rows.push({ item, level: 0, isSubTable: children.length > 0 })
+        children.forEach((child) => rows.push({ item: child, level: 1, isSubTable: false }))
+      })
+    return rows
+  })
+
   return {
     formType,
     fieldsPermissionConfig,
+    fieldsPermissionRows,
     formFieldOptions,
-    getNodeConfigFormFields
+    getNodeConfigFormFields,
+    rebuildFieldsPermission,
+    mergeStat
   }
 }
 

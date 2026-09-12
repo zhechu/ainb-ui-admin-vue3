@@ -113,7 +113,7 @@ defineOptions({ name: 'BusinessSummary' })
 const props = defineProps<{ queryParams: any }>() // 搜索参数
 const queryParams0 = reactive({
   pageNo: 1,
-  pageSize: 10
+  pageSize: 20
 })
 const loading = ref(false) // 加载中
 const list = ref([]) // 列表的数据

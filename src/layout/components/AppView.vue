@@ -1,13 +1,7 @@
 <script lang="ts" setup>
 import { useTagsViewStore } from '@/store/modules/tagsView'
-import { useAppStore } from '@/store/modules/app'
-import { Footer } from '@/layout/components/Footer'
 
 defineOptions({ name: 'AppView' })
-
-const appStore = useAppStore()
-
-const footer = computed(() => appStore.getFooter)
 
 const tagsViewStore = useTagsViewStore()
 
@@ -28,14 +22,15 @@ provide('reload', reload)
 </script>
 
 <template>
+  <!--
+    内容区高度 = 视口 - 顶栏 - 标签页，四种布局下都成立：
+    固定头部时顶栏脱离文档流、滚动容器自身已减去这段高度；非固定时顶栏在文档流内占位，
+    减去的仍是同一段。标签页关闭时 --tags-view-height 由 store 置 0，无需额外分支。
+
+    用 min-h 而非 h，超长页面仍可正常向下滚动。
+  -->
   <section
-    :class="[
-      'p-[var(--app-content-padding)] w-full bg-[var(--app-content-bg-color)] dark:bg-[var(--el-bg-color)]',
-      {
-        '!min-h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height)-var(--app-footer-height))] pb-0':
-          footer
-      }
-    ]"
+    class="min-h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height))] w-full bg-[var(--app-content-bg-color)] p-[var(--app-content-padding)] dark:bg-[var(--el-bg-color)]"
   >
     <router-view v-if="routerAlive">
       <template #default="{ Component, route }">
@@ -45,5 +40,4 @@ provide('reload', reload)
       </template>
     </router-view>
   </section>
-  <Footer v-if="footer" />
 </template>

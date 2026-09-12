@@ -221,7 +221,7 @@ const total = ref(0) // 列表的总页数
 const list = ref<RefundApi.RefundDetailVO[]>([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   merchantId: undefined as number | undefined,
   appId: undefined as number | undefined,
   channelCode: undefined as string | undefined,

@@ -277,7 +277,7 @@ watch(
   <div
     :id="prefixCls"
     :class="prefixCls"
-    class="relative w-full flex bg-[#fff] dark:bg-[var(--el-bg-color)]"
+    class="relative w-full flex border-b border-[var(--el-border-color-lighter)] bg-[#fff] dark:bg-[var(--el-bg-color)]"
   >
     <span
       :class="tagsViewImmerse ? '' : `${prefixCls}__tool ${prefixCls}__tool--first`"
@@ -393,7 +393,7 @@ watch(
                   <Icon
                     :class="`${prefixCls}__item--close`"
                     :size="12"
-                    color="#333"
+                    color="var(--el-text-color-regular)"
                     icon="ep:close"
                     @click.prevent.stop="closeSelectedTag(item)"
                   />
@@ -515,6 +515,10 @@ $prefix-cls: #{$namespace}-tags-view;
       content: '';
     }
 
+    &:hover {
+      background-color: var(--el-fill-color-light);
+    }
+
     &--first {
       &::before {
         position: absolute;
@@ -567,13 +571,13 @@ $prefix-cls: #{$namespace}-tags-view;
   }
 
   &__item.is-active {
-    color: var(--el-color-white);
-    background-color: var(--el-color-primary);
-    border: 1px solid var(--el-color-primary);
+    color: var(--el-color-primary);
+    background-color: color-mix(in srgb, var(--el-color-primary) 10%, #fff);
+    border: 1px solid color-mix(in srgb, var(--el-color-primary) 30%, #fff);
 
     .#{$prefix-cls}__item--close {
       :deep(span) {
-        color: var(--el-color-white) !important;
+        color: var(--el-color-primary) !important;
       }
     }
   }
@@ -635,13 +639,13 @@ $prefix-cls: #{$namespace}-tags-view;
     }
 
     &__item.is-active {
-      color: var(--el-color-white);
-      background-color: var(--el-color-primary);
-      border: 1px solid var(--el-color-primary);
+      color: var(--el-color-primary);
+      background-color: color-mix(in srgb, var(--el-color-primary) 18%, var(--el-bg-color));
+      border: 1px solid color-mix(in srgb, var(--el-color-primary) 35%, var(--el-bg-color));
 
       .#{$prefix-cls}__item--close {
         :deep(span) {
-          color: var(--el-color-white) !important;
+          color: var(--el-color-primary) !important;
         }
       }
     }

@@ -120,7 +120,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   username: undefined,
   userIp: undefined,
   createTime: []

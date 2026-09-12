@@ -19,10 +19,12 @@ const mobile = computed(() => appStore.getMobile)
 // 菜单折叠
 const collapse = computed(() => appStore.getCollapse)
 
-const layout = computed(() => appStore.getLayout)
+// 实际渲染的布局：移动端强制单栏，但不改写用户保存的配置
+const layout = computed(() => appStore.getEffectiveLayout)
 
 const handleClickOutside = () => {
-  appStore.setCollapse(true)
+  // 点遮罩收起属于被动折叠，不记入设备级折叠偏好
+  appStore.setCollapse(true, false)
 }
 
 const renderLayout = () => {

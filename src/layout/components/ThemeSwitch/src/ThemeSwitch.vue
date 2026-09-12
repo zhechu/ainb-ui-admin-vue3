@@ -15,15 +15,13 @@ const CrescentMoon = useIcon({ icon: 'emojione-monotone:crescent-moon', color: '
 
 const appStore = useAppStore()
 
-// 初始化获取是否是暗黑主题
-const isDark = ref(appStore.getIsDark)
+const isDark = computed({
+  get: () => appStore.getIsDark,
+  set: (value: boolean) => appStore.setIsDark(value)
+})
 
 // 设置switch的背景颜色
 const blackColor = 'var(--el-color-black)'
-
-const themeChange = (val: boolean) => {
-  appStore.setIsDark(val)
-}
 </script>
 
 <template>
@@ -36,7 +34,6 @@ const themeChange = (val: boolean) => {
     :inactive-color="blackColor"
     :inactive-icon="CrescentMoon"
     inline-prompt
-    @change="themeChange"
   />
 </template>
 <style lang="scss" scoped>

@@ -34,7 +34,7 @@
     </template>
     <template #default>
       <div class="text-16px font-bold mb-12px">{{ document?.title }}</div>
-      <div class="max-h-[60vh] overflow-y-auto">
+      <el-scrollbar max-height="60vh">
         <div
           v-for="(segment, index) in document?.segments"
           :key="index"
@@ -49,7 +49,7 @@
             {{ segment.content }}
           </div>
         </div>
-      </div>
+      </el-scrollbar>
     </template>
   </el-popover>
 </template>

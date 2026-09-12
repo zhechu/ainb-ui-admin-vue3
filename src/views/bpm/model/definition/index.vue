@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="工作流手册" url="https://doc.iocoder.cn/bpm/" />
+  <!-- <doc-alert title="工作流手册" url="https://doc.iocoder.cn/bpm/" /> -->
 
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
@@ -36,7 +36,10 @@
       <el-table-column label="表单信息" prop="formType" min-width="150">
         <template #default="scope">
           <el-button
-            v-if="scope.row.formType === BpmModelFormType.NORMAL"
+            v-if="
+              scope.row.formType === BpmModelFormType.NORMAL ||
+              scope.row.formType === BpmModelFormType.ONLINE
+            "
             type="primary"
             link
             @click="handleFormDetail(scope.row)"
@@ -111,7 +114,7 @@ const total = ref(0) // 列表的总页数
 const list = ref([]) // 列表的数据
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   key: query.key
 })
 
@@ -134,8 +137,11 @@ const formDetailPreview = ref({
   option: {}
 })
 const handleFormDetail = async (row: any) => {
-  if (row.formType == BpmModelFormType.NORMAL) {
-    // 设置表单
+  if (
+    row.formType == BpmModelFormType.NORMAL ||
+    row.formType == BpmModelFormType.ONLINE
+  ) {
+    // 设置表单。在线表单的 formConf / formFields 已由后端实时补齐，与流程表单同路
     setConfAndFields2(formDetailPreview, row.formConf, row.formFields)
     // 弹窗打开
     formDetailVisible.value = true

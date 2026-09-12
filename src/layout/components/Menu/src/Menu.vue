@@ -54,7 +54,7 @@ export default defineComponent({
   setup(props) {
     const appStore = useAppStore()
 
-    const layout = computed(() => appStore.getLayout)
+    const layout = computed(() => appStore.getEffectiveLayout)
 
     const { push, currentRoute, resolve } = useRouter()
 
@@ -545,7 +545,13 @@ export default defineComponent({
         class={[
           `${prefixCls} ${prefixCls}__${unref(menuMode)}`,
           `${prefixCls}--${props.theme}`,
-          'h-[100%] overflow-hidden flex-col bg-[var(--left-menu-bg-color)]',
+          'h-[100%] overflow-hidden flex-col',
+          // 顶部导航里的菜单跟随头部配色，不再借用侧边栏的背景色变量。
+          // 否则「顶部导航」布局必须把 --left-menu-bg-color 改成头部色才不露馅，
+          // 用户存的侧边栏配色就被顶掉了，切回侧边栏布局也回不来。
+          props.theme === 'header'
+            ? 'bg-[var(--top-header-bg-color)]'
+            : 'bg-[var(--left-menu-bg-color)]',
           {
             'w-[var(--left-menu-min-width)]':
               unref(collapse) &&
@@ -590,9 +596,13 @@ $prefix-cls: #{$namespace}-menu;
     // 设置子菜单悬停的高亮和背景色
     .#{$elNamespace}-sub-menu__title,
     .#{$elNamespace}-menu-item {
+      transition:
+        color var(--transition-time-02),
+        background-color var(--transition-time-02);
+
       &:hover {
         color: var(--left-menu-text-active-color) !important;
-        background-color: var(--left-menu-bg-color) !important;
+        background-color: var(--left-menu-bg-light-color) !important;
       }
     }
 
@@ -603,6 +613,17 @@ $prefix-cls: #{$namespace}-menu;
 
       &:hover {
         background-color: var(--left-menu-bg-active-color) !important;
+      }
+
+      &::before {
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        left: 0;
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        background-color: var(--el-color-primary);
+        content: '';
       }
     }
 
@@ -627,6 +648,11 @@ $prefix-cls: #{$namespace}-menu;
     & > .is-active > .#{$elNamespace}-sub-menu__title {
       position: relative;
       background-color: var(--left-menu-collapse-bg-active-color) !important;
+    }
+
+    & > .#{$elNamespace}-menu-item.is-active::before {
+      top: 10px;
+      bottom: 10px;
     }
   }
 
@@ -703,6 +729,10 @@ $prefix-cls: #{$namespace}-menu;
         color: var(--el-color-primary) !important;
         background-color: var(--top-header-bg-color) !important;
 
+        &::before {
+          display: none;
+        }
+
         &:hover {
           background-color: var(--top-header-hover-color) !important;
         }
@@ -756,7 +786,7 @@ $prefix-cls: #{$namespace}-menu-popper;
   .el-menu-item {
     &:hover {
       color: var(--left-menu-text-active-color) !important;
-      background-color: var(--left-menu-bg-color) !important;
+      background-color: var(--left-menu-bg-light-color) !important;
     }
   }
 
@@ -764,6 +794,17 @@ $prefix-cls: #{$namespace}-menu-popper;
   .el-menu-item.is-active {
     position: relative;
     background-color: var(--left-menu-bg-active-color) !important;
+
+    &::before {
+      position: absolute;
+      top: 8px;
+      bottom: 8px;
+      left: 0;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+      background-color: var(--el-color-primary);
+      content: '';
+    }
 
     &:hover {
       background-color: var(--left-menu-bg-active-color) !important;
@@ -788,6 +829,10 @@ $prefix-cls: #{$namespace}-menu-popper;
 
   .el-menu-item.is-active {
     background-color: var(--top-header-bg-color) !important;
+
+    &::before {
+      display: none;
+    }
 
     &:hover {
       background-color: var(--top-header-hover-color) !important;

@@ -31,7 +31,7 @@
         <el-button
           class="ml-10px"
           size="small"
-          v-if="scope.row.formId > 0"
+          v-if="scope.row.formConf"
           @click="handleFormDetail(scope.row)"
         >
           <Icon icon="ep:document" /> 查看表单

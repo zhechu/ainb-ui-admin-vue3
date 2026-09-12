@@ -39,7 +39,8 @@ const mobile = computed(() => appStore.getMobile)
 // 固定菜单
 const fixedMenu = computed(() => appStore.getFixedMenu)
 
-const layout = computed(() => appStore.getLayout)
+// 实际渲染的布局：移动端强制单栏，但不改写用户保存的配置
+const layout = computed(() => appStore.getEffectiveLayout)
 
 export const useRenderLayout = () => {
   const renderClassic = () => {

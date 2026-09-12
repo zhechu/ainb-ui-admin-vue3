@@ -126,7 +126,7 @@ const total = ref(0)
 const list = ref<ManagerFaceUserItemApi.ImManagerFaceUserItemVO[]>([])
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   userId: undefined as number | undefined,
   name: undefined as string | undefined,
   createTime: [] as string[]

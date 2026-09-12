@@ -1,10 +1,7 @@
 <script lang="ts" setup>
-import { setCssVar } from '@/utils'
-
 import { useDesign } from '@/hooks/web/useDesign'
 import { useWatermark } from '@/hooks/web/useWatermark'
 import { useAppStore } from '@/store/modules/app'
-import { isHeaderNavLayout } from '@/utils/layout'
 
 defineOptions({ name: 'InterfaceDisplay' })
 
@@ -17,228 +14,198 @@ const appStore = useAppStore()
 const water = ref()
 
 // 面包屑
-const breadcrumb = ref(appStore.getBreadcrumb)
-
-const breadcrumbChange = (show: boolean) => {
-  appStore.setBreadcrumb(show)
-}
+const breadcrumb = computed({
+  get: () => appStore.getBreadcrumb,
+  set: (show: boolean) => appStore.setBreadcrumb(show)
+})
 
 // 面包屑图标
-const breadcrumbIcon = ref(appStore.getBreadcrumbIcon)
-
-const breadcrumbIconChange = (show: boolean) => {
-  appStore.setBreadcrumbIcon(show)
-}
+const breadcrumbIcon = computed({
+  get: () => appStore.getBreadcrumbIcon,
+  set: (show: boolean) => appStore.setBreadcrumbIcon(show)
+})
 
 // 折叠图标
-const hamburger = ref(appStore.getHamburger)
-
-const hamburgerChange = (show: boolean) => {
-  appStore.setHamburger(show)
-}
+const hamburger = computed({
+  get: () => appStore.getHamburger,
+  set: (show: boolean) => appStore.setHamburger(show)
+})
 
 // 全屏图标
-const screenfull = ref(appStore.getScreenfull)
+const screenfull = computed({
+  get: () => appStore.getScreenfull,
+  set: (show: boolean) => appStore.setScreenfull(show)
+})
 
-const screenfullChange = (show: boolean) => {
-  appStore.setScreenfull(show)
-}
+// 搜索图标
+const search = computed({
+  get: () => appStore.getSearch,
+  set: (show: boolean) => appStore.setSearch(show)
+})
 
 // 尺寸图标
-const size = ref(appStore.getSize)
-
-const sizeChange = (show: boolean) => {
-  appStore.setSize(show)
-}
+const size = computed({
+  get: () => appStore.getSize,
+  set: (show: boolean) => appStore.setSize(show)
+})
 
 // 多语言图标
-const locale = ref(appStore.getLocale)
-
-const localeChange = (show: boolean) => {
-  appStore.setLocale(show)
-}
+const locale = computed({
+  get: () => appStore.getLocale,
+  set: (show: boolean) => appStore.setLocale(show)
+})
 
 // 消息图标
-const message = ref(appStore.getMessage)
-
-const messageChange = (show: boolean) => {
-  appStore.setMessage(show)
-}
+const message = computed({
+  get: () => appStore.getMessage,
+  set: (show: boolean) => appStore.setMessage(show)
+})
 
 // IM 即时通讯图标
-const im = ref(appStore.getIm)
-
-const imChange = (show: boolean) => {
-  appStore.setIm(show)
-}
+const im = computed({
+  get: () => appStore.getIm,
+  set: (show: boolean) => appStore.setIm(show)
+})
 
 // 标签页
-const tagsView = ref(appStore.getTagsView)
-
-const tagsViewChange = (show: boolean) => {
-  // 切换标签栏显示时，同步切换标签栏的高度
-  setCssVar('--tags-view-height', show ? '35px' : '0px')
-  appStore.setTagsView(show)
-}
+const tagsView = computed({
+  get: () => appStore.getTagsView,
+  set: (show: boolean) => appStore.setTagsView(show)
+})
 
 // 标签页沉浸
-const tagsViewImmerse = ref(appStore.getTagsViewImmerse)
-
-const tagsViewImmerseChange = (immerse: boolean) => {
-  appStore.setTagsViewImmerse(immerse)
-}
+const tagsViewImmerse = computed({
+  get: () => appStore.getTagsViewImmerse,
+  set: (show: boolean) => appStore.setTagsViewImmerse(show)
+})
 
 // 标签页图标
-const tagsViewIcon = ref(appStore.getTagsViewIcon)
-
-const tagsViewIconChange = (show: boolean) => {
-  appStore.setTagsViewIcon(show)
-}
+const tagsViewIcon = computed({
+  get: () => appStore.getTagsViewIcon,
+  set: (show: boolean) => appStore.setTagsViewIcon(show)
+})
 
 // logo
-const logo = ref(appStore.getLogo)
-
-const logoChange = (show: boolean) => {
-  appStore.setLogo(show)
-}
+const logo = computed({
+  get: () => appStore.getLogo,
+  set: (show: boolean) => appStore.setLogo(show)
+})
 
 // 菜单手风琴
-const uniqueOpened = ref(appStore.getUniqueOpened)
-
-const uniqueOpenedChange = (uniqueOpened: boolean) => {
-  appStore.setUniqueOpened(uniqueOpened)
-}
+const uniqueOpened = computed({
+  get: () => appStore.getUniqueOpened,
+  set: (show: boolean) => appStore.setUniqueOpened(show)
+})
 
 // 固定头部
-const fixedHeader = ref(appStore.getFixedHeader)
-
-const fixedHeaderChange = (show: boolean) => {
-  appStore.setFixedHeader(show)
-}
-
-// 页脚
-const footer = ref(appStore.getFooter)
-
-const footerChange = (show: boolean) => {
-  appStore.setFooter(show)
-}
+const fixedHeader = computed({
+  get: () => appStore.getFixedHeader,
+  set: (show: boolean) => appStore.setFixedHeader(show)
+})
 
 // 灰色模式
-const greyMode = ref(appStore.getGreyMode)
-
-const greyModeChange = (show: boolean) => {
-  appStore.setGreyMode(show)
-}
+const greyMode = computed({
+  get: () => appStore.getGreyMode,
+  set: (show: boolean) => appStore.setGreyMode(show)
+})
 
 // 固定菜单
-const fixedMenu = ref(appStore.getFixedMenu)
-
-const fixedMenuChange = (show: boolean) => {
-  appStore.setFixedMenu(show)
-}
+const fixedMenu = computed({
+  get: () => appStore.getFixedMenu,
+  set: (show: boolean) => appStore.setFixedMenu(show)
+})
 
 // 设置水印
 const setWater = () => {
   setWatermark(water.value)
 }
-
-const layout = computed(() => appStore.getLayout)
-
-watch(
-  () => layout.value,
-  (n) => {
-    if (isHeaderNavLayout(n)) {
-      appStore.setCollapse(false)
-    }
-  }
-)
 </script>
 
 <template>
   <div :class="prefixCls">
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.breadcrumb') }}</span>
-      <ElSwitch v-model="breadcrumb" @change="breadcrumbChange" />
+      <ElSwitch v-model="breadcrumb" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.breadcrumbIcon') }}</span>
-      <ElSwitch v-model="breadcrumbIcon" @change="breadcrumbIconChange" />
+      <ElSwitch v-model="breadcrumbIcon" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.hamburgerIcon') }}</span>
-      <ElSwitch v-model="hamburger" @change="hamburgerChange" />
+      <ElSwitch v-model="hamburger" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.screenfullIcon') }}</span>
-      <ElSwitch v-model="screenfull" @change="screenfullChange" />
+      <ElSwitch v-model="screenfull" />
+    </div>
+
+    <div class="flex items-center justify-between">
+      <span class="text-14px">{{ t('setting.searchIcon') }}</span>
+      <ElSwitch v-model="search" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.sizeIcon') }}</span>
-      <ElSwitch v-model="size" @change="sizeChange" />
+      <ElSwitch v-model="size" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.localeIcon') }}</span>
-      <ElSwitch v-model="locale" @change="localeChange" />
+      <ElSwitch v-model="locale" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.messageIcon') }}</span>
-      <ElSwitch v-model="message" @change="messageChange" />
+      <ElSwitch v-model="message" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.imIcon') }}</span>
-      <ElSwitch v-model="im" @change="imChange" />
+      <ElSwitch v-model="im" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.tagsView') }}</span>
-      <ElSwitch v-model="tagsView" @change="tagsViewChange" />
+      <ElSwitch v-model="tagsView" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.tagsViewImmerse') }}</span>
-      <ElSwitch v-model="tagsViewImmerse" @change="tagsViewImmerseChange" />
+      <ElSwitch v-model="tagsViewImmerse" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.tagsViewIcon') }}</span>
-      <ElSwitch v-model="tagsViewIcon" @change="tagsViewIconChange" />
+      <ElSwitch v-model="tagsViewIcon" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.logo') }}</span>
-      <ElSwitch v-model="logo" @change="logoChange" />
+      <ElSwitch v-model="logo" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.uniqueOpened') }}</span>
-      <ElSwitch v-model="uniqueOpened" @change="uniqueOpenedChange" />
+      <ElSwitch v-model="uniqueOpened" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.fixedHeader') }}</span>
-      <ElSwitch v-model="fixedHeader" @change="fixedHeaderChange" />
-    </div>
-
-    <div class="flex items-center justify-between">
-      <span class="text-14px">{{ t('setting.footer') }}</span>
-      <ElSwitch v-model="footer" @change="footerChange" />
+      <ElSwitch v-model="fixedHeader" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.greyMode') }}</span>
-      <ElSwitch v-model="greyMode" @change="greyModeChange" />
+      <ElSwitch v-model="greyMode" />
     </div>
 
     <div class="flex items-center justify-between">
       <span class="text-14px">{{ t('setting.fixedMenu') }}</span>
-      <ElSwitch v-model="fixedMenu" @change="fixedMenuChange" />
+      <ElSwitch v-model="fixedMenu" />
     </div>
 
     <div class="flex items-center justify-between gap-10px">

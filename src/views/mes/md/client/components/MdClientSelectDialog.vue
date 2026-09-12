@@ -191,7 +191,7 @@ const handleRowDblClick = (row: MdClientVO) => {
 // ==================== 客户查询 ====================
 const queryParams = reactive({
   pageNo: 1, // 页码
-  pageSize: 10, // 每页条数
+  pageSize: 20, // 每页条数
   code: undefined as string | undefined, // 客户编码
   name: undefined as string | undefined, // 客户名称
   nickname: undefined as string | undefined, // 客户简称

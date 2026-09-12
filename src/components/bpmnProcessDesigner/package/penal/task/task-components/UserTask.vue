@@ -254,13 +254,29 @@ const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表
 const userGroupOptions = ref<UserGroupApi.UserGroupVO[]>([]) // 用户组列表
 
 const { formFieldOptions } = useFormFieldsPermission(FieldPermissionType.READ)
-// 表单内用户字段选项, 必须是必填和用户选择器
+
+/**
+ * 表单内的用户字段
+ *
+ * 认两种控件：
+ * - OrgPicker（组织选择器）：B4 引入的合并控件，勾选「用户」类型即可
+ * - UserSelect：已在 B4 删除，但历史表单里可能还留着，仍要能被选到 ——
+ *   否则那些流程的审批人配置会突然失效
+ *
+ * ⚠️ 不能只认 OrgPicker：那会让已有流程的审批人字段配置从下拉里消失。
+ * 也不能只认 UserSelect：新表单里已经不存在这个控件了。
+ */
 const userFieldOnFormOptions = computed(() => {
-  return formFieldOptions.filter((item) => item.type === 'UserSelect')
+  return formFieldOptions.filter((item) => item.type === 'OrgPicker' || item.type === 'UserSelect')
 })
-// 表单内部门字段选项, 必须是必填和部门选择器
+
+/**
+ * 表单内的部门字段
+ *
+ * 同上：OrgPicker（勾选「部门」类型）与历史的 DeptSelect 都要认。
+ */
 const deptFieldOnFormOptions = computed(() => {
-  return formFieldOptions.filter((item) => item.type === 'DeptSelect')
+  return formFieldOptions.filter((item) => item.type === 'OrgPicker' || item.type === 'DeptSelect')
 })
 
 const deptLevel = ref(1)

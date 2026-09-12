@@ -27,7 +27,7 @@
       </div>
       <!-- tabs -->
       <el-tabs v-model="activeTab" @tab-click="handleTabsClick" class="relative h-full">
-        <el-tab-pane label="我的角色" name="my-role" class="flex flex-col h-full overflow-y-auto">
+        <el-tab-pane label="我的角色" name="my-role" class="flex flex-col h-full">
           <RoleList
             :loading="loading"
             :role-list="myRoleList"

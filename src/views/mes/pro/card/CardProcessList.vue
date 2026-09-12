@@ -180,7 +180,7 @@ const processList = ref<ProCardProcessVO[]>([])
 const processTotal = ref(0)
 const processQueryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   cardId: undefined as number | undefined
 })
 

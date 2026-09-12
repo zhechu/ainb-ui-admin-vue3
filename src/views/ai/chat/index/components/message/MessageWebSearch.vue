@@ -104,7 +104,7 @@
         </div>
 
         <!-- 内容区域 -->
-        <div class="max-h-[60vh] overflow-y-auto">
+        <el-scrollbar max-height="60vh">
           <!-- 简短描述 -->
           <div class="mb-12px">
             <div class="text-14px font-medium text-[#333] mb-6px">简短描述</div>
@@ -122,7 +122,7 @@
               {{ selectedResult.summary }}
             </div>
           </div>
-        </div>
+        </el-scrollbar>
 
         <!-- 操作按钮 -->
         <div class="flex justify-end gap-8px mt-12px pt-12px border-t border-[#eee]">

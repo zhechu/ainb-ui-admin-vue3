@@ -10,7 +10,7 @@
   >
     <div v-if="group" class="flex flex-col h-full bg-[var(--el-bg-color)]">
       <!-- 上部：可滚动内容区 -->
-      <div class="flex-1 overflow-y-auto bg-[var(--el-fill-color-light)]">
+      <el-scrollbar class="flex-1 min-h-0 bg-[var(--el-fill-color-light)]">
         <!-- ==================== 群成员区 ==================== -->
         <div class="px-4 pt-4 pb-[10px] bg-[var(--el-bg-color)]">
           <el-input v-model="searchText" placeholder="搜索群成员" clearable>
@@ -408,7 +408,7 @@
             </div>
           </div>
         </template>
-      </div>
+      </el-scrollbar>
 
       <!-- ==================== 底部：退出 / 解散群聊（历史退群群隐藏，已退群无需再退） ==================== -->
       <div

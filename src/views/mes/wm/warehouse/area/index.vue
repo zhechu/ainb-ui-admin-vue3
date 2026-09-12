@@ -183,7 +183,7 @@ const currentLocation = ref<{
 }) // 当前库区上下文
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   code: undefined,
   name: undefined,
   locationId: undefined as number | undefined,

@@ -218,7 +218,7 @@ const list = ref([]) // 列表的数据
 const processDefinitionList = ref<any[]>([]) // 流程定义列表
 const queryParams = reactive({
   pageNo: 1,
-  pageSize: 10,
+  pageSize: 20,
   name: '',
   category: undefined,
   status: undefined,
