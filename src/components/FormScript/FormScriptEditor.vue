@@ -86,12 +86,13 @@
           <div class="hook-desc">{{ hook.desc }}</div>
 
           <el-input
-            v-model="scripts[hook.key]"
+            v-model="localScripts[hook.key]"
             type="textarea"
             :rows="12"
             :placeholder="hook.placeholder"
             class="script-input"
             @input="runCheck"
+            @change="emitScripts"
           />
 
           <!-- 静态检查结果 -->
@@ -149,6 +150,28 @@ const timeoutAction = defineModel<number>('timeoutAction', { default: 1 })
 /** 脚本内容：钩子名 → 脚本文本 */
 const scripts = defineModel<Record<string, string>>('scripts', { default: () => ({}) })
 
+/**
+ * 脚本的本地副本
+ *
+ * ⚠️ 不能直接 v-model="scripts[hook.key]"。上游 StepLogic 把 scripts 做成了
+ * 「get 时 JSON.parse、set 时 JSON.stringify」的 computed，就地改对象的某个键
+ * **不会触发 setter**，写的脚本便回不到 modelData.formScript —— 保存后全丢。
+ * 所以改动经本地副本承接，再由 emitScripts() 整体赋值写回。
+ */
+const localScripts = ref<Record<string, string>>({})
+
+watch(
+  scripts,
+  (value) => {
+    localScripts.value = { ...(value ?? {}) }
+  },
+  { immediate: true, deep: true }
+)
+
+const emitScripts = () => {
+  scripts.value = { ...localScripts.value }
+}
+
 const serverExtensionNames = computed(() => props.serverExtensionNames ?? [])
 const hasServerExtension = computed(() => !!props.hasServerExtension)
 
@@ -196,7 +219,8 @@ const issues = ref<Record<string, ScriptCheckIssue[]>>({})
 const runCheck = () => {
   const next: Record<string, ScriptCheckIssue[]> = {}
   for (const hook of HOOKS) {
-    const result = checkScript(scripts.value[hook.key])
+    // 读本地副本：静态检查要跟着每次按键走，而写回 model 是失焦才做的
+    const result = checkScript(localScripts.value[hook.key])
     if (!result.passed) next[hook.key] = result.issues
   }
   issues.value = next
@@ -214,9 +238,9 @@ const allIssues = () =>
     list.map((i) => `${hook} 第 ${i.line} 行：${i.pattern} —— ${i.reason}`)
   )
 
-watch(() => scripts.value, runCheck, { deep: true, immediate: true })
+watch(() => localScripts.value, runCheck, { deep: true, immediate: true })
 
-defineExpose({ hasIssues, allIssues, runCheck })
+defineExpose({ hasIssues, allIssues, runCheck, flush: emitScripts })
 </script>
 
 <style lang="scss" scoped>

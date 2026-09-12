@@ -151,9 +151,17 @@ const formulaFields = computed(() => {
   return collected.filter((f) => f.type === 'Formula' && f.field).map((f) => f.field as string)
 })
 
-/** 收集产物。computed 已经实时写回 modelData，这里只做空操作占位以对齐其它步骤 */
+/**
+ * 收集产物
+ *
+ * 条件组、动作列表这些改一下就即时写回了；但规则名与脚本正文是
+ * 失焦（@change）才写回的 —— 用户在输入框里打完字直接点保存时，
+ * 这里必须主动 flush 一次，否则最后一次输入会丢
+ */
 const collect = () => {
-  // no-op：logicRules / formScript 通过 computed setter 实时写回
+  logicEditorRef.value?.flush?.()
+  crossFieldEditorRef.value?.flush?.()
+  scriptEditorRef.value?.flush?.()
 }
 
 /**
@@ -163,6 +171,8 @@ const collect = () => {
  * 后端发布校验还会各拦一次 —— 这里是即时反馈，那里是不可绕过的关口
  */
 const validate = async () => {
+  // 与 StepFormDesign.validate 一致：先收一次，保证校验与写回看到的是同一份内容
+  collect()
   const cycles = detectCycles(logicRules.value)
   if (cycles.length > 0) {
     activeTab.value = 'logic'

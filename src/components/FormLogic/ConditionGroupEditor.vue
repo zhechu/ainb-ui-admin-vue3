@@ -43,7 +43,7 @@
           placeholder="选择字段"
           filterable
           size="small"
-          class="w-180px"
+          class="cond-field"
           @update:model-value="(v) => patchItem(idx, { field: v })"
         >
           <el-option v-for="opt in fieldOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -53,7 +53,7 @@
           :model-value="item.operator"
           placeholder="条件"
           size="small"
-          class="w-130px"
+          class="cond-operator"
           @update:model-value="(v) => onOperatorChange(idx, v)"
         >
           <el-option v-for="op in OPERATORS" :key="op.value" :label="op.label" :value="op.value" />
@@ -64,7 +64,7 @@
           <el-select
             :model-value="item.valueType || 'CONST'"
             size="small"
-            class="w-100px"
+            class="cond-value-type"
             @update:model-value="(v) => patchItem(idx, { valueType: v, value: undefined })"
           >
             <el-option label="固定值" value="CONST" />
@@ -78,7 +78,7 @@
             placeholder="选择字段"
             filterable
             size="small"
-            class="flex-1"
+            class="cond-value"
             @update:model-value="(v) => patchItem(idx, { value: v })"
           >
             <el-option v-for="opt in fieldOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -94,7 +94,7 @@
             default-first-option
             :placeholder="item.operator === 'BETWEEN' ? '依次填下限、上限' : '输入后回车，可多个'"
             size="small"
-            class="flex-1"
+            class="cond-value"
             @update:model-value="(v) => patchItem(idx, { value: v })"
           />
 
@@ -104,7 +104,7 @@
             :model-value="item.value"
             placeholder="输入比较值"
             size="small"
-            class="flex-1"
+            class="cond-value"
             @update:model-value="(v) => patchItem(idx, { value: v })"
           />
         </template>
@@ -249,6 +249,32 @@ const onOperatorChange = (index: number, operator: string) => {
   &:last-child {
     margin-bottom: 0;
   }
+}
+
+/**
+ * 这几档宽度不能靠 UnoCSS 的 w-180px 之类
+ *
+ * Element Plus 的 `.el-select` 自带 width:100%，与 `.w-180px` 同为单类选择器、
+ * 优先级相同，最终谁生效只取决于样式表的加载顺序 —— 实测是 el-select 胜出。
+ * 于是三个下拉各自撑成 100%、再被 flex 均分掉整行，右边 flex:1 的比较值输入框
+ * 被挤成 0 宽：看得见框、点不进去，条件值根本填不了。
+ * 用 flex 的三值写法把宽度钉死，不与任何外部样式争优先级。
+ */
+.cond-field {
+  flex: 0 0 180px;
+}
+
+.cond-operator {
+  flex: 0 0 130px;
+}
+
+.cond-value-type {
+  flex: 0 0 100px;
+}
+
+.cond-value {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .nested-group {

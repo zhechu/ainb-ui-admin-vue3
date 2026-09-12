@@ -35,7 +35,12 @@
       <el-collapse-item v-for="(rule, ruleIdx) in rules" :key="rule.id" :name="rule.id">
         <template #title>
           <div class="rule-title">
-            <el-switch v-model="rule.enabled" size="small" @click.stop />
+            <el-switch
+              v-model="rule.enabled"
+              size="small"
+              @click.stop
+              @change="emitChange"
+            />
             <span class="rule-name" :class="{ 'is-disabled': rule.enabled === false }">
               {{ rule.name || `规则 ${ruleIdx + 1}` }}
             </span>
@@ -49,10 +54,14 @@
         <div class="rule-body">
           <el-form label-width="80px" size="small">
             <el-form-item label="规则名称">
-              <el-input v-model="rule.name" placeholder="给规则起个名字，便于日后维护" />
+              <el-input
+                v-model="rule.name"
+                placeholder="给规则起个名字，便于日后维护"
+                @change="emitChange"
+              />
             </el-form-item>
             <el-form-item label="触发时机">
-              <el-radio-group v-model="rule.trigger">
+              <el-radio-group v-model="rule.trigger" @change="emitChange">
                 <el-radio-button value="LOAD">表单加载</el-radio-button>
                 <el-radio-button value="CHANGE">字段变化</el-radio-button>
                 <el-radio-button value="SUBMIT">提交前</el-radio-button>
@@ -64,10 +73,18 @@
           </el-form>
 
           <el-divider content-position="left">当满足以下条件</el-divider>
-          <ConditionGroupEditor v-model="rule.when" :field-options="fieldOptions" />
+          <ConditionGroupEditor
+            :model-value="rule.when"
+            :field-options="fieldOptions"
+            @update:model-value="(v) => patchRule(ruleIdx, { when: v })"
+          />
 
           <el-divider content-position="left">执行动作</el-divider>
-          <ActionListEditor v-model="rule.then" :field-options="fieldOptions" />
+          <ActionListEditor
+            :model-value="rule.then"
+            :field-options="fieldOptions"
+            @update:model-value="(v) => patchRule(ruleIdx, { then: v })"
+          />
 
           <el-divider content-position="left">
             否则
@@ -78,7 +95,11 @@
               <Icon icon="ep:question-filled" class="ml-4px text-14px" />
             </el-tooltip>
           </el-divider>
-          <ActionListEditor v-model="rule.otherwise" :field-options="fieldOptions" />
+          <ActionListEditor
+            :model-value="rule.otherwise"
+            :field-options="fieldOptions"
+            @update:model-value="(v) => patchRule(ruleIdx, { otherwise: v })"
+          />
         </div>
       </el-collapse-item>
     </el-collapse>
@@ -104,7 +125,56 @@ const props = defineProps<{
   fieldOptions: Array<{ label: string; value: string }>
 }>()
 
-const rules = defineModel<LogicRule[]>({ default: () => [] })
+const model = defineModel<LogicRule[]>({ default: () => [] })
+
+const rules = ref<LogicRule[]>([])
+
+/**
+ * 本地副本
+ *
+ * 与 CrossFieldRuleEditor 一致：本地改 + emit，不直接改 props 里的数组。
+ *
+ * ⚠️ 这不只是风格问题。上游 StepLogic 把 logicRules 做成了
+ * 「get 时 JSON.parse、set 时 JSON.stringify」的 computed，
+ * 就地改元素属性（v-model="rule.name"）**不会触发 setter**，
+ * 改动就写不回 modelData.logicRules —— 界面上看着改了，保存后全丢。
+ * 所以每一处改动都必须经过 emitChange() 做整体赋值。
+ */
+/**
+ * 自身 emit 引发的回灌要跳过
+ *
+ * 条件值那类输入框是「每按一个键就 emit」的。emit 后 model 变化会触发下面的 watch
+ * 重建整个 rules 数组，正在输入的那个框被连带重建、值被打回 —— 表现为「字打不进去」。
+ * 只有外部真的换了一份规则（切表单、回显）才需要回灌。
+ */
+let suppressWatch = false
+
+watch(
+  model,
+  (value) => {
+    if (suppressWatch) return
+    rules.value = (value ?? []).map((rule) => ({
+      ...rule,
+      // 缺省视为启用。与 CrossFieldRuleEditor 的处理一致
+      enabled: rule.enabled !== false
+    }))
+  },
+  { immediate: true, deep: true }
+)
+
+const emitChange = () => {
+  suppressWatch = true
+  model.value = rules.value.map((rule) => ({ ...rule }))
+  // watch 的 pre flush 先于此执行；这里兜底复位，避免 model 未变化时标志残留
+  nextTick(() => {
+    suppressWatch = false
+  })
+}
+
+const patchRule = (index: number, patch: Partial<LogicRule>) => {
+  rules.value[index] = { ...rules.value[index], ...patch }
+  emitChange()
+}
 
 const expandedRules = ref<string[]>([])
 
@@ -137,6 +207,7 @@ const addRule = () => {
     otherwise: []
   }
   rules.value = [...rules.value, rule]
+  emitChange()
   // 新增后自动展开，否则用户点了「新增规则」看不到任何变化
   expandedRules.value = [...expandedRules.value, rule.id]
 }
@@ -146,6 +217,7 @@ const removeRule = async (index: number) => {
   const next = [...rules.value]
   next.splice(index, 1)
   rules.value = next
+  emitChange()
 }
 
 /** 字段被删除后，引用它的规则会失效。这里只提示，不自动改规则 —— 自动改可能删掉用户还想留的配置 */
@@ -170,7 +242,13 @@ const invalidFieldRefs = computed(() => {
   return [...missing]
 })
 
-defineExpose({ invalidFieldRefs })
+/**
+ * 暴露给上层保存流程
+ *
+ * flush：规则名用 @change 写回（避免边打字边重建数组），
+ * 但用户可能在焦点还在输入框时就触发保存 —— 保存前主动收一次才不会丢最后一次输入
+ */
+defineExpose({ invalidFieldRefs, flush: emitChange })
 </script>
 
 <style lang="scss" scoped>

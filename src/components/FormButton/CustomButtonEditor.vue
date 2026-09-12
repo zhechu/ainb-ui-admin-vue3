@@ -33,13 +33,13 @@
             v-model="button.label"
             placeholder="按钮名称，如「大额复核」"
             size="small"
-            class="w-200px"
+            class="btn-label"
             @change="emitChange"
           />
           <el-select
             v-model="button.position"
             size="small"
-            class="w-160px ml-8px"
+            class="btn-position"
             @change="emitChange"
           >
             <el-option v-for="p in POSITIONS" :key="p.value" :label="p.label" :value="p.value" />
@@ -424,7 +424,24 @@ defineExpose({ issues })
 
   .card-header {
     display: flex;
+    gap: 8px;
     align-items: center;
+  }
+
+  /**
+   * 按钮名称与位置的宽度不能靠 UnoCSS 的 w-200px / w-160px
+   *
+   * Element Plus 的 .el-input / .el-select 自带 width:100%，与之同为单类选择器，
+   * 谁生效只看样式表加载顺序 —— 实测是 Element Plus 胜出，两个控件各自撑满后
+   * 平分整行（实测 459.5px，而不是 200/160），删除按钮被推到很远。
+   * 用 flex 三值写法钉死宽度，不与外部样式争优先级。
+   */
+  .btn-label {
+    flex: 0 0 200px;
+  }
+
+  .btn-position {
+    flex: 0 0 160px;
   }
 
   .form-tip {

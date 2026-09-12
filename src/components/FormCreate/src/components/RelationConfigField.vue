@@ -112,7 +112,6 @@
         <el-select
           :model-value="m.updateMode || 'ALWAYS'"
           size="small"
-          class="w-130px"
           @update:model-value="(v) => patchMapping(idx, { updateMode: v })"
         >
           <el-option label="每次覆盖" value="ALWAYS" />
@@ -284,9 +283,23 @@ onMounted(async () => {
 
 .mapping-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;
+}
+
+/**
+ * 三个下拉给出最小可读宽度，放不下就换行
+ *
+ * 这一行是渲染在 form-create 的属性面板里的，实测面板只有 260px 宽：
+ * 原先两个 flex-1 的字段选择器被挤到 34px —— 框还在，但选中的字段名一个字都看不见，
+ * 用户没法确认自己配的是哪一对字段。
+ * 用 `flex: 1 1 140px` 给一个最小基准，窄面板下自动折成多行，宽面板下仍是一行。
+ */
+.mapping-row .el-select {
+  flex: 1 1 140px;
+  min-width: 0;
 }
 
 .mapping-arrow {

@@ -117,10 +117,7 @@
           <StepFormDesign ref="stepFormRef" v-model="formData" />
         </div>
 
-        <!--
-          逻辑与扩展。当前不在步骤条里（见 HIDDEN_STEP_KEYS），
-          但仍要挂载 —— 它的 collect() 负责保住存量表单的联动与脚本配置
-        -->
+        <!-- 逻辑与扩展：联动规则、跨字段校验、扩展方式 -->
         <div v-show="activeStepKey === 'logic'">
           <StepLogic ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
         </div>
@@ -204,14 +201,13 @@ const ALL_STEPS = [
 /**
  * 暂不开放的步骤
  *
- * 「逻辑与扩展」的联动规则、跨字段校验、前端脚本三块还没打磨完，
- * 先从步骤条里摘掉，等完善后把这里清空即可恢复，不必改别处。
+ * 往里加 key 即可把某一步从步骤条里摘掉。
  *
- * ⚠️ 只是不让用户走到它，组件本身仍然挂载（下面用的是 v-show 而非 v-if）——
- * collect() 照常把已有的 logicRules / validateRules / formScript 收回去。
+ * ⚠️ 摘掉的步骤组件本身仍然要挂载（下面用的是 v-show 而非 v-if）——
+ * collect() 负责把已有的 logicRules / validateRules / formScript 收回去。
  * 改成不挂载的话，存量表单只要在设计器里点一次保存，这三份配置就被清空了。
  */
-const HIDDEN_STEP_KEYS = ['logic']
+const HIDDEN_STEP_KEYS: string[] = []
 
 const loading = ref(false)
 const saveLoading = ref(false)

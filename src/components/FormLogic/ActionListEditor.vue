@@ -7,7 +7,7 @@
         :model-value="action.type"
         placeholder="动作"
         size="small"
-        class="w-140px"
+        class="action-type"
         @update:model-value="(v) => patch(idx, { type: v, payload: undefined })"
       >
         <el-option-group v-for="group in ACTION_GROUPS" :key="group.label" :label="group.label">
@@ -20,7 +20,7 @@
         placeholder="目标字段"
         filterable
         size="small"
-        class="w-180px"
+        class="action-target"
         @update:model-value="(v) => patch(idx, { target: v })"
       >
         <el-option v-for="opt in fieldOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -32,7 +32,7 @@
         :model-value="action.payload?.value"
         placeholder="要赋的值"
         size="small"
-        class="flex-1"
+        class="action-value"
         @update:model-value="(v) => patch(idx, { payload: { value: v } })"
       />
       <div v-else class="value-placeholder">
@@ -136,6 +136,21 @@ const patch = (index: number, p: Partial<LogicAction>) => {
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+}
+
+/* 与 ConditionGroupEditor 同理：el-select 自带 width:100%，会把 w-140px 之类压过去，
+   导致右边 flex:1 的赋值输入框被挤成 0 宽。用 flex 三值写法钉死宽度。 */
+.action-type {
+  flex: 0 0 140px;
+}
+
+.action-target {
+  flex: 0 0 180px;
+}
+
+.action-value {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .value-placeholder {

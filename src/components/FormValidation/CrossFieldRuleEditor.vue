@@ -121,9 +121,19 @@ const model = defineModel<CrossFieldRule[]>({ default: () => [] })
  */
 const rules = ref<CrossFieldRule[]>([])
 
+/**
+ * 自身 emit 引发的回灌要跳过
+ *
+ * 「必须满足」里的条件值输入框每按一个键就 emit 一次，emit 后 model 变化会触发
+ * 下面的 watch 重建整个 rules 数组，正在输入的那个框被连带重建、值被打回 ——
+ * 表现为条件值那一格怎么都填不进去。只有外部真的换了一份规则时才需要回灌。
+ */
+let suppressWatch = false
+
 watch(
   model,
   (value) => {
+    if (suppressWatch) return
     rules.value = (value ?? []).map((rule) => ({
       ...rule,
       // 缺省视为启用。不补上的话开关会显示为「关」，而它实际是生效的
@@ -134,7 +144,12 @@ watch(
 )
 
 const emitChange = () => {
+  suppressWatch = true
   model.value = rules.value.map((rule) => ({ ...rule }))
+  // watch 的 pre flush 先于此执行；这里兜底复位，避免 model 未变化时标志残留
+  nextTick(() => {
+    suppressWatch = false
+  })
 }
 
 const patchRule = (index: number, patch: Partial<CrossFieldRule>) => {
@@ -173,7 +188,7 @@ const incompleteRules = computed(() =>
     .map((rule) => rule.name || rule.id)
 )
 
-defineExpose({ incompleteRules })
+defineExpose({ incompleteRules, flush: emitChange })
 </script>
 
 <style lang="scss" scoped>
