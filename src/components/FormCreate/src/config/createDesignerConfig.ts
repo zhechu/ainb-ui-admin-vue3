@@ -87,6 +87,24 @@ export const createDesignerConfig = (scene: DesignerScene, options: DesignerConf
     // AI 生成字段不在低代码表单模块范围内。
     // bpm 场景保留内核默认值（开启），两者的差异是有意的，不是漂移
     config.showAi = false
+
+    /**
+     * 去掉最左边那条 40px 的图标切换栏（组件列表 / 国际化配置 / JSON）
+     *
+     * 关掉它之后：
+     * - 组件列表面板**照常显示** —— 设计器的 `activeModule` 默认就是 `'base'`，
+     *   不靠这条栏来激活，拖控件的主流程不受影响
+     * - 国际化配置与 JSON 预览两个面板随之**不可达**。前者本模块是纯中文、用不上；
+     *   后者是开发期调试视图，不该暴露给配表单的人
+     * - 左栏的收起/展开不受影响：展开按钮 `._fc-l-open` 是独立元素，
+     *   不挂在这条栏上，收起后仍能点回来
+     *
+     * 三个开关里只关这一个就够：栏没了，`showLanguage` / `showJsonPreview`
+     * 控制的入口本来就没地方显示，再关是多余的。
+     *
+     * bpm 场景保留内核默认值（显示），与 showAi 一样属于有意的场景差异。
+     */
+    config.showMenuBar = false
   }
 
   if (options.baseRule) {
