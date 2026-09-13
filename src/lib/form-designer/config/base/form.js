@@ -69,7 +69,8 @@ export default function form({t}) {
             type: 'FnConfig',
             field: 'formCreate_event',
             name: 'event',
-            warning: t('form.controlDocument', {doc: '<a target="_blank" href="https://form-create.com/v3/guide/global-event" style="color: inherit;text-decoration: underline;">' + t('form.document') + '</a>'}),
+            // 【本地改动 #6，见 ../../VENDOR.md】同 field.js，去掉指向 form-create.com 的外链
+            warning: t('form.controlDocument', {doc: t('form.document')}),
             value: {},
             col: {show: true},
             props: {

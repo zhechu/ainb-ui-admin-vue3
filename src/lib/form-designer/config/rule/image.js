@@ -17,7 +17,10 @@ export default {
                 height: '100px',
             },
             props: {
-                src: 'https://static.form-create.com/example.png',
+                // 【本地改动 #7，见 ../../VENDOR.md】上游默认值是
+                // https://static.form-create.com/example.png。这个值会随表单 JSON 落库，
+                // 并在生产环境对每个未配置的图片控件发起到上游 CDN 的请求，置空
+                src: '',
             }
         };
     },

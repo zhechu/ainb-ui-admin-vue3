@@ -344,7 +344,9 @@ export const getRuleDescription = (children) => {
 export function getInjectArg(t) {
     return {
         name: '$inject',
-        info: `$inject <a href="https://view.form-create.com/inject" target="_blank">${t('form.document')}</a>`,
+        // 【本地改动 #6，见 ../VENDOR.md】上游这里挂的是指向 form-create.com 的外链。
+        // 这是个 info 气泡，塞一整句手册指引太长，直接只留参数名
+        info: '$inject',
     }
 }
 

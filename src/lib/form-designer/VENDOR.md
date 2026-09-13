@@ -40,6 +40,12 @@
 | 3 | `components/FcDesigner.vue` | 删掉 AI 面板：左侧入口按钮、`<FcAiPanel>`、import 与组件注册；`el-aside` 宽度判断去掉 `activeModule === 'ai'` 分支。同时删除 `components/ai/` | 上游的 AI 生成表单面板未接任何后端，本分支自建了整套低代码体系。顺带省掉 `marked` 依赖 |
 | 4 | `index.js` + `components/SignaturePad.vue` | 删掉 `SignaturePad` 的 import 与 `addComponent`，并删除组件文件 | `useFormCreateDesigner.ts:67` 本来就 `removeMenuItem('signaturePad')`，契约里也标了 `supported=false`（值是 canvas 直出的 base64、未接文件存储），工程用自建的 `Signature.vue` 替代。顺带省掉 `signature_pad` 依赖 |
 | 5 | `config/rule/{password,dateRange,timeRange}.js` | `rule()` 产出的 `type` 由 `input` / `datePicker` / `timePicker` 改成 `password` / `dateRange` / `timeRange` | 见下「控件类型与契约对齐」 |
+| 6 | `locale/{zh-cn,en}.js` + `config/base/{field,form}.js` + `components/EventConfig.vue` + `utils/index.js` | 去掉 4 处指向 form-create.com 的文档外链，改为纯文本指向工程自带的中文手册 | 不把用户导向上游站点；工程有自己的 `docs/form-design-guide/`。`form.document` 的文案一并从「帮助文档」改成「表单设计使用手册（docs/form-design-guide）」，这样调用点只需去掉 `<a>` 包装，i18n 结构不变 |
+| 7 | `components/FcDesigner.vue` + `style/index.css` + `config/rule/image.js` | 移除画布底部链到 form-create.com 的品牌水印，并把 `._fc-m-con` 的 `padding` 从 `20px 20px 36px` 改回四边一致的 `20px`；图片控件默认 `src` 由上游 CDN 地址改为空串 | 本项目已改名「X评云」，水印对使用者是干扰（form-create 是 MIT 许可，去品牌不受限制）。底部那多出的 16px 是给水印预留的（水印 `bottom:9px` + `height:17px`，占到距底 26px），水印删了就该还给画布。默认 `src` 更要紧：它会随表单 JSON **落库**，并在生产环境对每个未配置的图片控件发起到上游 CDN 的请求 |
+
+> **升级时第 6、7 项最容易被漏。** 它们改的是文案与默认值，不是逻辑 ——
+> 覆盖上游文件后不会报错、不会有测试变红，只会悄悄把外链和 CDN 地址放回来。
+> 升级后建议直接 `grep -rn "form-create\.com" src/lib/form-designer/` 复核一遍。
 
 > **改动 2 / 4 只删组件，不删 `config/rule/{editor,signaturePad}.js` 的菜单规则。**
 > 工程的 `removeMenuItem('fcEditor')` / `removeMenuItem('signaturePad')` 要能命中这两个菜单项，
@@ -117,3 +123,11 @@ designer 用的是 **CodeMirror 5**。它 package.json 里写的 `"codemirror": 
 | 工程文件 | 引用 | 为什么 |
 |---|---|---|
 | `src/views/infra/formDesign/editor/StepFormDesign.vue` | `@/lib/form-designer/config/base/field` | `config.baseRule` 钩子只支持整体替换，没有「只改其中一项」的模式。直接引上游默认规则再替换「字段ID」一项，比手抄一份不容易漂移 |
+
+## 许可证
+
+本目录是 form-create-designer 的源码副本，MIT 许可，版权归上游作者（xaboy）。
+同目录下的 `LICENSE` 与上游原件逐字节一致，**不得删除**。
+
+MIT 允许修改与去品牌（本地改动清单里确有移除品牌水印的条目），
+但要求保留版权声明与许可证文本 —— 那正是这个 `LICENSE` 文件的作用。

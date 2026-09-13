@@ -552,7 +552,10 @@
 ._fc-m-con {
     position: relative;
     background: #F5F5F5;
-    padding: 20px 20px 36px;
+    /* 【本地改动 #7，见 ../VENDOR.md】上游是 padding: 20px 20px 36px ——
+       底部多出的 16px 是给品牌水印预留的位置（水印 bottom:9px + height:17px，占到距底 26px）。
+       水印已移除，这里改回四边一致，把那块空间还给画布 */
+    padding: 20px;
 }
 
 ._fc-m-drag {

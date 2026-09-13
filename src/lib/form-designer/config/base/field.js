@@ -27,7 +27,9 @@ export default function field({t}) {
             name: 'control',
             value: [],
             title: t('form.control'),
-            warning: t('form.controlDocument', {doc: '<a target="_blank" href="https://view.form-create.com/control" style="color: inherit;text-decoration: underline;">' + t('form.document') + '</a>'}),
+            // 【本地改动 #6，见 ../../VENDOR.md】上游这里挂的是指向 form-create.com 的外链。
+            // 本项目不把用户导向上游站点，改为指向工程自带的中文手册（纯文本，不带链接）
+            warning: t('form.controlDocument', {doc: t('form.document')}),
             props: {
                 defaultValue: [],
                 validate(val) {

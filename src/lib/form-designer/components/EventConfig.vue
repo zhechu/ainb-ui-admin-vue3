@@ -103,7 +103,10 @@
                 <el-main>
                     <el-container class="_fd-event-r">
                         <el-header class="_fd-event-head" height="40px" v-if="activeData">
-                            <div><a target="_blank" href="https://form-create.com/v3/instance/">{{t('form.document')}}</a></div>
+                            <!-- 【本地改动 #6，见 ../VENDOR.md】上游这里是指向 form-create.com 的外链，
+                                 改为纯文本指向工程自带手册。保留这个 div 是为了撑住 header 的
+                                 space-between 布局，去掉会让右侧按钮跑到左边 -->
+                            <div>{{ t('form.controlDocument', {doc: t('form.document')}) }}</div>
                             <div>
                                 <el-button size="small" @click="close">{{ t('props.cancel') }}</el-button>
                                 <el-button size="small" type="primary" @click="save" color="#2f73ff">{{
