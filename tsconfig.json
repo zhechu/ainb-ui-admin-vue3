@@ -27,8 +27,12 @@
       // 运行时解析走 vite.config.ts 的 alias，这里只负责类型：
       // 工程里有 4 处 `import type { Rule, Api } from '@form-create/element-ui'`，
       // 不配这两条 pnpm ts:check 会整片报红。
+      "@form-create/element-ui/auto-import": [
+        "src/lib/form-create/element-ui/auto-import.d.ts"
+      ],
       "@form-create/element-ui": ["src/lib/form-create/element-ui/types/index.d.ts"],
-      "@form-create/core": ["src/lib/form-create/core/types/index.d.ts"]
+      "@form-create/core": ["src/lib/form-create/core/types/index.d.ts"],
+      "@form-create/designer": ["src/lib/form-designer/types/index.d.ts"]
     },
     "types": [
       // "@intlify/unplugin-vue-i18n/types",

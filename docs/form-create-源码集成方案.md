@@ -458,3 +458,91 @@ vendored 后走 Vite 正常管线被提取成独立 CSS 文件。
    单独跑却通过。它依赖共享的示例表单状态（用例源码里自己注释了这点），
    属于**执行组合相关的既有脆弱性**，不是回归 —— 全量跑中它是绿的。
    教训：**子集跑的结果不能直接当回归判据**，只有全量对照基线才算数。
+
+---
+
+## 11. 阶段 2 完成记录（2026-09-14）
+
+**范围**：vendor designer；卸载 `@form-create/designer` 与 `@form-create/element-ui`。
+**结论**：行为零变化，验收通过。至此 `@form-create/*` 已彻底从 `node_modules` 消失。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `src/lib/form-designer/**` | 新增 108 个源码文件 + `VENDOR.md` |
+| `package.json` | −`@form-create/designer` −`@form-create/element-ui`；+`codemirror5`(`npm:codemirror@5.65.7`) +`js-beautify` |
+| `vite.config.ts` | alias 加 `@form-create/designer`；`codeSplitting` 的 `form-designer` 组改为匹配 `src/lib/form-designer` |
+| `build/vite/optimize.ts` | `exclude` 清空（`@form-create/*` 已不在 node_modules）；`include` 加 codemirror5 的 4 条深层子路径与 `js-beautify` |
+| `tsconfig.json` | `paths` 加 `@form-create/designer` 与 `@form-create/element-ui/auto-import` |
+
+本地改动 4 项全部登记在 `src/lib/form-designer/VENDOR.md`。
+
+按决策一并砍掉了 designer 自带但本项目不用的两块，**省掉 `marked` 与 `signature_pad` 两个依赖**：
+AI 生成表单面板（未接任何后端）、手写签名组件（契约已标 `supported=false`，工程用自建的 `Signature.vue`）。
+另外 `@form-create/component-wangeditor` 依赖已停维护的 wangeditor v4，同样未引入。
+
+> **只删组件，不删 `config/rule/{editor,signaturePad}.js` 的菜单规则**——
+> 工程的 `removeMenuItem('fcEditor')` / `removeMenuItem('signaturePad')` 要能命中它们。
+
+### 验收对照
+
+| 项 | 基线 | 阶段 1 | 阶段 2 | 判定 |
+|---|---|---|---|---|
+| `ts:check` | 22 errors | 22 | **22，逐条一致** | ✅ |
+| `build:prod` | ✓ 1m 4s | ✓ 1m 1s | **✓ 46.3s** | ✅ |
+| `test:e2e` | 297 / 5 failed | 297 / 5 | **297 / 5，同样 5 条同样行号** | ✅ |
+| `lint` | 16 problems | 16 | **16**，无一条来自 `src/lib` | ✅ |
+
+### 体积对照
+
+| 产物 | 基线 | 阶段 2 | 变化 |
+|---|---|---|---|
+| `form-create-*.js` | 740.95 kB | 715.90 kB | −25.05 kB |
+| `form-create-*.css` | 无 | 206.94 kB | 新增（样式提取方式变化） |
+| `form-designer-*.js` | 1071.26 kB | **836.25 kB** | **−235.01 kB** |
+| `form-designer-*.css` | 无 | 115.03 kB | 新增（同上） |
+
+JS 合计 −260 kB，主要来自砍掉 AI 面板 / 签名 / wangeditor；
+新增的 322 kB CSS 是从「JS 注入」改为「外链提取」的同一批样式，并非新增内容。
+designer 的 dist 原本用 `vite-plugin-css-injected-by-js` 把样式塞进 JS，
+vendored 后走 Vite 正常管线。全量 e2e 含像素级布局断言且全绿。
+
+### 踩到的问题
+
+卸载 npm 包后 `ts:check` 多出一条
+`Cannot find module '@form-create/element-ui/auto-import'` ——
+`tsconfig.paths` 需要为这个**子路径**单独加一条（包名那条覆盖不到子路径）。
+
+相关地，`.gitignore` 里的 `auto-*.d.ts`（本意是忽略 unplugin 生成的
+`src/types/auto-{imports,components}.d.ts`）会**误伤** vendored 的
+`element-ui/auto-import.d.ts`。阶段 1 提交时已加例外规则 ——
+否则这个文件不入库，别人 clone 下来就是上面那个错。
+
+---
+
+## 12. 当前状态与后续
+
+阶段 0–2 已完成。**阶段 3（把运行时猴补丁收敛回源码）尚未开始**，
+按 §6 的约定它单独立项。
+
+### 交接给人工验收的部分
+
+自动化到此为止。按根 `CLAUDE.md` 的判据，**必须在浏览器里真走一遍**
+设计器全流程（拖拽 → 属性面板 → 保存 → 发布 → 运行时渲染）。
+构建通过 + e2e 全绿 + 单测全绿，三者加起来都不能替代它。
+
+重点看两处自动化最不容易覆盖的地方：
+
+1. **样式**。两个 CSS chunk 的交付方式都变了（JS 注入 → 外链提取），
+   层叠顺序与加载时机可能不同。e2e 里的像素级断言只覆盖了列表设计面板那几处。
+2. **CodeMirror 5 编辑器**。designer 里的函数编辑器、JSON 结构编辑器、
+   HTML 编辑器共 4 处（`FnEditor` / `FnInput` / `Struct` / `HtmlEditor`），
+   改用了别名依赖 `codemirror5`。e2e 未覆盖这些编辑器的实际输入与语法高亮。
+
+### 既有问题（本次未处理，建议单独跟进）
+
+`tests/e2e/form-design-runtime-config.spec.ts` 的 5 条失败自 `0fe8f3a33`
+起就存在，与本次无关。失败形态是 `.el-alert--warning` 数量断言对不上，
+即**警告该出的时候没出、不该出的时候出了** —— 正好是根 `CLAUDE.md`
+点名的那类「配了但不生效、界面无提示」的缺陷。

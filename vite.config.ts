@@ -112,6 +112,11 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
                 {
                     find: '@form-create/component-subform',
                     replacement: pathResolve('src/lib/form-create/components/subform')
+                },
+                // 设计器同样已 vendored（src/lib/form-designer，见其 VENDOR.md）
+                {
+                    find: '@form-create/designer',
+                    replacement: pathResolve('src/lib/form-designer/index.js')
                 }
             ]
         },
@@ -142,7 +147,7 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
                             // 这条 test 必须跟着改，否则它会散进主 chunk。
                             // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
                             { name: 'form-create', test: /src[\\/]lib[\\/]form-create[\\/]/ },
-                            { name: 'form-designer', test: /node_modules[\\/]@form-create[\\/]designer[\\/]/ },
+                            { name: 'form-designer', test: /src[\\/]lib[\\/]form-designer[\\/]/ },
                             { name: 'monaco-editor', test: /node_modules[\\/]monaco-editor[\\/]/ } // Monaco Editor 单独打包
                         ]
                     }
