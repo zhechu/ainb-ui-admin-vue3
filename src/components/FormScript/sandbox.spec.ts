@@ -35,6 +35,7 @@ const makeContext = (overrides: Partial<SandboxContext> = {}): SandboxContext =>
     formatMoney: vi.fn().mockReturnValue(''),
     uuid: vi.fn().mockReturnValue('uuid')
   },
+  callDataInterface: vi.fn().mockResolvedValue([]),
   ...overrides
 })
 
@@ -219,12 +220,14 @@ describe('沙箱屏蔽', () => {
     expect(ctx.message.warning).toHaveBeenCalledWith('提示')
   })
 
-  it('⚠️ 沙箱不提供任何后端调用入口', () => {
+  it('⚠️ 唯一的后端入口是 callDataInterface，任意 URL 请求仍然拿不到', () => {
     const ctx = makeContext()
-    // callDataInterface 曾在方案里被讨论过，最终明确不提供
-    expect((ctx as any).callDataInterface).toBeUndefined()
-    const result = runScript('return typeof callDataInterface', ctx)
-    expect(result.value).toBe('undefined')
+    // 受控开放：只能按编码调已登记的数据接口，服务端还会强制只读。
+    // 而 fetch / XHR / WebSocket 这些能打任意 URL 的东西一个都不给
+    expect(runScript('return typeof callDataInterface', ctx).value).toBe('function')
+    expect(runScript('return typeof fetch', ctx).value).toBe('undefined')
+    expect(runScript('return typeof XMLHttpRequest', ctx).value).toBe('undefined')
+    expect(runScript('return typeof WebSocket', ctx).value).toBe('undefined')
   })
 
   it('脚本里的赋值不会污染真实全局', () => {
@@ -300,6 +303,77 @@ describe('异常与超时隔离', () => {
   it('beforeSubmit 返回 false 视为阻断', async () => {
     const result = await runSubmitHook('return false', makeContext(), 'BLOCK', 1000)
     expect(result.value).toBe(false)
+  })
+
+  // ========== 受控的后端调用 ==========
+
+  it('⚠️ beforeSubmit 里能 await callDataInterface，并按结果决定放不放行', async () => {
+    const callDataInterface = vi.fn().mockResolvedValue([{ id: 1, name: '已存在的企业' }])
+    const result = await runSubmitHook(
+      `
+      const rows = await callDataInterface('check_credit', { uscc: formData.uscc })
+      if (rows && rows.length > 0) { return false }
+      return true
+      `,
+      makeContext({ callDataInterface }),
+      'BLOCK',
+      2000
+    )
+    expect(callDataInterface).toHaveBeenCalledWith('check_credit', { uscc: undefined })
+    expect(result.value, '查到重复就该阻断提交').toBe(false)
+  })
+
+  it('查不到数据时放行', async () => {
+    const result = await runSubmitHook(
+      `
+      const rows = await callDataInterface('check_credit', {})
+      return !rows || rows.length === 0
+      `,
+      makeContext({ callDataInterface: vi.fn().mockResolvedValue([]) }),
+      'BLOCK',
+      2000
+    )
+    expect(result.value).toBe(true)
+  })
+
+  it('⚠️ 数据接口调用超时仍受超时保护，不会把提交永久挂住', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const never = vi.fn().mockReturnValue(new Promise(() => {}))
+    const result = await runSubmitHook(
+      'await callDataInterface("slow", {}); return true',
+      makeContext({ callDataInterface: never }),
+      'BLOCK',
+      120
+    )
+    expect(result.timedOut).toBe(true)
+    // 默认 BLOCK：查不完就不该放行，否则等于静默跳过校验
+    expect(result.value).toBe(false)
+    warn.mockRestore()
+  })
+
+  it('⚠️ 同步钩子里的 await 由静态检查提前点名，不必等到运行时报语法错', () => {
+    const source = "const rows = await callDataInterface('x', {})"
+    // 提交前钩子：放行
+    expect(checkScript(source, { allowAwait: true }).passed).toBe(true)
+    // 其余钩子：报出来，并说清楚替代写法
+    const result = checkScript(source)
+    expect(result.passed).toBe(false)
+    expect(result.issues[0].pattern).toBe('await')
+    expect(result.issues[0].reason).toContain('提交前')
+    expect(result.issues[0].line).toBe(1)
+  })
+
+  it('await 出现在标识符中间时不误报', () => {
+    expect(checkScript('const awaiting = 1').passed).toBe(true)
+    expect(checkScript('myawait x').passed).toBe(true)
+  })
+
+  it('⚠️ 同步钩子里写 await 是语法错误，且被兜住不外抛', () => {
+    // 只有 beforeSubmit 被编译成 async。其余钩子必须保持同步，
+    // 否则字段显隐会挪到下一个微任务、比渲染慢半拍
+    const result = runScript('await callDataInterface("x", {})', makeContext())
+    expect(result.ok).toBe(false)
+    expect(result.error).toBeTruthy()
   })
 
   it('beforeSubmit 正常完成时放行', async () => {

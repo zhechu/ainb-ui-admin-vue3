@@ -639,6 +639,8 @@ import {
   type AmountDisplayField
 } from '@/components/FormInput'
 import * as RuntimeApi from '@/api/infra/formDesign/runtime'
+import * as DataInterfaceApi from '@/api/infra/dataInterface'
+import { applyPlainTextToggle } from '@/components/FormWidgets/plainText'
 import { getDictTree, getStrDictOptions } from '@/utils/dict'
 import { isValuelessOperator } from '@/components/FormWidgets/searchWidget'
 import {
@@ -2052,7 +2054,10 @@ const scriptRuntime = useScriptRuntime({
     warning: (text) => message.warning(text),
     error: (text) => message.error(text),
     confirm: (text) => message.confirm(text)
-  }
+  },
+  // 脚本里的 callDataInterface 由这里落地。走 fetchOptions 而不是 invoke：
+  // 前者只需登录态且服务端强制只读，填单人不会有数据接口的管理权限
+  invokeDataInterface: (code, args) => DataInterfaceApi.fetchOptions(code, args)
 })
 
 /**
@@ -2223,6 +2228,18 @@ const loadConfig = async () => {
       applyValidateRules(rules, {
         check: (field, value) =>
           RuntimeApi.checkFieldUnique(formCode.value, field, value, currentPk.value)
+      })
+      // 脱敏字段的「查看明文」按钮。只在编辑态挂 —— 新增时没有已存的值，
+      // 详情态是只读的，两种情况下这个按钮都没有意义
+      applyPlainTextToggle(rules, {
+        pk: () => currentPk.value,
+        fetch: (field) =>
+          RuntimeApi.getPlainField(formCode.value, currentPk.value, field),
+        setValue: (field, value) => {
+          fApi.value?.setValue?.(field, value)
+        },
+        notify: (type, text) =>
+          type === 'success' ? message.success(text) : message.error(text)
       })
       allRules.value = rules
       // 折叠分组要在挂开关与算规则树之前先收集出来

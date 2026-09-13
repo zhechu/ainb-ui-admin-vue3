@@ -167,6 +167,19 @@ export const checkFieldUnique = (
   })
 }
 
+/**
+ * 查看脱敏字段的明文
+ *
+ * 一次只还原一条数据的一个字段。服务端只对确实配了脱敏的字段放行 ——
+ * 否则它就成了任意行任意列的明文读取口。
+ */
+export const getPlainField = (code: string, id: string | number, field: string) => {
+  return request.get({
+    url: `/infra/form-design/runtime/${code}/plain-field`,
+    params: { id, field }
+  })
+}
+
 export const createData = (code: string, data: Record<string, any>) => {
   return request.post({ url: `/infra/form-design/runtime/${code}/create`, data })
 }

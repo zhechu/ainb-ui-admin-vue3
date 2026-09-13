@@ -35,6 +35,7 @@
           :form-code="modelData.code"
           :has-server-extension="modelData.hasServerExtension"
           :server-extension-names="modelData.serverExtensionNames"
+          :field-options="fieldOptions"
         />
       </el-tab-pane>
     </el-tabs>

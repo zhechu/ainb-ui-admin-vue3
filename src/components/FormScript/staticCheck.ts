@@ -213,13 +213,41 @@ const stripCommentsAndStrings = (source: string): string => {
  * @param source 脚本文本
  * @returns 检查结果。passed 为 false 时不允许保存
  */
-export const checkScript = (source: string | null | undefined): ScriptCheckResult => {
+/** 同步钩子里不允许出现的 await */
+const AWAIT_PATTERN = /\bawait\s/g
+
+export const checkScript = (
+  source: string | null | undefined,
+  options: { allowAwait?: boolean } = {}
+): ScriptCheckResult => {
   if (!source || !source.trim()) {
     return { passed: true, issues: [] }
   }
   const stripped = stripCommentsAndStrings(source)
   const originalLines = source.split('\n')
   const issues: ScriptCheckIssue[] = []
+
+  // 只有 beforeSubmit 被编译成 async 函数，其余钩子里写 await 是语法错误。
+  // 单独报出来而不是任由它抛 SyntaxError —— 后者只说 Unexpected reserved word，
+  // 用户看不出这是「这个钩子不支持 await」而不是自己代码写错了
+  if (!options.allowAwait) {
+    AWAIT_PATTERN.lastIndex = 0
+    let awaitMatch: RegExpExecArray | null
+    while ((awaitMatch = AWAIT_PATTERN.exec(stripped)) !== null) {
+      const awaitLine = stripped.slice(0, awaitMatch.index).split('\n').length
+      issues.push({
+        pattern: 'await',
+        reason:
+          '只有「提交前」钩子支持 await（其余钩子必须同步执行，否则字段显隐会慢半拍）。' +
+          '这里可以改用 callDataInterface(...).then(...)',
+        line: awaitLine,
+        lineText: (originalLines[awaitLine - 1] ?? '').trim()
+      })
+      if (awaitMatch.index === AWAIT_PATTERN.lastIndex) {
+        AWAIT_PATTERN.lastIndex++
+      }
+    }
+  }
 
   for (const rule of FORBIDDEN_RULES) {
     // 每次都重置 lastIndex：正则带 g 标志且被复用，不重置会漏匹配
@@ -257,7 +285,8 @@ export const checkScriptBundle = (
     return result
   }
   for (const [hook, source] of Object.entries(scripts)) {
-    const checked = checkScript(source)
+    // 只有 beforeSubmit 编译成 async，其余钩子里的 await 要报出来
+    const checked = checkScript(source, { allowAwait: hook === 'beforeSubmit' })
     if (!checked.passed) {
       result[hook] = checked
     }

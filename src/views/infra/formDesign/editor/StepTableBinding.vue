@@ -33,31 +33,35 @@
       </el-form-item>
 
       <el-form-item label="主表" prop="mainTable">
-        <el-select
-          v-model="modelData.mainTable"
-          filterable
-          remote
-          :remote-method="handleTableSearch"
-          :loading="tableLoading"
-          placeholder="请选择主表"
-          @change="handleMainTableChange"
-        >
-          <el-option
-            v-for="table in tableList"
-            :key="table.name"
-            :label="table.comment ? `${table.name}（${table.comment}）` : table.name"
-            :value="table.name"
-            :disabled="table.frameworkTable"
+        <div class="table-field">
+          <el-select
+            v-model="modelData.mainTable"
+            filterable
+            remote
+            :remote-method="handleTableSearch"
+            :loading="tableLoading"
+            placeholder="请选择主表"
+            class="table-field-select"
+            @change="handleMainTableChange"
           >
-            <span>{{ table.name }}</span>
-            <span v-if="table.comment" style="color: var(--el-text-color-secondary); margin-left: 8px">
-              {{ table.comment }}
-            </span>
-            <el-tag v-if="table.frameworkTable" type="danger" size="small" style="margin-left: 8px">
-              系统表
-            </el-tag>
-          </el-option>
-        </el-select>
+            <el-option
+              v-for="table in tableList"
+              :key="table.name"
+              :label="table.comment ? `${table.name}（${table.comment}）` : table.name"
+              :value="table.name"
+              :disabled="table.frameworkTable"
+            >
+              <span>{{ table.name }}</span>
+              <span v-if="table.comment" style="color: var(--el-text-color-secondary); margin-left: 8px">
+                {{ table.comment }}
+              </span>
+              <el-tag v-if="table.frameworkTable" type="danger" size="small" style="margin-left: 8px">
+                系统表
+              </el-tag>
+            </el-option>
+          </el-select>
+          <TableQuickActions :table="modelData.mainTable" />
+        </div>
       </el-form-item>
 
       <el-form-item label="主键列名" prop="mainPk">
@@ -242,7 +246,14 @@
     </div>
 
     <el-table v-if="relationTables.length > 0" :data="relationTables" border size="small">
-      <el-table-column label="表名" min-width="170" prop="table" show-overflow-tooltip />
+      <el-table-column label="表名" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">
+          <div class="table-field">
+            <span class="table-field-name">{{ row.table }}</span>
+            <TableQuickActions :table="row.table" />
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="类型" width="110">
         <template #default="{ row }">
           <el-tag :type="RELATION_TYPE_TAG[row.type]" size="small">
@@ -410,6 +421,7 @@ import * as FormDesignApi from '@/api/infra/formDesign'
 import { useStepRestore } from './useStepRestore'
 import BindingDocDrawer from './BindingDocDrawer.vue'
 import DocLabel from './DocLabel.vue'
+import TableQuickActions from './TableQuickActions.vue'
 
 defineOptions({ name: 'FormDesignStepTableBinding' })
 
@@ -1070,6 +1082,31 @@ onMounted(() => {
 .binding-form,
 .audit-table {
   max-width: 680px;
+}
+
+/*
+  表名 + 快捷按钮一行排开
+
+  宽度用 flex 三值而不是 UnoCSS 的 w-XXXpx：Element Plus 的 .el-select 自带
+  width:100%，与单类的 .w-XXXpx 优先级相同、靠加载顺序决胜，实测会把选择器
+  撑满并把旁边的按钮挤没。详见 tests/e2e/form-design-editor-layout.spec.ts
+*/
+.table-field {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+}
+
+.table-field-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.table-field-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .binding-toolbar {

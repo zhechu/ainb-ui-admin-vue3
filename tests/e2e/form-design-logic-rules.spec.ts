@@ -140,6 +140,25 @@ async function pickOption(page: Page, trigger: Locator, option: string | RegExp)
   await dropdown.getByRole('option', { name: option }).first().click()
 }
 
+/**
+ * 往 Monaco 编辑器里写脚本
+ *
+ * ⚠️ 不能用 locator.fill()：Monaco 的 textarea 只是个接收键盘事件的隐藏输入框，
+ * 内容由它自己的 model 维护，fill 写进去不会变成编辑器内容。
+ * 只能点进去用键盘敲，并且要先全选清空，否则是在已有内容后面追加。
+ */
+async function typeInMonaco(page: Page, text: string) {
+  const editor = page.locator('.monaco-editor').first()
+  await expect(editor).toBeVisible({ timeout: 20_000 })
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.press('Delete')
+  // ⚠️ 用 insertText 而不是 type()：Monaco 开着括号/引号自动闭合，
+  // 逐键敲 `setVisible('x')` 会被补成 `setVisible('x'))''`。
+  // insertText 走的是输入法提交路径，不触发这些按键联动
+  await page.keyboard.insertText(text)
+}
+
 /** 按钮文字精确匹配。el-button 里有 Icon，用 hasText 正则比 accessible name 稳 */
 function buttonByText(scope: Page | Locator, text: string): Locator {
   return scope.locator('button').filter({ hasText: new RegExp(`^\\s*${text}\\s*$`) })
@@ -318,9 +337,7 @@ test.describe('联动规则编辑器', () => {
       await page.getByText('逻辑与扩展', { exact: true }).last().click()
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
-      const editor = page.locator('.script-input textarea').first()
-      await expect(editor).toBeVisible({ timeout: 15_000 })
-      await editor.fill("setVisible('reason', true)")
+      await typeInMonaco(page, "setVisible('reason', true)")
 
       await saveForm(page)
 
@@ -560,9 +577,7 @@ test.describe('联动规则编辑器', () => {
       await page.getByText('逻辑与扩展', { exact: true }).last().click()
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
-      const editor = page.locator('.script-input textarea').first()
-      await expect(editor).toBeVisible({ timeout: 15_000 })
-      await editor.fill("const a = 1\nfetch('/admin-api/system/user/list')")
+      await typeInMonaco(page, "const a = 1\nfetch('/admin-api/system/user/list')")
 
       // 静态检查结果要带行号，保存时才报错的话用户得自己回来找是哪一行
       await expect(page.getByText(/以下写法不被允许/)).toBeVisible({ timeout: 10_000 })

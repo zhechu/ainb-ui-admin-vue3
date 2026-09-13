@@ -45,6 +45,13 @@ export interface ScriptRuntimeOptions {
   formData: () => Record<string, any>
   /** form-create 的 api 实例 */
   api: () => any
+  /**
+   * 调用数据接口。由宿主注入 —— 本模块要能在 node 环境下纯逻辑单测，
+   * 直接 import API 层会把 axios/localStorage 整条依赖链拖进来
+   *
+   * 不注入时 callDataInterface 返回 null 并记一条警告，脚本不会崩
+   */
+  invokeDataInterface?: (code: string, args: Record<string, any>) => Promise<any>
   /** 提示服务。由调用方注入 —— 本模块不该决定用哪套 UI 组件 */
   message: {
     success: (text: string) => void
@@ -108,6 +115,33 @@ export const useScriptRuntime = (options: ScriptRuntimeOptions) => {
             const r = (Math.random() * 16) | 0
             return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
           })
+      },
+      /**
+       * 唯一的后端入口
+       *
+       * 走 fetchOptions 而不是 invoke：前者只需登录态、且服务端强制只读，
+       * 填单人不可能有数据接口的管理权限。
+       *
+       * 出错不向脚本抛，而是记日志后返回 null —— 网络抖一下就让整个
+       * beforeSubmit 崩掉、进而阻断提交，比「这次校验没查成」严重得多。
+       * 脚本作者可以用 `if (!rows)` 判断没取到。
+       */
+      callDataInterface: async (code: string, args: Record<string, any> = {}) => {
+        if (!code) {
+          console.warn('[FormScript] callDataInterface 没有传接口编码')
+          return null
+        }
+        const invoke = options.invokeDataInterface
+        if (!invoke) {
+          console.warn('[FormScript] 宿主没有注入数据接口调用能力，callDataInterface 不可用')
+          return null
+        }
+        try {
+          return await invoke(code, args ?? {})
+        } catch (e) {
+          console.error(`[FormScript] 调用数据接口(${code})失败`, e)
+          return null
+        }
       },
       ...extra
     } as SandboxContext

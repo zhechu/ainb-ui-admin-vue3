@@ -30,6 +30,8 @@ interface CodeEditorProps {
   maxLines?: number
   /** SQL 自动补全的表和字段信息 */
   sqlSchema?: SqlSchemaInfo
+  /** JavaScript 自动补全的上下文（表单字段 + 可用 API） */
+  jsContext?: JsContextInfo
 }
 
 export interface SqlSchemaInfo {
@@ -41,6 +43,28 @@ export interface SqlSchemaInfo {
       comment?: string
       type?: string
     }>
+  }>
+}
+
+/**
+ * JavaScript 补全上下文
+ *
+ * 给「表单脚本」这类跑在受控沙箱里的代码用：沙箱里能拿到的东西是一份白名单，
+ * 而 Monaco 内置的 JS 补全只知道语言标准库，提示不出 `formData`、`setFieldValue`
+ * 这些注入进来的名字，也不知道这张表单有哪些字段。
+ */
+export interface JsContextInfo {
+  /** 表单字段。补全时会同时给出 `字段名` 与 `formData.字段名` 两种形态 */
+  fields: Array<{ name: string; title?: string }>
+  /** 沙箱注入的 API */
+  apis: Array<{
+    name: string
+    /** 右侧灰字，通常写签名 */
+    detail?: string
+    /** 展开的说明 */
+    doc?: string
+    /** 实际插入的文本，默认与 name 相同。用它可以插成 `setFieldValue('', )` 这种带括号的形态 */
+    insert?: string
   }>
 }
 
@@ -74,6 +98,12 @@ const initEditor = () => {
   // 设置容器初始高度
   if (useDynamicHeight && editorContainer.value) {
     editorContainer.value.style.height = `${minHeight}px`
+  } else if (editorContainer.value) {
+    // ⚠️ 固定高度模式也必须把 height 落到容器上。
+    // Monaco 撑不出自己的高度 —— 容器不给高度它就渲染成一条几像素的缝：
+    // 元素「可见」、点得中、键盘也能写进去，但用户看到的是一条线，等于不能用。
+    // 这个 prop 曾经声明了却没人应用，直到有人不传 minLines/maxLines 才暴露出来
+    editorContainer.value.style.height = props.height
   }
 
   // 创建编辑器实例
@@ -123,6 +153,11 @@ const initEditor = () => {
   // 注册 SQL 自动补全
   if (props.language === 'sql' && props.sqlSchema) {
     registerSqlCompletion(props.sqlSchema)
+  }
+
+  // 注册 JavaScript 自动补全
+  if (props.language === 'javascript' && props.jsContext) {
+    registerJsCompletion(props.jsContext)
   }
 
   // 初始化时设置高度（无论是否有内容）
@@ -247,6 +282,86 @@ const registerSqlCompletion = (schema: SqlSchemaInfo) => {
   })
 }
 
+/**
+ * 注册 JavaScript 自动补全提供器
+ *
+ * ⚠️ Monaco 的 completionItemProvider 是**按语言全局注册**的，不绑定某个编辑器实例。
+ * 所以同一页面挂多个 JS 编辑器时，后挂的会把前面那份补全数据顶掉。
+ * 表单脚本编辑器因此只用一个实例、切页签换内容，而不是四个钩子各开一个。
+ */
+const registerJsCompletion = (context: JsContextInfo) => {
+  if (completionProvider) {
+    completionProvider.dispose()
+  }
+
+  completionProvider = monaco.languages.registerCompletionItemProvider('javascript', {
+    triggerCharacters: ['.'],
+    provideCompletionItems: (model, position) => {
+      const word = model.getWordUntilPosition(position)
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      }
+
+      const textBeforeCursor = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column
+      })
+
+      // 打了 `formData.` 之后只提字段名，不要再把 API 混进来
+      if (/\bformData\.\w*$/.test(textBeforeCursor)) {
+        return {
+          suggestions: context.fields.map((f) => ({
+            label: f.name,
+            kind: monaco.languages.CompletionItemKind.Field,
+            detail: f.title || '',
+            documentation: f.title ? `表单字段：${f.title}` : '表单字段',
+            insertText: f.name,
+            range
+          }))
+        }
+      }
+
+      const suggestions: monaco.languages.CompletionItem[] = []
+
+      // 沙箱注入的 API 排在最前：它们是这段脚本真正能用的东西，
+      // 而 Monaco 内置的 JS 标准库补全会跟在后面
+      context.apis.forEach((api) => {
+        suggestions.push({
+          label: api.name,
+          kind: monaco.languages.CompletionItemKind.Function,
+          detail: api.detail || '',
+          documentation: api.doc || '',
+          insertText: api.insert ?? api.name,
+          // 排序键前缀 0，保证沉不下去
+          sortText: `0_${api.name}`,
+          range
+        })
+      })
+
+      // 字段以 formData.xxx 的完整形态给出 —— 直接给裸字段名会让人以为
+      // 脚本里可以直接写 `amount`，而沙箱里并没有这个变量
+      context.fields.forEach((f) => {
+        suggestions.push({
+          label: `formData.${f.name}`,
+          kind: monaco.languages.CompletionItemKind.Field,
+          detail: f.title || '',
+          documentation: f.title ? `表单字段：${f.title}` : '表单字段',
+          insertText: `formData.${f.name}`,
+          sortText: `1_${f.name}`,
+          range
+        })
+      })
+
+      return { suggestions }
+    }
+  })
+}
+
 // 销毁编辑器
 const destroyEditor = () => {
   if (completionProvider) {
@@ -272,6 +387,31 @@ watch(() => props.sqlSchema, (newSchema) => {
     registerSqlCompletion(newSchema)
   }
 }, { deep: true })
+
+// 监听 JS 上下文变化，重新注册补全。
+// 表单字段是用户在上一步现改的，不跟着变的话补全提示的是旧字段
+watch(() => props.jsContext, (newContext) => {
+  if (props.language === 'javascript' && newContext) {
+    registerJsCompletion(newContext)
+  }
+}, { deep: true })
+
+/**
+ * 固定高度模式下，height 变了要跟着改
+ *
+ * 高度可能是调用方按视口算出来的（窗口一缩放就变）。只在 initEditor 里设一次的话，
+ * 编辑器会停在初始高度 —— 窗口拉大后下面空一片，拉小后又超出屏幕。
+ * Monaco 开着 automaticLayout，容器改了它会自己重排，但仍显式调一次 layout 更稳妥。
+ */
+watch(
+  () => props.height,
+  (h) => {
+    const useDynamicHeight = props.minLines > 0 && props.maxLines > 0
+    if (useDynamicHeight || !editorContainer.value || !h) return
+    editorContainer.value.style.height = h
+    editor?.layout()
+  }
+)
 
 onMounted(() => {
   initEditor()

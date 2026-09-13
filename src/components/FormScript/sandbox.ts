@@ -13,11 +13,16 @@
  * 这比「删掉几个全局变量」可靠得多 —— 后者永远列不全（globalThis、top、parent、
  * self、frames、以及各种浏览器新增的对象）。
  *
- * ## 明确不提供的能力
+ * ## 唯一的后端入口是受控的
  *
- * 没有任何后端调用入口。没有 callDataInterface，也拿不到 fetch / XHR / WebSocket。
- * 脚本只能操作已经在浏览器里的数据。需要查库、调外部系统、做服务端校验的场景，
- * 一律把表单的扩展模式切到「服务端扩展点」。
+ * 拿不到 fetch / XHR / WebSocket，也构造不出任意 URL 请求。
+ * 唯一能碰后端的是 `callDataInterface(code, args)` —— 它只能按编码调用
+ * 「数据接口」模块里**已登记并启用**的接口，服务端还会强制只读
+ * （SQL 仅 SELECT、HTTP 仅 GET/HEAD）。换句话说，能调什么由管理员在
+ * 数据接口模块里决定，脚本作者只能在这个清单里挑，越不出去。
+ *
+ * 需要写库、调外部系统、做复杂服务端逻辑的场景，仍然应该把表单的扩展模式
+ * 切到「服务端扩展点」—— 那边是 Java 代码，不受这些限制。
  *
  * 这既是安全收敛（沙箱上最大的口子直接封掉），也是职责划分 ——
  * 避免「前端脚本里发请求改数据」这类既绕过服务端校验、又无法审计的用法在过渡期扎根。
@@ -62,6 +67,20 @@ export interface SandboxContext {
     formatMoney: (value: any, decimals?: number) => string
     uuid: () => string
   }
+  /**
+   * 调用一个【已登记的数据接口】，返回它的结果
+   *
+   * 这是沙箱里唯一的后端入口，且是受控的：
+   *
+   * - 只能按 code 调「数据接口」模块里已登记并启用的接口，拿不到任意 URL
+   * - 服务端强制只读（SQL 仅 SELECT、HTTP 仅 GET/HEAD），写操作调不动
+   * - 走的是仅需登录态的运行时端点，不需要数据接口的管理权限
+   *
+   * ⚠️ 它返回 Promise。只有 beforeSubmit 钩子被编译成 async 函数，
+   * 也就只有那里能写 `await callDataInterface(...)`。其余钩子里要用
+   * 只能接 `.then()` —— 那些钩子必须保持同步，否则字段显隐会慢半拍。
+   */
+  callDataInterface: (code: string, args?: Record<string, any>) => Promise<any>
 }
 
 /** 执行结果 */
@@ -185,7 +204,10 @@ const createScopeProxy = (context: Record<string, any>): Record<string, any> => 
  * 不采用 `({ formData }) => {...}` 的箭头函数写法：那需要先把脚本当表达式求值
  * 再调用，多一层约定，而 with 注入已经让上下文直接可用了。
  */
-const compile = (source: string): ((scope: Record<string, any>) => any) => {
+const compile = (
+  source: string,
+  asAsync = false
+): ((scope: Record<string, any>) => any) => {
   // ⚠️ 'use strict' 必须放在【内层】函数里，不能放在最外层。
   // with 语句在严格模式下是语法错误，外层加了 'use strict' 会让整段脚本编译失败
   // （表现为所有脚本一律报 SyntaxError，很容易误判成用户脚本写错了）。
@@ -193,9 +215,14 @@ const compile = (source: string): ((scope: Record<string, any>) => any) => {
   // 内层函数自身不含 with，声明严格模式是合法的；而标识符查找是词法的，
   // 外层的 with 作用域仍在作用域链上，屏蔽照常生效。
   // 这样既拿到了严格模式（阻断 arguments.callee 一类逃逸），又保住了 with 注入。
+  //
+  // asAsync：把内层函数声明成 async，脚本里才能写 `await callDataInterface(...)`。
+  // ⚠️ 只有 beforeSubmit 用它。同步钩子（onLoad / onFieldChange / afterSubmit）
+  // 必须保持同步：它们的作用是改字段的显隐与必填，改成异步后这些变更会挪到
+  // 下一个微任务，而渲染可能已经发生 —— 表现为「联动慢半拍」。
   const body = `
     with (__scope__) {
-      return (function () {
+      return (${asAsync ? 'async ' : ''}function () {
         'use strict';
         ${source}
       })();
@@ -265,7 +292,9 @@ export const runSubmitHook = async (
 
   try {
     const scope = createScopeProxy(context as unknown as Record<string, any>)
-    const scriptPromise = Promise.resolve(compile(source)(scope))
+    // asAsync：beforeSubmit 是唯一允许写 await 的钩子，
+    // 「提交前查一下库再决定放不放行」正是这个钩子存在的理由
+    const scriptPromise = Promise.resolve(compile(source, true)(scope))
     const raced = await Promise.race([scriptPromise, timeoutPromise])
 
     if (raced === '__timeout__') {
