@@ -14,6 +14,7 @@ import {
   cellRenderKind,
   EMPTY_CELL,
   formatCellText,
+  formatSummaryValue,
   isEmptyCellValue,
   parseCellFiles,
   resolveCellLink,
@@ -163,5 +164,44 @@ describe('超链接', () => {
   it('不安全地址降级成纯文本，不给出 url', () => {
     // 渲染成点不动的链接比直接显示文字更费解
     expect(resolveCellLink('javascript:alert(1)', {}).url).toBeUndefined()
+  })
+})
+
+describe('合计行的显示值', () => {
+  it('跟随列的数字格式化，与数据行同一个样子', () => {
+    // 缺陷：合计行原本一律 toFixed(2)，列配了「0 位小数 + 千分位」时
+    // 数据行显示 1,234、合计行显示 1234.00，看着像两套数
+    const formatter = { type: 'NUMBER', precision: 0, thousands: true }
+    expect(formatCellText(1234, formatter)).toBe('1,234')
+    expect(formatSummaryValue(1234, formatter)).toBe('1,234')
+  })
+
+  it('小数位与千分位都照列配的来', () => {
+    expect(formatSummaryValue(1234567.891, { type: 'NUMBER', precision: 2, thousands: true })).toBe(
+      '1,234,567.89'
+    )
+    expect(formatSummaryValue(1234567.891, { type: 'NUMBER', precision: 3 })).toBe('1234567.891')
+  })
+
+  it('没配格式化时输出裸数字，不硬补两位小数', () => {
+    expect(formatSummaryValue(1234, undefined)).toBe('1234')
+    expect(formatSummaryValue(15.5, { type: 'NONE' })).toBe('15.5')
+  })
+
+  it('抹掉浮点累加的尾巴', () => {
+    // 0.1 + 0.2 = 0.30000000000000004，原样印在合计行上比少两位小数更难解释
+    expect(formatSummaryValue(0.1 + 0.2, undefined)).toBe('0.3')
+    expect(formatSummaryValue(0.1 + 0.2, { type: 'NUMBER', precision: 2 })).toBe('0.30')
+  })
+
+  it('百分比列照 PERCENT 印出来，不悄悄换一种显示', () => {
+    // 百分比相加在业务上没意义，但配错了就该看着像配错了
+    expect(formatSummaryValue(1.5, { type: 'PERCENT', precision: 1 })).toBe('150.0%')
+  })
+
+  it('合计是 0 时显示 0 而不是占位符', () => {
+    // 走 formatCellText 的分支要确认 0 没被当成空值
+    expect(formatSummaryValue(0, { type: 'NUMBER', precision: 2 })).toBe('0.00')
+    expect(formatSummaryValue(0, undefined)).toBe('0')
   })
 })

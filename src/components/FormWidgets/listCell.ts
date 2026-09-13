@@ -116,6 +116,36 @@ const formatNumber = (value: any, formatter: any): string => {
   })
 }
 
+/**
+ * 合计行的显示值
+ *
+ * 合计行原本一律 `toFixed(2)`，不读列自己的格式化配置 —— 列配了「0 位小数 + 千分位」时，
+ * 数据行显示 `1,234`、合计行显示 `1234.00`，同一列上下看起来像两套数，
+ * 而用户第一反应是「合计算错了」。
+ *
+ * 数值类格式化（NUMBER / PERCENT）直接复用 `formatCellText`，与数据行走同一条路径 ——
+ * 两处各写一遍格式化必然漂移，这正是本项目反复在收口的那类问题。
+ *
+ * ⚠️ PERCENT 的合计在业务上没有意义（百分比相加得不到百分比），这里仍按 PERCENT 印出来，
+ * 不悄悄换成别的显示：配错了就该看着像配错了。设计器那边已经有「这列看起来不是数值列」
+ * 的提示，要不要拦是那边的事。
+ */
+export const formatSummaryValue = (sum: number, formatter: any): string => {
+  const type = formatter?.type
+  if (type === 'NUMBER' || type === 'PERCENT') return formatCellText(sum, formatter)
+  // 其余情况（没配格式化，或配的是字典/布尔这类合不出意义的）输出裸数字
+  return String(stripFloatNoise(sum))
+}
+
+/**
+ * 抹掉浮点累加的尾巴
+ *
+ * `0.1 + 0.2` 累加出来是 `0.30000000000000004`，原样印在合计行上比少两位小数
+ * 更难向用户解释。12 位小数足够覆盖金额、数量这类业务数值，又刚好落在
+ * IEEE 754 双精度能如实表示的范围内 —— 再多几位反而把误差本身保留下来。
+ */
+const stripFloatNoise = (value: number): number => Number(value.toFixed(12))
+
 /** el-tag 可用的类型 */
 const TAG_TYPES = ['primary', 'success', 'warning', 'danger', 'info'] as const
 

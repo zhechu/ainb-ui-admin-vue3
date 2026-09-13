@@ -424,9 +424,15 @@ test.describe('列表设计', () => {
       await openRuntime(page, fixture.code)
 
       // 1234.5 + 50 = 1284.50
+      //
+      // ⚠️ 带千分位。这一列配的是「两位小数 + 千分位」，合计行跟着列自己的
+      // 格式化走 —— 与上面那条用例里数据行显示的 `1,234.50` 是同一条路径。
+      //
+      // 改造前合计行一律 `toFixed(2)`，这里断言的是 `1284.50`：数据行有逗号、
+      // 合计行没有，同一列上下看着像两套数。那是缺陷，不是约定。
       const footer = page.locator('.el-table__footer-wrapper')
       await expect(footer, '开了合计行就该有 footer').toBeVisible()
-      await expect(footer.getByText('1284.50'), '合计值不对').toBeVisible({ timeout: 10_000 })
+      await expect(footer.getByText('1,284.50'), '合计值不对').toBeVisible({ timeout: 10_000 })
     } finally {
       await cleanup(request, token, fixture)
     }

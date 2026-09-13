@@ -200,7 +200,10 @@
           />
         </el-tabs>
 
-        <div v-if="builtinToolbarButtons.length || toolbarButtons.length" class="mb-10px">
+        <div
+          v-if="builtinToolbarButtons.length || toolbarButtons.length || columnSettingEnabled"
+          class="mb-10px flex items-center"
+        >
           <!--
             内置工具栏按钮。文案、图标、顺序都来自列表设计的按钮清单。
 
@@ -236,6 +239,16 @@
             <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
             {{ btn.label }}
           </el-button>
+          <!-- 列设置推到最右边：它是「调整视图」而不是「对数据做事」，与左边那排不同类 -->
+          <ColumnSettingPanel
+            v-if="columnSettingEnabled"
+            class="ml-auto"
+            :items="settingColumns"
+            @reorder="handleColumnReorder"
+            @reset="handleColumnReset"
+            @resize="handleColumnResize"
+            @toggle="handleColumnToggle"
+          />
         </div>
 
         <el-table
@@ -245,6 +258,7 @@
           class="runtime-table"
           :data="tableData"
           :default-sort="defaultSortProp"
+          :row-class-name="rowClassName"
           :row-key="tableRowKey"
           :show-summary="showSummary"
           :span-method="spanMethod"
@@ -302,8 +316,15 @@
                 v-bind="col.widthType === 'fixed' ? { width: col.width || 140 } : { minWidth: col.width || 140 }"
               >
                 <template #default="scope">
+                  <GroupRowCell
+                    v-if="isGroupRow(scope.row)"
+                    :columns="columns"
+                    :row="scope.row"
+                    :show-count="rowGroup?.showCount !== false"
+                    @toggle="toggleGroup"
+                  />
                   <InlineEditCell
-                    v-if="isEditingCell(scope.row, col)"
+                    v-else-if="isEditingCell(scope.row, col)"
                     v-model="editingValues[col.field]"
                     :col="col"
                   />
@@ -323,8 +344,20 @@
               v-bind="item.col.widthType === 'fixed' ? { width: item.col.width || 140 } : { minWidth: item.col.width || 140 }"
             >
               <template #default="scope">
+                <!--
+                  分组行只渲染一个横跨整张表的单元格（colspan 由 span-method 给），
+                  所以每一列的模板里都要判一次 —— 判漏了哪一列，
+                  分组行落到那一列上时会渲染成一片空白
+                -->
+                <GroupRowCell
+                  v-if="isGroupRow(scope.row)"
+                  :columns="columns"
+                  :row="scope.row"
+                  :show-count="rowGroup?.showCount !== false"
+                  @toggle="toggleGroup"
+                />
                 <InlineEditCell
-                  v-if="isEditingCell(scope.row, item.col)"
+                  v-else-if="isEditingCell(scope.row, item.col)"
                   v-model="editingValues[item.col.field]"
                   :col="item.col"
                 />
@@ -342,11 +375,17 @@
           >
             <template #default="scope">
               <!--
+                分组行上不放任何按钮。它不是一条记录 —— 放了按钮，
+                点「删除」删的是谁？这正是「把分组塞进 children 当树父节点」
+                那种做法要在每个分支里特判的东西，这里只需判这一处
+              -->
+              <template v-if="isGroupRow(scope.row)" />
+              <!--
                 行内编辑态：只留「保存 / 取消」。
                 其余按钮在编辑态下都没有确定语义 —— 点「详情」是带着没存的改动过去，
                 还是丢掉？不给这个选择比猜一个更好
               -->
-              <template v-if="isEditingRow(scope.row)">
+              <template v-else-if="isEditingRow(scope.row)">
                 <el-button
                   link
                   :loading="inlineSaving"
@@ -613,6 +652,38 @@ import { applyStepValidate } from '@/components/FormWidgets/stepValidate'
 import { collectDefaultValues } from '@/components/FormWidgets/formDefaults'
 import { parseDetailTabs, type DetailTab } from '@/components/FormWidgets/detailTab'
 import { printHtml, resolvePrintHtml } from '@/components/FormWidgets/printTemplate'
+import { formatCellText, formatSummaryValue } from '@/components/FormWidgets/listCell'
+import { attachMergeSpans, mergeSpanOf } from '@/components/FormWidgets/cellMerge'
+import {
+  buildGroupedRows,
+  initialCollapsedKeys,
+  isGroupRow,
+  isRowGroupUsable,
+  toggleGroupKey,
+  type RowGroupConfig
+} from '@/components/FormWidgets/rowGroup'
+import {
+  buildHeaderRows,
+  buildListPrintHtml,
+  LIST_PRINT_STYLE,
+  leafCountOf,
+  type PrintCell,
+  type PrintHeaderItem,
+  type PrintRow
+} from '@/components/FormWidgets/listPrint'
+import {
+  applyColumnPrefs,
+  clearColumnPrefs,
+  columnKeyOf,
+  columnPrefKey,
+  readColumnPrefs,
+  toColumnPrefs,
+  writeColumnPrefs,
+  type ColumnPref
+} from '@/components/FormWidgets/columnSetting'
+import GroupRowCell from './GroupRowCell.vue'
+import ColumnSettingPanel from './ColumnSettingPanel.vue'
+import { useUserStore } from '@/store/modules/user'
 import { collapseUploadValues } from '@/components/FormWidgets/uploadValue'
 import { normalizeArrayValues } from '@/components/FormWidgets/arrayValue'
 import { hasPermission } from '@/directives/permission/hasPermi'
@@ -692,8 +763,81 @@ const total = ref(0)
 const queryParams = reactive({ pageNo: 1, pageSize: 20 })
 const searchValues = ref<Record<string, any>>({})
 
+// ==================== 列：设计期 / 用户偏好 / 生效 ====================
+//
+// 分三层，因为它们的生命周期不同：
+//   * designColumns —— 设计者定的，来自 list_conf.columns，换表单才变
+//   * columnPrefs   —— 使用者自己调的显隐/顺序/宽度，存在浏览器本地
+//   * columns       —— 前两者合并后**真正要渲染**的列（隐藏的已经滤掉）
+//
+// 下游（合计、合并、分组、打印、导出）一律用 columns，不必关心偏好这回事。
+
 /** 列配置，来自 list_conf.columns */
-const columns = ref<any[]>([])
+const designColumns = ref<any[]>([])
+
+/** 用户的列偏好。换表单时重新读 */
+const columnPrefs = ref<ColumnPref[]>([])
+
+/** 列设置面板上的列（含被隐藏的那些，否则用户没法把它们再打开） */
+const settingColumns = computed(() => applyColumnPrefs(designColumns.value, columnPrefs.value))
+
+/** 真正渲染的列 */
+const columns = computed<any[]>(() => settingColumns.value.filter((col) => !col.__hidden))
+
+/** 列设置开关。默认关 —— 给每张已发布的列表凭空多一个按钮是一种意外 */
+const columnSetting = ref<{ enabled?: boolean } | undefined>(undefined)
+const columnSettingEnabled = computed(() => !!columnSetting.value?.enabled)
+
+/** 偏好的存储键。带用户 id，换个人登录看不到上一个人的设置 */
+const columnPrefStorageKey = computed(() =>
+  columnPrefKey(formCode.value, useUserStore().getUser?.id)
+)
+
+const reloadColumnPrefs = () => {
+  columnPrefs.value = columnSettingEnabled.value
+    ? readColumnPrefs(columnPrefStorageKey.value)
+    : []
+}
+
+/** 改完偏好立刻落盘 —— 用户不会去点一个「保存列设置」的按钮 */
+const persistColumnPrefs = (next: ColumnPref[]) => {
+  columnPrefs.value = next
+  writeColumnPrefs(columnPrefStorageKey.value, next)
+}
+
+const handleColumnToggle = (key: string, hidden: boolean) => {
+  persistColumnPrefs(
+    toColumnPrefs(
+      settingColumns.value.map((col) =>
+        columnKeyOf(col) === key ? { ...col, __hidden: hidden } : col
+      )
+    )
+  )
+}
+
+const handleColumnResize = (key: string, width: number) => {
+  if (!width) return
+  persistColumnPrefs(
+    toColumnPrefs(
+      settingColumns.value.map((col) =>
+        columnKeyOf(col) === key ? { ...col, width } : col
+      )
+    )
+  )
+}
+
+const handleColumnReorder = (from: number, to: number) => {
+  const next = [...settingColumns.value]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  persistColumnPrefs(toColumnPrefs(next))
+}
+
+/** 恢复默认：把本地偏好整个清掉，回到设计期的样子 */
+const handleColumnReset = () => {
+  clearColumnPrefs(columnPrefStorageKey.value)
+  columnPrefs.value = []
+}
 /** 查询条件配置，来自 list_conf.searchItems */
 const searchItems = ref<any[]>([])
 
@@ -771,7 +915,13 @@ const formViewMode = ref<FormViewMode>('DIALOG')
  *   而主表列又是跨行合并的，序号列跟着合并还是不合并都不对
  */
 const indexColumnVisible = computed(
-  () => showIndexColumn.value && !treeConfig.value?.enabled && !expandSubRows.value
+  () =>
+    showIndexColumn.value &&
+    !treeConfig.value?.enabled &&
+    !expandSubRows.value &&
+    // 分组行也是一行，序号会把它一起数进去 —— 用户看到的是
+    // 「1 分组行 / 2 第一条数据」，第几条与第几行从此对不上
+    !isRowGroupUsable(rowGroup.value)
 )
 
 /**
@@ -996,7 +1146,40 @@ const expandSubRows = computed(
 )
 
 /**
- * 表格数据。三种形态：树形、主子表展开、普通平铺
+ * 开了同值合并的列，按配置顺序
+ *
+ * 顺序即级联优先级 —— 前面的列换段会打断后面的列，见 cellMerge.ts 里那张错位图。
+ *
+ * ⚠️ 明细列（有 subField）一律排除。明细行本来就是逐行独立的，
+ * 把它们按同值合并会把不同主记录下的明细粘在一起。设计器里已经禁用了，
+ * 这里再兜一层 —— 存量配置可能是在禁用之前配出来的。
+ */
+const mergeSameColumns = computed(() =>
+  columns.value.filter((c: any) => c.mergeSame && !c.subField)
+)
+
+/**
+ * 同值合并是否生效
+ *
+ * 与树形、明细展开互斥：三者都在重排行结构，同时开没有确定语义 ——
+ * 树按 children 递归、展开按主记录摊平、同值合并按相邻值分段，
+ * 合起来的结果解释不了。设计器里是互斥开关，这里兜底。
+ */
+const mergeSameEnabled = computed(
+  () =>
+    mergeSameColumns.value.length > 0 &&
+    !treeConfig.value?.enabled &&
+    !expandSubRows.value &&
+    !isRowGroupUsable(rowGroup.value)
+)
+
+/** 参与合并的列在行数据上的取值键，顺序即级联优先级 */
+const mergeSameColumnProps = computed(() =>
+  mergeSameColumns.value.map((c: any) => displayProp(c))
+)
+
+/**
+ * 表格数据。五种形态：树形、主子表展开、行分组、同值合并、普通平铺
  *
  * 后端返回的始终是「主表行 + 嵌套明细数组」，重排在前端做 ——
  * 这样后端不用关心展示形态，分页的 total 也始终是主记录数。
@@ -1009,7 +1192,94 @@ const tableData = computed(() => {
   if (expandSubRows.value) {
     return flattenWithDetails(list.value)
   }
+  if (rowGroupEnabled.value) {
+    return buildGroupedRows(
+      list.value,
+      rowGroup.value!,
+      groupLabelOf,
+      collapsedGroupKeys.value
+    )
+  }
+  if (mergeSameEnabled.value) {
+    // 合并只在当前页内做 —— list 就是当前页。跨页合并没有确定语义
+    return attachMergeSpans(
+      list.value,
+      mergeSameColumnProps.value
+    )
+  }
   return list.value
+})
+
+// ==================== 行分组 ====================
+
+const rowGroup = ref<RowGroupConfig | undefined>(undefined)
+const collapsedGroupKeys = ref<Set<string>>(new Set())
+
+/**
+ * 行分组是否生效
+ *
+ * 与树形、明细展开、同值合并互斥 —— 四者都在重排行结构。
+ * 设计器里是互斥开关，这里兜底防手工改过的配置。
+ */
+const rowGroupEnabled = computed(
+  () =>
+    isRowGroupUsable(rowGroup.value) &&
+    !treeConfig.value?.enabled &&
+    !expandSubRows.value
+)
+
+/**
+ * 分组标题
+ *
+ * 走分组列自己的格式化 —— 分组字段多半是个字典列，不格式化的话
+ * 分组行上印的是 `SOFT` 而不是「软件开发」。
+ */
+const groupLabelOf = (value: any): string => {
+  const col = columns.value.find(
+    (c: any) => c.field === rowGroup.value?.field && !c.subField
+  )
+  return formatCellText(value, col?.formatter)
+}
+
+/** 点分组行切换折叠 */
+const toggleGroup = (key: string) => {
+  collapsedGroupKeys.value = toggleGroupKey(collapsedGroupKeys.value, key)
+}
+
+/**
+ * 分组行的行样式
+ *
+ * 给它一个底色，好让它与数据行一眼分得开 —— 不给的话，
+ * 分组行看起来就是「一条只有第一列有字的记录」。
+ */
+const rowClassName = ({ row }: any) => (isGroupRow(row) ? 'grid-group-tr' : '')
+
+/**
+ * 数据回来后重算默认折叠
+ *
+ * ⚠️ 必须每页都算。「默认折叠」的语义是「打开时看到的是一排组名」，
+ * 翻到第二页却全是展开的，用户会以为折叠状态被翻页弄丢了。
+ */
+watch(list, (rows) => {
+  if (!rowGroupEnabled.value) return
+  collapsedGroupKeys.value = initialCollapsedKeys(rows, rowGroup.value!)
+})
+
+/**
+ * 分组行要横跨的列数
+ *
+ * 数的是**叶子列**：分组表头下的子列各算一列，父表头不算。
+ * 少数一列的话，分组行右边会空出一格；多数一列则会把表格挤出一条横向滚动条。
+ */
+const leafColumnCount = computed(() => {
+  let count = renderColumns.value.reduce(
+    (sum, item: any) => sum + (item.type === 'group' ? item.cols.length : 1),
+    0
+  )
+  if (selectionEnabled.value) count += 1
+  if (indexColumnVisible.value) count += 1
+  if (operationColumn.value.show && hasRowButtons.value) count += 1
+  return count
 })
 
 /**
@@ -1047,18 +1317,43 @@ const flattenWithDetails = (mainRows: any[]): any[] => {
 }
 
 /**
- * 单元格合并：主表列跨明细行合并，明细列逐行独立
+ * 单元格合并
  *
- * 操作列没有 property，会落进「主表列」分支一起合并 —— 正是想要的效果，
- * 一条主记录只出现一组编辑/删除按钮。
+ * 三种来源，彼此互斥（见 mergeSameEnabled / rowGroupEnabled 的说明）：
+ *
+ * 0. **分组行** —— 整行合成一格，横跨全部叶子列
+ * 1. **明细展开** —— 主表列跨明细行合并，明细列逐行独立。
+ *    操作列没有 property，会落进「主表列」分支一起合并 —— 正是想要的效果，
+ *    一条主记录只出现一组编辑/删除按钮。
+ * 2. **同值合并** —— 只合并配了 mergeSame 的那几列，其余列逐行独立。
+ *    ⚠️ 这里与上一种相反：**不能**让没有 property 的操作列跟着合并。
+ *    同值合并是按显示值分段的，一段里是若干条**不同的记录**，
+ *    合并掉操作列的话，那一组按钮点下去只能作用于段首那条 —— 其余记录
+ *    就再也删不掉、改不了了，而界面上看不出任何异常。
  */
-const spanMethod = ({ row, column }: any) => {
-  if (!expandSubRows.value) return
-  // 明细列不合并
-  if (column?.property?.startsWith(SUB_PROP_PREFIX)) return
-  const span = row?.__span ?? 1
-  // rowspan/colspan 同时为 0 时 Element Plus 不渲染这个单元格
-  return span === 0 ? { rowspan: 0, colspan: 0 } : { rowspan: span, colspan: 1 }
+const spanMethod = ({ row, column, columnIndex }: any) => {
+  // 分组行横跨整张表。它不属于任何一种「列的合并」，所以放在最前面判 ——
+  // 分组行落到别的分支里会被当成数据行，那一行就只剩第一列有内容
+  if (isGroupRow(row)) {
+    return columnIndex === 0
+      ? { rowspan: 1, colspan: leafColumnCount.value }
+      : { rowspan: 0, colspan: 0 }
+  }
+
+  if (expandSubRows.value) {
+    // 明细列不合并
+    if (column?.property?.startsWith(SUB_PROP_PREFIX)) return
+    const span = row?.__span ?? 1
+    // rowspan/colspan 同时为 0 时 Element Plus 不渲染这个单元格
+    return span === 0 ? { rowspan: 0, colspan: 0 } : { rowspan: span, colspan: 1 }
+  }
+
+  if (mergeSameEnabled.value) {
+    // 没有 property 的是序号列、多选列、操作列 —— 一律逐行独立
+    if (!column?.property) return
+    const span = mergeSpanOf(row, column.property)
+    return span === 0 ? { rowspan: 0, colspan: 0 } : { rowspan: span, colspan: 1 }
+  }
 }
 
 /**
@@ -1480,7 +1775,11 @@ const isBatchButton = (key: string): boolean => key === 'batchDelete' || key ===
  * 删掉了用户没想删的主记录。
  */
 const selectionEnabled = computed(
-  () => needsSelection(builtinButtons.value) && !expandSubRows.value
+  () =>
+    needsSelection(builtinButtons.value) &&
+    !expandSubRows.value &&
+    // 分组行上的那个勾选框选中的是什么？不给这个选择比猜一个更好
+    !isRowGroupUsable(rowGroup.value)
 )
 
 /** 表格行的唯一键。多选的跨页保留依赖它 */
@@ -1508,6 +1807,8 @@ const runBuiltinButton = (key: string) => {
       return handleBatchDelete()
     case 'batchPrint':
       return handleBatchPrint()
+    case 'printList':
+      return handlePrintList()
   }
 }
 
@@ -1650,6 +1951,97 @@ const handleBatchDelete = async () => {
  * 逐条取详情再拼成一份文档，中间用分页符隔开 ——
  * 一次打印任务出 N 页，比让用户点 N 次打印实际得多。
  */
+/**
+ * 列表打印：把当前看到的这张表原样印出来
+ *
+ * 与「批量打印」是两件事 —— 那个是「勾中的每条记录各印一页单据」，走打印模板；
+ * 这个是「把这张报表印成一张表」，与模板无关。
+ *
+ * ## 从渲染用的同一套结构出发，而不是克隆页面上的 table
+ *
+ * 克隆 DOM 会把 el-table 的固定列（同一份数据渲染两遍）、排序图标、
+ * 操作列里的按钮一起复制进去 —— 印出来的纸上会出现两遍相同的前两列，
+ * 还带着「编辑 / 删除」两个按钮。从数据重新生成反而更可控。
+ *
+ * ## 印的是「看到的这一页」
+ *
+ * 不去后端重拉全量。列表打印的语义是「把屏幕上这张表印出来」——
+ * 用户刚筛完、刚排完序、刚折叠了两个分组，他要的就是这个样子。
+ * 要全量导出有「导出」按钮，那是另一件事。页脚会写明印了多少条、共多少条，
+ * 免得用户以为印的是全部。
+ */
+const handlePrintList = () => {
+  // 表头：与屏幕上的 renderColumns 同一套结构，所以分组表头天然带过去
+  const headerItems: PrintHeaderItem[] = renderColumns.value.map((item: any) =>
+    item.type === 'group'
+      ? { type: 'group', label: item.label, children: item.cols.map((c: any) => c.label) }
+      : { type: 'plain', label: item.col.label }
+  )
+  const headerRows = buildHeaderRows(headerItems)
+  const leafCount = leafCountOf(headerRows)
+
+  // 叶子列，顺序与表头一致 —— 两者错位的话整张表会串列
+  const leafColumns: any[] = renderColumns.value.flatMap((item: any) =>
+    item.type === 'group' ? item.cols : [item.col]
+  )
+
+  const rows: PrintRow[] = tableData.value.map((row: any) => {
+    if (isGroupRow(row)) {
+      // 分组行：把组名、条数、小计拼成一句话 —— 纸上没有 flex 布局可用
+      const sums = Object.entries(row.__groupSums ?? {})
+        .map(([field, value]) => {
+          const col = columns.value.find((c: any) => c.field === field && !c.subField)
+          return `${col?.label || field}：${formatSummaryValue(value as number, col?.formatter)}`
+        })
+        .join('   ')
+      const count = rowGroup.value?.showCount !== false ? `（${row.__groupCount} 条）` : ''
+      return { group: `${row.__groupLabel}${count}${sums ? '   ' + sums : ''}` }
+    }
+    const cells: PrintCell[] = leafColumns.map((col: any) => {
+      const prop = displayProp(col)
+      return {
+        text: formatCellText(row[prop], col.formatter),
+        align: col.align || 'left',
+        // 合并状态直接沿用屏幕上的那一份，两处各算一遍必然漂移
+        rowspan: expandSubRows.value
+          ? (col.subField ? 1 : (row.__span ?? 1))
+          : mergeSpanOf(row, prop)
+      }
+    })
+    return { cells }
+  })
+
+  // 合计行。第一格放「合计」二字，与屏幕上的位置一致
+  let summary: string[] | undefined
+  if (showSummary.value) {
+    summary = leafColumns.map((col: any, index: number) => {
+      if (index === 0) return '合计'
+      if (!isSummaryColumn(col)) return '-'
+      const values = expandSubRows.value
+        ? summarySource(col).map((item: any) => Number(item[col.field]))
+        : list.value.map((item: any) => Number(item[displayProp(col)]))
+      if (values.length === 0 || values.some((v: number) => isNaN(v))) return '-'
+      return formatSummaryValue(
+        values.reduce((a: number, b: number) => a + b, 0),
+        col.formatter
+      )
+    })
+    // 叶子列数与合计格数必须一致，否则合计行会与表体错位
+    while (summary.length < leafCount) summary.push('')
+  }
+
+  const html = buildListPrintHtml({
+    title: config.value?.name ?? '列表',
+    headerRows,
+    rows,
+    summary,
+    footnote: pagination.value
+      ? `本次打印 ${list.value.length} 条，共 ${total.value} 条（列表打印印的是当前这一页）`
+      : `共 ${list.value.length} 条`
+  })
+  printHtml(html, config.value?.name ?? '列表', LIST_PRINT_STYLE)
+}
+
 const handleBatchPrint = async () => {
   const template = config.value?.printTemplate
   if (!template) return
@@ -1684,7 +2076,9 @@ const handleBatchPrint = async () => {
  * 明细列则要把所有主记录下的明细摊平了一起累加。
  */
 const getSummaries = (param: any) => {
-  const { columns: tableCols, data } = param
+  // 只取列定义。行数据一律用 `list`（当前页的原始记录）——
+  // param.data 是重排之后的表格行，理由见下面取 values 那一段
+  const { columns: tableCols } = param
   const sums: string[] = []
   //
   // 「合计」这两个字放在哪一列
@@ -1714,13 +2108,30 @@ const getSummaries = (param: any) => {
       return
     }
 
-    // 展开模式下按各自的来源取值；未展开时表格行就是主行，直接按显示键取
+    // 展开模式下按各自的来源取值；其余一律取 `list`（当前页的原始数据行），
+    // 而不是 el-table 传进来的 `data`。
+    //
+    // ⚠️ `data` 是重排之后的表格行，三种模式下都不是想要的取数集合：
+    //
+    // - **树形**：`data` 只有根节点，子节点挂在 children 里。按它求和得到的是
+    //   「三个根节点之和」—— 而中间节点的工时多半是空的，合计于是恒为 0。
+    //   现象是「开了合计行却一直显示 0」，看起来像合计坏了
+    // - **行分组**：`data` 里混着分组行，它身上没有业务字段，
+    //   Number(undefined) 得到 NaN，整列会退化成一排 `-`
+    // - **普通平铺**：`data` 与 `list` 本来就相等，取哪个都一样
+    //
+    // 取 `list` 一次把三种情况都收口 —— 它就是「当前页的那些记录」，
+    // 与合计行「这一页的总计」的语义严丝合缝。
     const values: number[] = expandSubRows.value
       ? summarySource(col).map((item: any) => Number(item[col.field]))
-      : data.map((item: any) => Number(item[prop]))
+      : list.value.map((item: any) => Number(item[prop]))
 
     if (values.length > 0 && values.every((val: number) => !isNaN(val))) {
-      sums[index] = values.reduce((prev: number, curr: number) => prev + curr, 0).toFixed(2)
+      // 与数据行共用一条格式化路径：列配了千分位/小数位，合计行也跟着
+      sums[index] = formatSummaryValue(
+        values.reduce((prev: number, curr: number) => prev + curr, 0),
+        col.formatter
+      )
     } else {
       sums[index] = '-'
     }
@@ -2324,7 +2735,9 @@ const parseScripts = (raw: string | undefined): Record<string, string> => {
 const parseListConf = (listConf: string) => {
   try {
     const conf = JSON.parse(listConf)
-    columns.value = Array.isArray(conf.columns) ? conf.columns : []
+    designColumns.value = Array.isArray(conf.columns) ? conf.columns : []
+    columnSetting.value = conf.columnSetting
+    reloadColumnPrefs()
     searchItems.value = Array.isArray(conf.searchItems) ? conf.searchItems : []
     pagination.value = conf.pagination?.enabled !== false
     if (conf.pagination?.pageSize) {
@@ -2359,10 +2772,14 @@ const parseListConf = (listConf: string) => {
     currentTreeValues.value = []
     complexHeaders.value = Array.isArray(conf.complexHeaders) ? conf.complexHeaders : []
     inlineEdit.value = conf.inlineEdit
+    rowGroup.value = conf.rowGroup
+    collapsedGroupKeys.value = new Set()
     cancelInlineEdit()
   } catch (e) {
     console.warn('list_conf 解析失败，降级为空列表配置', e)
-    columns.value = []
+    designColumns.value = []
+    columnSetting.value = undefined
+    columnPrefs.value = []
     searchItems.value = []
     defaultSort.value = undefined
     showSummary.value = false
@@ -2374,6 +2791,8 @@ const parseListConf = (listConf: string) => {
     leftTree.value = undefined
     complexHeaders.value = []
     inlineEdit.value = undefined
+    rowGroup.value = undefined
+    collapsedGroupKeys.value = new Set()
     cancelInlineEdit()
   }
 }
@@ -2799,6 +3218,20 @@ onMounted(() => {
 .runtime-table :deep(.el-table__body .el-button + .el-button),
 .runtime-table :deep(.el-table__body .el-button + .el-dropdown) {
   margin-left: 10px;
+}
+
+/*
+  分组行
+
+  给一个底色，好让它与数据行一眼分得开 —— 不给的话，分组行看起来就是
+  「一条只有第一列有字的记录」。
+
+  ⚠️ hover 态要跟着盖掉：el-table 的行悬浮色优先级更高，不盖的话
+  鼠标划过分组行时它会变成和数据行一样的颜色，看起来像是能点进详情。
+*/
+.runtime-table :deep(.el-table__body tr.grid-group-tr > td),
+.runtime-table :deep(.el-table__body tr.grid-group-tr:hover > td) {
+  background-color: var(--el-fill-color);
 }
 
 .change-log-item {

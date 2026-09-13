@@ -155,6 +155,27 @@
                 <el-switch v-model="row.sortable" size="small" />
               </template>
             </el-table-column>
+            <!--
+              同值合并。只在「合并模式可用」时出现 ——
+              树形、明细展开、行内编辑下这一列是死的，摆在那里只会让人反复去点。
+            -->
+            <el-table-column v-if="mergeSameAvailable" label="同值合并" width="96">
+              <template #default="{ row }">
+                <el-tooltip
+                  :content="mergeSameDisabledReason(row)"
+                  :disabled="!mergeSameDisabledReason(row)"
+                  placement="top"
+                >
+                  <span>
+                    <el-switch
+                      v-model="row.mergeSame"
+                      :disabled="!!mergeSameDisabledReason(row)"
+                      size="small"
+                    />
+                  </span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
             <el-table-column v-if="inlineEdit.enabled" label="可编辑" width="80">
               <template #default="{ row }">
                 <el-switch
@@ -172,6 +193,20 @@
           </el-table>
           <div v-if="columns.length > 0" class="form-tip">
             列的显示顺序就是这张表的行序，拖左侧的把手可以调整。
+          </div>
+          <!--
+            同值合并的两条提示都必须给，它们对应两种「配了但看起来没生效」：
+            一是没排序导致同值不相邻，二是合并顺序取自列顺序而不是勾选顺序。
+          -->
+          <div v-if="mergeSameColumnLabels.length > 0" class="form-tip">
+            已开启同值合并：<strong>{{ mergeSameColumnLabels.join(' → ') }}</strong
+            >。合并按这个顺序级联 —— 前一列换值时后一列也重新开始合并，
+            顺序就是上面这张表的行序。
+          </div>
+          <div v-if="mergeSameColumnLabels.length > 0 && !defaultSort.field" class="form-tip">
+            ⚠️ 合并的是<strong>相邻</strong>的同值单元格，而现在没有配默认排序。
+            同值的行不挨在一起时一格都合并不了，看起来像没生效 ——
+            请到「分页设置」里配上排序字段。
           </div>
         </el-tab-pane>
 
@@ -417,7 +452,11 @@
 
       <!-- 打印模板 -->
       <el-tab-pane label="打印模板" name="print">
-        <PrintTemplateEditor v-model="printTemplate" :fields="mainFields" />
+        <PrintTemplateEditor
+          v-model="printTemplate"
+          :fields="mainFields"
+          :sub-tables="printSubTables"
+        />
       </el-tab-pane>
 
       <!-- 高级功能 -->
@@ -638,8 +677,98 @@
           </template>
         </el-form>
 
-        <el-divider content-position="left">复杂表头</el-divider>
+        <el-divider content-position="left">列设置</el-divider>
 
+        <el-form class="config-form" label-width="120px">
+          <el-form-item label="允许调整列">
+            <el-switch v-model="columnSetting.enabled" />
+            <div class="form-tip">
+              在列表工具栏右侧放一个齿轮，使用者可以自己隐藏列、拖动列序、改列宽。
+              <strong>设置只存在使用者自己的浏览器里</strong>，不影响这里配的默认样子，
+              也不会同步到别的机器 —— 界面上已经写明这一点。
+              <br />
+              固定列与明细列只能隐藏、不能改位置：前者的偏移量按列序算，
+              后者按所属子表成组，任何一边错位都很难看出原因。
+            </div>
+          </el-form-item>
+        </el-form>
+
+        <el-divider content-position="left">行分组</el-divider>
+
+        <el-form class="config-form" label-width="120px">
+          <el-form-item label="启用行分组">
+            <el-switch
+              v-model="rowGroup.enabled"
+              :disabled="!rowGroupAvailable"
+              @change="handleRowGroupToggle"
+            />
+            <div class="form-tip">
+              按某一列把行分成若干组，每组前面插一行写着组名、条数与小计的分组行，可折叠。
+              <template v-if="!rowGroupAvailable">
+                <br />
+                <strong>{{ rowGroupUnavailableReason }}</strong>
+              </template>
+            </div>
+          </el-form-item>
+
+          <template v-if="rowGroup.enabled && rowGroupAvailable">
+            <el-form-item label="分组字段" required>
+              <el-select
+                v-model="rowGroup.field"
+                clearable
+                filterable
+                placeholder="按哪一列分组"
+              >
+                <el-option v-for="f in mainFields" :key="f.key" :label="f.title" :value="f.field" />
+              </el-select>
+              <div class="form-tip">
+                按字段的<strong>原始值</strong>分组，分组行上显示的是该列格式化之后的值。
+                不要求同值的行挨在一起，所以不依赖排序 —— 组的先后就是它在数据里第一次出现的先后。
+              </div>
+            </el-form-item>
+
+            <el-form-item label="显示条数">
+              <el-switch v-model="rowGroup.showCount" />
+              <div class="form-tip">
+                在组名后面显示「（N 条）」。
+                <strong>⚠️ N 是当前页的条数</strong>，不是这一组的总条数 ——
+                分组与小计都只在当前页的数据上做，与合计行同一个口径。
+              </div>
+            </el-form-item>
+
+            <el-form-item label="组内小计">
+              <el-select
+                v-model="rowGroup.summaryFields"
+                class="!w-420px"
+                collapse-tags
+                collapse-tags-tooltip
+                :max-collapse-tags="3"
+                multiple
+                placeholder="选择要在分组行上出小计的列"
+              >
+                <el-option
+                  v-for="col in groupSummarizableColumns"
+                  :key="col.field"
+                  :label="col.label || col.field"
+                  :value="col.field"
+                />
+              </el-select>
+              <div v-if="nonNumericGroupSumLabels.length > 0" class="form-tip">
+                <strong>{{ nonNumericGroupSumLabels.join('、') }}</strong>
+                看起来不是数值列，分组行上不会显示它们的小计。
+              </div>
+            </el-form-item>
+
+            <el-form-item label="默认状态">
+              <el-radio-group v-model="rowGroup.defaultExpand">
+                <el-radio value="ALL">全部展开</el-radio>
+                <el-radio value="NONE">全部折叠</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </template>
+        </el-form>
+
+        <el-divider content-position="left">复杂表头</el-divider>
         <el-form class="config-form" label-width="120px">
           <el-form-item label="启用分组表头">
             <el-switch v-model="complexHeaderEnabled" />
@@ -1223,6 +1352,143 @@ const inlineEditableColumnLabels = computed(() =>
   editableColumns(columns.value).map((c: any) => c.label || c.field)
 )
 
+/**
+ * 行分组配置
+ *
+ * ⚠️ 这个 ref 必须声明在「同值合并」那一段**之前**
+ *
+ * 同值合并的 `watch(mergeSameAvailable, ...)` 在 setup 阶段就会求一次源值，
+ * 而 `mergeSameAvailable` 里读了 `rowGroup.value`（两者互斥）。
+ * 声明在后面的话，那次求值撞上 const 的暂时性死区，抛 ReferenceError ——
+ * 整个设计器页白屏，而报错信息完全指不到「行分组」这个新功能上。
+ * （这是实测踩到的：加完行分组之后，列表设计这一步整步点不开。）
+ *
+ * 具体字段的说明见下面「行分组」那一段。
+ */
+/**
+ * 运行时列设置
+ *
+ * 默认关。给每张已发布的列表凭空多一个按钮是一种意外 ——
+ * 设计者没配过它，用户却发现工具栏变了。
+ */
+const columnSetting = ref({ enabled: false })
+
+const rowGroup = ref({
+  enabled: false,
+  field: '',
+  showCount: true,
+  summaryFields: [] as string[],
+  defaultExpand: 'ALL' as 'ALL' | 'NONE'
+})
+
+// ==================== 同值合并 ====================
+//
+// 相邻几行在某一列上取值相同时合并成一格。算法在 cellMerge.ts，
+// 这里只负责「什么时候允许配」与「配了之后提示什么」。
+
+/**
+ * 「同值合并」这一列在不在
+ *
+ * 三种模式下整列隐藏，因为它在这些模式下配了也不会生效：
+ *
+ * - **树形** —— 树按 children 递归渲染，行与行不是平铺关系，没有「相邻」可言
+ * - **明细展开** —— 主表列已经在按主记录跨行合并了，再叠一层「相邻主记录也合并」
+ *   没有确定语义：合并后的那一格对应哪条主记录？操作列怎么办？
+ * - **行内编辑** —— 编辑的是「这一行」，而合并后的一格横跨若干行
+ *
+ * 隐藏而不是置灰：置灰的开关摆在那里，用户会反复去点它并怀疑是不是坏了。
+ */
+const mergeSameAvailable = computed(
+  () =>
+    !treeConfig.value.enabled &&
+    !hasSubColumns.value &&
+    !inlineEdit.value.enabled &&
+    // 行分组也在重排行结构：它会往行序列里插进分组行，
+    // 而合并是按「相邻行同值」算的 —— 中间插了一行不是数据的行，
+    // 合并块会被从中劈开，看起来像合并时灵时不灵
+    !rowGroup.value.enabled
+)
+
+/**
+ * 某一列不能开同值合并的原因，能开时返回空串
+ *
+ * 返回原因而不是布尔值：禁用的开关必须说明为什么，否则用户只会觉得它坏了。
+ */
+const mergeSameDisabledReason = (col: any): string => {
+  if (col?.subField) {
+    return '明细列不能合并 —— 明细行本来就是逐行独立的，' +
+      '按同值合并会把不同主记录下的明细粘在一起'
+  }
+  return ''
+}
+
+/** 已开启同值合并的列标题，按列顺序 —— 这个顺序就是级联的优先级 */
+const mergeSameColumnLabels = computed(() =>
+  columns.value
+    .filter((c: any) => c.mergeSame && !c.subField)
+    .map((c: any) => c.label || c.field)
+)
+
+/**
+ * 关掉合并模式时，把列上的合并标记一并清掉
+ *
+ * 与 handleInlineEditToggle 同一个道理：留着的话配置里会残留一批
+ * 「模式关着但标记还在」的列，下次切回来会看到一批自己没勾过的列开着合并。
+ */
+watch(mergeSameAvailable, (available) => {
+  if (available) return
+  columns.value.forEach((col: any) => {
+    col.mergeSame = undefined
+  })
+})
+
+// ==================== 行分组 ====================
+//
+// 按某一列把行分成若干组，每组前插一行分组行。编排算法在 rowGroup.ts，
+// 这里负责「什么时候允许配」与「配了之后提示什么」。
+
+/**
+ * 不能开行分组的原因，能开时返回空串
+ *
+ * 三者都在重排行结构，与行分组合不到一起：
+ * 树按 children 递归、明细展开按主记录摊平、行内编辑改的是「这一行」，
+ * 而分组会往行序列里插进一批不是记录的行。
+ */
+const rowGroupUnavailableReason = computed((): string => {
+  if (treeConfig.value.enabled) return '树形列表已开启，两者都在重排行结构，不能同时用'
+  if (hasSubColumns.value) return '列表里有明细列，明细展开与行分组不能同时用'
+  if (inlineEdit.value.enabled) return '行内编辑已开启，与行分组不能同时用'
+  return ''
+})
+
+const rowGroupAvailable = computed(() => !rowGroupUnavailableReason.value)
+
+/** 关掉分组时把字段与小计一并清掉，免得下次打开看到一批自己没配过的东西 */
+const handleRowGroupToggle = (enabled: any) => {
+  if (enabled) return
+  rowGroup.value.field = ''
+  rowGroup.value.summaryFields = []
+}
+
+/** 一旦切到互斥的模式，行分组自动关掉 —— 留着开关开着但不生效最费解 */
+watch(rowGroupAvailable, (available) => {
+  if (!available) rowGroup.value.enabled = false
+})
+
+/** 可以出组内小计的列。明细列不行 —— 分组是主记录级的，明细行不在这一层 */
+const groupSummarizableColumns = computed(() =>
+  columns.value.filter((c: any) => c.field && !c.subField)
+)
+
+/** 已选为组内小计、但看起来不是数值的那些列 */
+const nonNumericGroupSumLabels = computed(() =>
+  groupSummarizableColumns.value
+    .filter(
+      (c: any) => rowGroup.value.summaryFields.includes(c.field) && !isNumericColumn(c)
+    )
+    .map((c: any) => c.label || c.field)
+)
+
 const handleTreeToggle = (enabled: any) => {
   if (enabled) {
     pagination.value.enabled = false
@@ -1441,6 +1707,38 @@ const columnKey = (col: { field?: string; subField?: string }): string =>
 const mainFields = computed(() => availableFields.value.filter((f) => f.source !== 'sub'))
 
 /**
+ * 可以在打印模板里循环的子表，连同它们的列
+ *
+ * 取自**表绑定**里配的 subTables，而不是从规则树里找 group 控件 ——
+ * 发布校验判的就是表绑定（`validatePrintLoops`），两处依据必须是同一份。
+ * 按规则树来的话，会出现「设计器里列得出来、发布说子表不存在」。
+ *
+ * 列名取自子表的 fieldMapping 的键：那正是运行时读回明细行时用的键。
+ */
+const printSubTables = computed(() => {
+  let binding: any = {}
+  try {
+    binding = props.modelData.tableBinding ? JSON.parse(props.modelData.tableBinding) : {}
+  } catch {
+    return []
+  }
+  const subs = Array.isArray(binding.subTables) ? binding.subTables : []
+  return subs
+    .filter((sub: any) => sub?.field)
+    .map((sub: any) => {
+      // 标题优先用子表控件在表单里的标题，取不到时退回字段名 ——
+      // 退回表名会让用户对不上号（表名是 test_demo_grid_cost，控件叫「费用明细」）
+      const rule = findRule(props.formFields ?? [], sub.field)
+      const title = rule?.title || sub.field
+      const columns = Object.keys(sub.fieldMapping ?? {}).map((field) => {
+        const inner = findRule(props.formFields ?? [], field, sub.field)
+        return { field, title: inner?.title || field }
+      })
+      return { field: sub.field, title, columns }
+    })
+})
+
+/**
  * 打印模板
  *
  * ## 为什么不走 collect / restore
@@ -1578,9 +1876,17 @@ const findRule = (rules: any[], field: string, subField?: string): any => {
 const summarizableColumns = computed(() => columns.value.filter((c) => c.field))
 
 /**
+ * 值一定是数值的控件
+ *
+ * ⚠️ 这里漏一个，对应的列就会被误报成「看起来不是数值列」，而它明明合得出来。
+ * 公式列是最容易漏的一个 —— 金额合计十有八九合的就是公式算出来的那一列。
+ */
+const NUMERIC_WIDGET_TYPES = ['inputNumber', 'Formula', 'slider', 'rate']
+
+/**
  * 某一列看起来是不是数值列
  *
- * 判据有两个：列自己配了 NUMBER 格式化，或者它对应的控件是数字输入框。
+ * 判据有两个：列自己配了 NUMBER 格式化，或者它对应的控件的值一定是数值。
  * 关联列 / 副表列 / 审计列在规则树里没有对应控件，一律判为「看不出来」（返回 true），
  * 否则会对一堆其实能合计的列误报。
  */
@@ -1589,7 +1895,7 @@ const isNumericColumn = (col: any): boolean => {
   const rule = findRule(props.formFields ?? [], col?.field, col?.subField)
   // 规则树里找不到 → 不是表单控件映射出来的列，无从判断，不误报
   if (!rule) return true
-  return rule.type === 'inputNumber'
+  return NUMERIC_WIDGET_TYPES.includes(rule.type)
 }
 
 /**
@@ -1874,7 +2180,15 @@ const collect = () => {
     inlineEdit:
       inlineEdit.value.enabled && editableColumns(columns.value).length > 0
         ? inlineEdit.value
-        : undefined
+        : undefined,
+    // 没选分组字段的配置是无效的，不写进去 —— 运行时会把它当没开，
+    // 但存着一份「开了却没字段」的配置会让下次打开设计器时显示成已启用
+    rowGroup:
+      rowGroup.value.enabled && rowGroup.value.field && rowGroupAvailable.value
+        ? rowGroup.value
+        : undefined,
+    // 没开时不写进配置，存量表单的 listConf 里也就不会多出一个恒为 false 的键
+    columnSetting: columnSetting.value.enabled ? columnSetting.value : undefined
   }
   props.modelData.listConf = JSON.stringify(listConf)
 }
@@ -1916,6 +2230,18 @@ const restore = () => {
     formViewMode.value = parseFormViewMode(conf.formViewMode)
     tabConfig.value = conf.tabConfig || { enabled: false, field: '', tabs: [] }
     treeConfig.value = conf.treeConfig || { enabled: false, parentField: '', rowKey: 'id' }
+    columnSetting.value = { enabled: !!conf.columnSetting?.enabled }
+    rowGroup.value = {
+      enabled: !!conf.rowGroup?.enabled,
+      field: conf.rowGroup?.field || '',
+      // 存量配置里没有这个键。缺省显示条数 —— 分组行上只有组名没有条数，
+      // 用户第一件想知道的事就没了
+      showCount: conf.rowGroup?.showCount !== false,
+      summaryFields: Array.isArray(conf.rowGroup?.summaryFields)
+        ? conf.rowGroup.summaryFields
+        : [],
+      defaultExpand: conf.rowGroup?.defaultExpand === 'NONE' ? 'NONE' : 'ALL'
+    }
     leftTree.value = conf.leftTree || {
       enabled: false,
       dataSource: 'DICT',

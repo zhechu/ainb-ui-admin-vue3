@@ -656,7 +656,11 @@ test.describe('示例 5 · 跨表取数', () => {
     await expect(body).toContainText('A 类（重点）')
 
     // 286000 + 1520000 + 96800 + 45300 = 1948100
-    await expect(page.locator('.el-table__footer-wrapper')).toContainText('1948100.00', {
+    //
+    // ⚠️ 带千分位：合计行跟着这一列自己的格式化走（本示例的金额列配了千分位），
+    // 与数据行是同一条路径。改造前合计行一律 toFixed(2)，断言的是 `1948100.00` ——
+    // 数据行有逗号、合计行没有，同一列上下看着像两套数
+    await expect(page.locator('.el-table__footer-wrapper')).toContainText('1,948,100.00', {
       timeout: 10_000
     })
   })
