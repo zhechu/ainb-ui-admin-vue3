@@ -106,6 +106,15 @@ const include = [
   'element-plus/es/components/progress/style/css'
 ]
 
-const exclude: string[] = []
+// form-create 运行时已 vendored 到 src/lib（见 src/lib/form-create/VENDOR.md）。
+//
+// @form-create/designer 仍是 node_modules 依赖，它的 dist 把 @form-create/element-ui
+// external 掉了；而 vite.config.ts 的 alias 会把这个 specifier 指向 src/lib。
+// 若让依赖预构建处理它，esbuild 会顺着 alias 把整棵 vendored 源码树吸进预构建产物，
+// 其中的 .jsx 由 esbuild 以 jsx:'preserve' 处理 —— vue-jsx 插件根本没机会跑，
+// 产物里留着裸 JSX，随后 vite:import-analysis 解析失败，整个应用在 dev 下白屏。
+//
+// 生产构建不走依赖预构建，所以这个问题只在 dev 暴露、build 全绿 —— 只跑构建会漏掉。
+const exclude: string[] = ['@form-create/designer']
 
 export { include, exclude }

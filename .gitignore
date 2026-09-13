@@ -5,6 +5,9 @@ dist-ssr
 /dist*
 pnpm-debug
 auto-*.d.ts
+# 上一行本意是忽略 unplugin 生成的 src/types/auto-{imports,components}.d.ts，
+# 但它会误伤 vendored 的 @form-create/element-ui/auto-import.d.ts（那是上游源码，必须入库）
+!src/lib/**/auto-*.d.ts
 .idea
 .history
 output/

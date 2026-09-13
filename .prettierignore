@@ -10,3 +10,5 @@
 /src/components/Tinyflow/ui/**
 /docs/**/*
 CHANGELOG
+/src/lib/form-create/**
+/src/lib/form-designer/**

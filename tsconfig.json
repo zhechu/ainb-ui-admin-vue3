@@ -22,7 +22,13 @@
     "noImplicitAny": false,
     "skipLibCheck": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      // form-create 运行时已 vendored 到 src/lib（见 src/lib/form-create/VENDOR.md）。
+      // 运行时解析走 vite.config.ts 的 alias，这里只负责类型：
+      // 工程里有 4 处 `import type { Rule, Api } from '@form-create/element-ui'`，
+      // 不配这两条 pnpm ts:check 会整片报红。
+      "@form-create/element-ui": ["src/lib/form-create/element-ui/types/index.d.ts"],
+      "@form-create/core": ["src/lib/form-create/core/types/index.d.ts"]
     },
     "types": [
       // "@intlify/unplugin-vue-i18n/types",
@@ -40,5 +46,5 @@
     "src/types/auto-imports.d.ts",
     "src/types/auto-components.d.ts"
   ],
-  "exclude": ["dist", "target", "node_modules"]
+  "exclude": ["dist", "target", "node_modules", "src/lib/form-create", "src/lib/form-designer"]
 }
