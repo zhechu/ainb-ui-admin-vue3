@@ -111,6 +111,7 @@ import ConditionGroupEditor from './ConditionGroupEditor.vue'
 import ActionListEditor from './ActionListEditor.vue'
 import type { LogicRule } from './types'
 import { detectCycles } from './cycleDetect'
+import { findInvalidFieldRefs } from './invalidFieldRefs'
 
 defineOptions({ name: 'LogicRuleEditor' })
 
@@ -220,27 +221,18 @@ const removeRule = async (index: number) => {
   emitChange()
 }
 
-/** 字段被删除后，引用它的规则会失效。这里只提示，不自动改规则 —— 自动改可能删掉用户还想留的配置 */
-const invalidFieldRefs = computed(() => {
-  const valid = new Set(props.fieldOptions.map((o) => o.value))
-  const missing = new Set<string>()
-  const walkGroup = (group: any) => {
-    for (const item of group?.items ?? []) {
-      if (item.logic !== undefined || item.items !== undefined) {
-        walkGroup(item)
-      } else if (item.field && !valid.has(item.field)) {
-        missing.add(item.field)
-      }
-    }
-  }
-  for (const rule of rules.value) {
-    walkGroup(rule.when)
-    for (const action of [...(rule.then ?? []), ...(rule.otherwise ?? [])]) {
-      if (action.target && !valid.has(action.target)) missing.add(action.target)
-    }
-  }
-  return [...missing]
-})
+/**
+ * 规则里引用了、但表单上已不存在的字段
+ *
+ * 判断逻辑抽在 invalidFieldRefs.ts 里（纯函数 + 单测），这里只做展示。
+ * 抽出去的原因是保存/发布前也要拦同一件事，而那时本编辑器可能根本没被打开过 ——
+ * 依赖组件 ref 的写法会让校验静默通过。
+ *
+ * 这里只报告、不自动改规则：自动改可能删掉用户还想留的配置。
+ */
+const invalidFieldRefs = computed(() =>
+  findInvalidFieldRefs(rules.value, props.fieldOptions.map((o) => o.value))
+)
 
 /**
  * 暴露给上层保存流程
