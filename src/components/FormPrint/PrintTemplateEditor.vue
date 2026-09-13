@@ -21,6 +21,14 @@
       :title="`模板引用了取不到值的字段：${invalidFields.join('、')}。这些位置会印成空白，且不会报错。发布时会被拦下`"
     />
 
+    <el-alert
+      v-if="invalidLoopFields.length > 0"
+      type="warning"
+      :closable="false"
+      class="mb-12px"
+      :title="`明细循环段有问题：${invalidLoopFields.join('；')}。段内的明细印不出来，且不会报错。发布时会被拦下`"
+    />
+
     <div class="flex gap-12px items-start">
       <div class="flex-1 min-w-0">
         <Editor ref="editorRef" v-model="template" height="460px" />
@@ -50,13 +58,38 @@
             <div class="field-panel-item-code">{{ placeholderOf(field.field) }}</div>
           </div>
         </el-scrollbar>
+
+        <!--
+          子表明细。⚠️ 只给「插入整张表格」，不给「插入单个明细字段」——
+          单个字段插进去会落在循环段之外，印出来是一片空白，
+          而这正是本模块一直在避免的那类「配了但不生效、且不报错」。
+        -->
+        <template v-if="subTables.length > 0">
+          <div class="field-panel-title mt-12px">插入明细表格</div>
+          <div
+            v-for="sub in subTables"
+            :key="sub.field"
+            class="field-panel-item"
+            :title="`插入 ${sub.title} 的明细表格`"
+            @click="insertSubTable(sub)"
+          >
+            <div class="field-panel-item-title">{{ sub.title }}</div>
+            <div class="field-panel-item-code">{{ '{#' + sub.field + '}' }}</div>
+          </div>
+        </template>
       </div>
     </div>
 
     <div class="form-tip mt-8px">
-      <strong>印不出来的两类东西</strong>：子表明细（它是多行数据，插进一个位置只能得到
-      一串 <code>[object Object]</code>，发布会拦）；条码/二维码（<code>{字段}</code>
-      是文本替换，印出来是那串数字本身而不是条码图形）。
+      <strong>子表明细</strong>：把 <code>{#子表字段}</code> 放进<strong>要重复的那一行</strong>的
+      任意一个单元格里，这一整行就按明细条数重复，行内的 <code>{列}</code> 取当前明细行的值，
+      标记本身不会印出来。<strong>用右侧的按钮插入</strong>，它会一次生成结构正确的表格。
+      <br />
+      ⚠️ 标记<strong>必须在表格的一行里</strong>。放在表格外面不会报错，只是明细一行都印不出来 ——
+      发布校验会拦住这种写法。
+      <br />
+      <strong>印不出来的一类</strong>：条码/二维码 —— <code>{字段}</code> 是文本替换，
+      印出来是那串数字本身而不是条码图形。
       富文本字段印出来是它的 HTML 原文 —— 值一律做转义，否则记录里的
       <code>&lt;script&gt;</code> 会在打印预览里执行。
     </div>
@@ -85,7 +118,11 @@
  */
 import { Editor } from '@/components/Editor'
 import type { EditorExpose } from '@/components/Editor'
-import { collectTemplateFields } from '@/components/FormWidgets/printTemplate'
+import {
+  collectLoopFields,
+  collectStrayMarks,
+  collectTemplateFields
+} from '@/components/FormWidgets/printTemplate'
 
 defineOptions({ name: 'PrintTemplateEditor' })
 
@@ -99,7 +136,20 @@ const props = defineProps<{
    * 再解析一遍必然与它漂移 —— 而漂移的表现是「清单里有、印出来是空的」。
    */
   fields: Array<{ key: string; field: string; title: string }>
+  /**
+   * 子表明细。每个子表连同它的列一起给 —— 插入按钮要一次生成完整的表格
+   *
+   * 与 fields 同样由调用方给：哪些子表能循环取决于表绑定里配了哪些 subTables，
+   * 那份知识在「数据绑定」步骤里，本组件自己解析必然与它漂移。
+   */
+  subTables?: Array<{
+    field: string
+    title: string
+    columns: Array<{ field: string; title: string }>
+  }>
 }>()
+
+const subTables = computed(() => props.subTables ?? [])
 
 const template = defineModel<string | undefined>({ required: true })
 
@@ -134,8 +184,65 @@ const filteredFields = computed(() => {
  */
 const invalidFields = computed(() => {
   const known = new Set(props.fields.map((f) => f.field))
+  // collectTemplateFields 已经把循环段整段挖掉了，所以这里拿到的只有主表字段。
+  // 段内的明细列由下面的 invalidLoopFields 单独判 —— 混在一起的话，
+  // 一个完全正常的 {item_name} 会被报成「字段不存在」
   return collectTemplateFields(template.value).filter((f) => !known.has(f))
 })
+
+/** 明细行里引用错的子表 / 列，以及放错位置的标记；与服务端 validatePrintLoops 同一套判据 */
+const invalidLoopFields = computed(() => {
+  const problems: string[] = []
+  // 放在表格外面的标记什么都不会发生 —— 这是最需要当场说清楚的一种
+  collectStrayMarks(template.value).forEach((field) => {
+    problems.push(`{#${field}} 没有放在表格的一行里，明细印不出来`)
+  })
+  const byField = new Map(subTables.value.map((sub) => [sub.field, sub]))
+  Object.entries(collectLoopFields(template.value)).forEach(([subField, columns]) => {
+    const sub = byField.get(subField)
+    if (!sub) {
+      problems.push(`子表「${subField}」不存在`)
+      return
+    }
+    const known = new Set(sub.columns.map((c) => c.field))
+    columns.filter((c) => !known.has(c)).forEach((c) => {
+      problems.push(`${sub.title} 里没有「${c}」`)
+    })
+  })
+  return problems
+})
+
+/**
+ * 在光标处插入一整张明细表格
+ *
+ * 一次给出完整结构（表头 + 带行标记的明细行），而不是让用户自己拼。
+ *
+ * ⚠️ 行标记放在明细行的**第一个单元格里**，不是放在 `<tr>` 之间 ——
+ * HTML 的 foster parenting 规则会把 `<table>` 里不在单元格内的文本
+ * 整段挪到表格前面，标记一旦跑出去就再也框不住那一行了。
+ * 这是实测踩到的：早先的成对写法在设计器里打开保存一次就废了，且不报错。
+ */
+const insertSubTable = async (sub: {
+  field: string
+  title: string
+  columns: Array<{ field: string; title: string }>
+}) => {
+  const editor = await editorRef.value?.getEditorRef()
+  if (!editor) return
+  if (editor.selection) editor.restoreSelection()
+  else editor.focus(true)
+
+  const columns = sub.columns.length > 0 ? sub.columns : [{ field: 'id', title: '编号' }]
+  const head = columns.map((c) => `<th>${c.title}</th>`).join('')
+  const body = columns
+    .map((c, index) => `<td>${index === 0 ? `{#${sub.field}}` : ''}{${c.field}}</td>`)
+    .join('')
+  const html =
+    `<p><strong>${sub.title}</strong></p>` +
+    `<table><thead><tr>${head}</tr></thead>` +
+    `<tbody><tr>${body}</tr></tbody></table><p><br></p>`
+  editor.dangerouslyInsertHtml(html)
+}
 
 /**
  * 在光标处插入一个占位符

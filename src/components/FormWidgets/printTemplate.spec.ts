@@ -17,7 +17,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPrintDocument,
   collectTemplateFields,
+  collectLoopFields,
+  collectStrayMarks,
   escapeHtml,
+  expandLoops,
   resolvePrintHtml
 } from './printTemplate'
 
@@ -126,5 +129,120 @@ describe('buildPrintDocument', () => {
     const doc = buildPrintDocument('', '打印')
     expect(doc).toContain('@page')
     expect(doc).toContain('page-break-inside: avoid')
+  })
+})
+
+describe('子表明细的行标记', () => {
+  /** 与设计器「插入明细表格」产出的结构一致 */
+  const TPL =
+    '<table><thead><tr><th>项目</th><th>金额</th></tr></thead>' +
+    '<tbody><tr><td>{#costs}{cost_item}</td><td>{cost_amount}</td></tr></tbody>' +
+    '</table>'
+
+  it('整行按明细行数重复，行内取当前明细行的值', () => {
+    const html = expandLoops(TPL, {
+      costs: [
+        { cost_item: '服务器', cost_amount: '54000.00' },
+        { cost_item: '差旅', cost_amount: '1850.00' }
+      ]
+    })
+    expect(html).toContain('服务器')
+    expect(html).toContain('差旅')
+    // 重复的是整个 <tr>，不是某一个单元格
+    expect((html.match(/<tr><td>/g) || []).length).toBe(2)
+    // 表头那一行不受影响
+    expect((html.match(/<th>/g) || []).length).toBe(2)
+  })
+
+  it('标记本身不印出来', () => {
+    const html = expandLoops(TPL, { costs: [{ cost_item: 'A', cost_amount: '1' }] })
+    expect(html).not.toContain('{#costs}')
+  })
+
+  it('子表没有数据时整行去掉，而不是留一行空格子', () => {
+    // 留空行的话，一张没有明细的单据上会印出一行空白格，看起来像数据丢了
+    for (const data of [{ costs: [] }, {}, { costs: 'not-an-array' as any }]) {
+      const html = expandLoops(TPL, data)
+      expect(html).not.toContain('<tr><td>')
+      expect(html).not.toContain('{#costs}')
+      // 表头还在 —— 去掉的只是明细行
+      expect(html).toContain('<th>项目</th>')
+    }
+  })
+
+  it('行内的值一样要转义', () => {
+    const html = expandLoops(TPL, {
+      costs: [{ cost_item: '<script>x</script>', cost_amount: '1' }]
+    })
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+
+  it('两张明细表各自展开，互不干扰', () => {
+    const tpl =
+      '<table><tbody><tr><td>{#ms}{n}</td></tr></tbody></table>' +
+      '<table><tbody><tr><td>{#cost}{c}</td></tr></tbody></table>'
+    const html = expandLoops(tpl, { ms: [{ n: 'A' }, { n: 'B' }], cost: [{ c: 'X' }] })
+    expect(html).toContain('<td>A</td>')
+    expect(html).toContain('<td>B</td>')
+    expect(html).toContain('<td>X</td>')
+    expect((html.match(/<tr>/g) || []).length).toBe(3)
+  })
+
+  it('⚠️ 标记没放在表格行里时原样留着，交给发布校验拦', () => {
+    // 悄悄删掉的话，用户会以为标记生效了
+    const bad = '<p>{#costs}</p>'
+    expect(expandLoops(bad, { costs: [{ a: 1 }] })).toBe(bad)
+    expect(collectStrayMarks(bad)).toEqual(['costs'])
+  })
+
+  it('放对了位置的标记不算游离', () => {
+    expect(collectStrayMarks(TPL)).toEqual([])
+    expect(collectStrayMarks(undefined)).toEqual([])
+  })
+
+  it('⚠️ 表格后面的游离标记不会把上一行错认成自己所在的行', () => {
+    const tpl = '<table><tbody><tr><td>{a}</td></tr></tbody></table><p>{#costs}</p>'
+    expect(collectStrayMarks(tpl), '把表格最后一行错当成了标记所在行').toEqual(['costs'])
+  })
+
+  it('整条链路：先展开明细行、再插主表字段', () => {
+    // 顺序反过来的话，{cost_item} 会先被主表数据插一遍（主表上没有这个字段
+    // → 空串），展开时已经无值可取，明细行印出来是一片空白
+    const html = resolvePrintHtml('<p>单号 {project_code}</p>' + TPL, {
+      project_code: 'XM2026001',
+      costs: [{ cost_item: '服务器', cost_amount: '54000.00' }]
+    })
+    expect(html).toContain('XM2026001')
+    expect(html).toContain('服务器')
+    expect(html).not.toContain('{cost_item}')
+  })
+})
+
+describe('收集字段时区分主表与明细行', () => {
+  const TPL =
+    '<p>{project_code}</p>' +
+    '<table><tbody><tr><td>{#costs}{cost_item}</td><td>{cost_amount}</td></tr></tbody></table>' +
+    '<p>{owner_name}</p>'
+
+  it('主表字段清单不含明细行里的列，也不含标记本身', () => {
+    // 混在一起收集的话，设计器会报「模板引用了不存在的字段 cost_item」，
+    // 而它其实完全正常
+    expect(collectTemplateFields(TPL)).toEqual(['project_code', 'owner_name'])
+  })
+
+  it('明细行的子表与它引用的列单独收集', () => {
+    expect(collectLoopFields(TPL)).toEqual({ costs: ['cost_item', 'cost_amount'] })
+  })
+
+  it('没有明细行时返回空对象', () => {
+    expect(collectLoopFields('<p>{a}{b}</p>')).toEqual({})
+    expect(collectLoopFields(undefined)).toEqual({})
+  })
+
+  it('同一个子表出现两行时，列合并去重', () => {
+    const tpl =
+      '<table><tbody><tr><td>{#c}{a}</td></tr><tr><td>{#c}{a}{b}</td></tr></tbody></table>'
+    expect(collectLoopFields(tpl)).toEqual({ c: ['a', 'b'] })
   })
 })

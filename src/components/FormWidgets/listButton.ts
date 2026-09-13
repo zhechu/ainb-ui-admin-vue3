@@ -68,6 +68,20 @@ export const BUILTIN_BUTTONS: BuiltinButton[] = [
     defaultShow: false,
     gated: 'print'
   },
+  {
+    // 列表打印：把当前这张表原样印出来（含分组表头、合并单元格、分组行、合计行）。
+    //
+    // ⚠️ 与「批量打印」是两件事，不要合并成一个按钮：
+    // 批量打印是「勾中的每条记录各印一页单据」，走的是打印模板；
+    // 列表打印是「把这张报表印成一张表」，与模板无关。
+    // 所以它也【不】带 gated: 'print' —— 没配打印模板照样能印列表，
+    // 带上的话用户会发现「配了模板才有列表打印」，而两者根本不相干。
+    key: 'printList',
+    position: 'toolbar',
+    label: '打印列表',
+    icon: 'ep:document',
+    defaultShow: false
+  },
   // 行内
   { key: 'edit', position: 'row', label: '编辑', icon: '', defaultShow: true },
   { key: 'detail', position: 'row', label: '详情', icon: '', defaultShow: true },
