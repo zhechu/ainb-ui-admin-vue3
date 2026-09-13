@@ -54,10 +54,21 @@
 
     <!-- 前端脚本模式 -->
     <template v-else-if="extensionMode === 1">
-      <el-alert type="info" :closable="false" class="mb-12px">
+      <!--
+        这条提示要同时说清两件容易被混淆的事：
+
+        1. 脚本【只在浏览器里跑】，服务端不复算 —— 拿它做的校验能被绕过。
+           这是本模块最容易误判的一点：写了 beforeSubmit 返回 false，
+           看着像是拦住了，实际上直接打接口就过去了。
+        2. 沙箱挡的是【脚本作者能干什么】，不是【终端用户能不能绕过校验】。
+           两者混在一起讲，会让人以为「有沙箱所以可靠」。
+      -->
+      <el-alert type="warning" :closable="false" class="mb-12px">
         <template #title>
-          脚本在受限沙箱里执行：<b>没有任何后端调用能力</b>，也取不到 window、fetch 等全局对象。
-          需要查库、调外部系统的逻辑请改用「服务端扩展点」。
+          脚本<b>只在浏览器里执行，服务端不会复算</b> —— 用它做的校验能被绕过，只适合做即时提示。
+          需要服务端兜住的约束，请配成「提交前」时机的联动规则 / 跨字段校验，或用「服务端扩展点」。
+          脚本跑在受限沙箱里，取不到 window / fetch / XHR，唯一的后端入口是只读的
+          <code>callDataInterface</code>。
         </template>
       </el-alert>
 
@@ -246,7 +257,9 @@ const HOOKS = [
   {
     key: 'beforeSubmit',
     label: '提交前',
-    desc: '提交前执行。返回 false 或 reject 会阻断提交；可以用 message.confirm 做二次确认。',
+    desc:
+      '提交前执行。返回 false 或 reject 会阻断提交；可以用 message.confirm 做二次确认。' +
+      '⚠️ 只拦得住界面上的提交，绕过界面直接调接口不受影响。',
     placeholder:
       "if (formData.amount > 100000) {\n  return message.confirm('金额较大，确认提交？')\n}\nreturn true"
   },
@@ -389,7 +402,9 @@ const API_ITEMS = [
   { name: 'utils.uuid', doc: '生成 uuid', insert: 'utils.uuid()' },
   {
     name: 'callDataInterface',
-    doc: '调用已登记的数据接口取数（只读）。返回 Promise，只有「提交前」钩子能 await',
+    doc:
+      '调用已登记的数据接口取数（只读）。返回 Promise，只有「提交前」钩子能 await。' +
+      '⚠️ 服务端不复算脚本，拿它做的校验能被绕过，只适合做提示',
     detail: '(code, args) => Promise<any>',
     insert: "await callDataInterface('', {})"
   }

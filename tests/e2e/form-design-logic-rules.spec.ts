@@ -551,7 +551,7 @@ test.describe('联动规则编辑器', () => {
     }
   })
 
-  test('扩展方式页签展示三选一，且说明脚本没有后端调用能力', async ({ page, request }) => {
+  test('扩展方式页签展示三选一，且讲清脚本不被服务端复算', async ({ page, request }) => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
@@ -562,8 +562,15 @@ test.describe('联动规则编辑器', () => {
       await expect(page.getByText('无', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
       await expect(page.getByRole('radio', { name: '前端脚本' })).toBeVisible()
       await expect(page.getByRole('radio', { name: '服务端扩展点' })).toBeVisible()
-      // 这句提示是本次安全设计的核心约定，必须出现在界面上
-      await expect(page.getByText(/没有任何后端调用能力/)).toBeVisible()
+      // 两条底线都要写在界面上：
+      // 1. 脚本不被服务端复算 —— 这是最容易误判的一点，写了 beforeSubmit 看着像拦住了，
+      //    实际直接打接口就过去了
+      // 2. 沙箱边界 —— 唯一的后端入口是受控的 callDataInterface
+      // 限定在告警条里断言：callDataInterface 在右侧速查区也出现一次，
+      // 不限定范围会因 strict mode 命中两个元素而失败
+      const notice = page.locator('.el-alert').filter({ hasText: /服务端不会复算/ })
+      await expect(notice).toBeVisible()
+      await expect(notice).toContainText('callDataInterface')
     } finally {
       await deleteForm(request, token, id)
     }
