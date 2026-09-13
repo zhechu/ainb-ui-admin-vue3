@@ -523,8 +523,7 @@ vendored 后走 Vite 正常管线。全量 e2e 含像素级布局断言且全绿
 
 ## 12. 当前状态与后续
 
-阶段 0–2 已完成。**阶段 3（把运行时猴补丁收敛回源码）尚未开始**，
-按 §6 的约定它单独立项。
+阶段 0–2 已完成。阶段 3 的结果见 §13（四处里下沉两处、保留两处）。
 
 ### 交接给人工验收的部分
 
@@ -546,3 +545,75 @@ vendored 后走 Vite 正常管线。全量 e2e 含像素级布局断言且全绿
 起就存在，与本次无关。失败形态是 `.el-alert--warning` 数量断言对不上，
 即**警告该出的时候没出、不该出的时候出了** —— 正好是根 `CLAUDE.md`
 点名的那类「配了但不生效、界面无提示」的缺陷。
+
+---
+
+## 13. 阶段 3 完成记录（2026-09-14）
+
+**范围**：把工程侧的运行时补丁收敛回 vendored 源码。
+**结论**：四处里**下沉了两处、保留了两处**，行为零变化。
+
+§6 阶段 3 原本列了四处待收敛。逐个评估后，其中两处下沉的代价大于收益 ——
+下面连同理由一并记录，避免以后有人再把它们当成「漏做的」。
+
+### 已下沉
+
+**① `useContractWidgetTypes.ts` → `config/rule/{password,dateRange,timeRange}.js`**
+
+原做法：在 `dragRuleList[x].rule()` 外面包一层改返回值的 `type`，
+外加「找不到菜单项就告警跳过」的降级分支。
+现做法：直接改这三个规则文件里的 `type` 字段，共 3 行。
+
+包装层连同它的 100 行说明与降级逻辑一起删除。这是本阶段收益最大的一处：
+原注释里自己写着「@form-create/designer 升级后改了菜单名时会出现这种情况」——
+而现在升级由 `VENDOR.md` 的改动清单接管，不再需要运行时探测。
+
+**② `StepFormDesign.vue` 的 `buildBaseRule` 复刻 → 引用上游默认**
+
+原做法：手抄一份设计器默认基础规则（5 项），注释里写明「升级时要跟着补」。
+现做法：`import defaultFieldRule from '@/lib/form-designer/config/base/field'`，
+`.map()` 只替换「字段ID」那一项。
+
+**这份手抄已经漂移了**：上游 `_control` 项带一条指向联动文档的 warning，
+复刻版漏掉了。本次改为引用上游后该说明自动恢复 ——
+这是本次唯一一处用户可见的行为变化，且方向是修复。
+全量 e2e 未受影响。
+
+### 保留不动（附理由）
+
+**③ `registerExtraWidgets.ts` —— 它根本不是猴补丁**
+
+它走的是 `formCreate.component(type, comp)`，这是 form-create 的**公开扩展点**，
+与 `registerSubTableGroup` 同一套做法。注释里讲的是内核 `CreateNode.h` 的解析顺序，
+那是在解释「为什么必须用这个扩展点、而不是 `app.component`」，不是在绕过它。
+
+真下沉反而更糟：要把 `Link` / `PasswordInput` / `DateRangePicker` 这些
+**工程自己的组件**注册进 vendored 的 element-ui 源码里，
+等于让上游副本反向依赖 `src/components`，每次升级都多一堆冲突。
+
+**④ `useOptionSource.ts` —— 注入内容是按控件动态生成的**
+
+它往属性面板的「选项来源」里注入「数据字典」分支。看着像静态配置，
+实际上 `dictRule(target)` / `interfaceRule(target, activeRule)` 两个分支都绑定了
+**当前控件的选项路径 `target` 与当前活规则 `activeRule`**，
+而 vendored 侧的 `utils/index.js` 里 `makeOptionsRule` 是个通用构造器，
+拿不到这两样东西。硬下沉就得把工程上下文往上游代码里传，耦合方向是反的。
+
+它「按 `field === '_optionType'` 递归查找 + 找不到则降级告警」这套探测保留原样。
+vendoring 之后这个字段名的稳定性已由我们自己掌握，
+升级时按 `VENDOR.md` 的流程复核即可；降级分支留着作为兜底没有坏处。
+
+### 验收对照
+
+| 项 | 基线 | 阶段 2 | 阶段 3 |
+|---|---|---|---|
+| `ts:check` | 22 errors | 22 | **22，与阶段 2 逐条一致** |
+| `build:prod` | ✓ 1m 4s | ✓ 46.3s | **✓ 46.4s** |
+| `test:e2e` | 297 / 5 failed | 297 / 5 | **297 / 5，同样 5 条同样行号** |
+| `lint` | 16 problems | 16 | **16** |
+
+体积无变化（`form-designer` 836.25 → 836.26 kB）。
+工程侧净减 97 行（删掉 128 行、新增 31 行）。
+
+补丁 A 有一条针对性用例直接守着：
+`form-design-widget-render.spec.ts:456 › 拖出来的密码框 / 日期区间 / 时间区间，type 就是契约里的那个`。

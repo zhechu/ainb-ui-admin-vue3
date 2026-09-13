@@ -13,7 +13,10 @@ export default {
     event: ['change', 'blur', 'focus', 'visibleChange'],
     rule({t}) {
         return {
-            type: 'timePicker',
+            // 【本地改动 #5，见 ../../VENDOR.md】上游产出 type: 'timePicker'。
+            // 同 dateRange：契约里 timeRange 的落库形态与 timePicker 不同，
+            // 类型不对齐会静默写坏数据。渲染器见 registerExtraWidgets.ts
+            type: 'timeRange',
             field: uniqueId(),
             title: t('com.timeRange.name'),
             info: '',

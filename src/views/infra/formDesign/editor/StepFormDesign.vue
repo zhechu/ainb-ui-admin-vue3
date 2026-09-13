@@ -139,6 +139,9 @@ import { encodeConf, encodeFields, setConfAndFields } from '@/utils/formCreate'
 import { useStepRestore } from './useStepRestore'
 import { fieldNameOf } from './fieldNaming'
 import * as FormDesignApi from '@/api/infra/formDesign'
+// 设计器基础属性面板的默认规则。直接取 vendored 源码的那一份，避免手抄出漂移，
+// 见下方 buildBaseRule
+import defaultFieldRule from '@/lib/form-designer/config/base/field'
 
 defineOptions({ name: 'FormDesignStepFormDesign' })
 
@@ -471,47 +474,31 @@ const syncActiveScope = () => {
  * 基础属性面板的规则
  *
  * 用设计器支持的 config.baseRule 钩子整体替换默认规则，只把「字段ID」从
- * FieldInput 换成下拉选择，其余项按默认样子重建。
+ * FieldInput 换成下拉选择，其余项原样沿用上游默认。
  *
- * ⚠️ 这是对设计器默认基础规则的一份复刻（@form-create/designer 3.4.0）。
- * 该钩子只支持整体替换或前后追加，没有「只改其中一项」的模式，所以必须重建全部。
- * 升级设计器时如果默认基础项有增减，这里要跟着补 —— 少一项的后果是那个属性
- * 在面板上消失，界面上看得出来，不会静默出错。
+ * 该钩子只支持整体替换或前后追加，没有「只改其中一项」的模式，所以必须给出全部项。
+ * 但**不再手抄一份** —— 直接引入 vendored 设计器导出的默认规则再替换第一项，
+ * 上游增减基础项时这里自动跟上。
+ *
+ * 之前是手抄的，而且已经抄漏了：上游 `_control` 项带一条指向联动文档的 warning，
+ * 复刻版没有。这类漏项在界面上表现为「某个说明凭空少了」，不会报错。
  */
-const buildBaseRule = ({ t }: any) => [
-  {
-    // 自带的 FieldInput 是自由输入框。DbFieldSelect 换成从物理列下拉选，
-    // 但原样保留了它的三重校验（非空 / 字母开头 / 同作用域不重名）——
-    // 重名那条尤其不能丢：form-create 按 field 取值，两个控件同名会互相覆盖且毫无提示
-    type: 'DbFieldSelect',
-    field: 'field',
-    value: '',
-    title: t('form.field'),
-    warning: t('warning.field'),
-    props: {
-      options: fieldOptions,
-      placeholder: '选择数据库字段，或输入自定义字段名'
-    }
-  },
-  { type: 'LanguageInput', field: 'title', value: '', title: t('form.title') },
-  { type: 'LanguageInput', field: 'info', value: '', title: t('form.info') },
-  { type: 'SizeInput', field: 'formCreateWrap>labelWidth', value: '', title: t('form.labelWidth') },
-  {
-    type: 'Struct',
-    field: '_control',
-    name: 'control',
-    value: [],
-    title: t('form.control'),
-    props: {
-      defaultValue: [],
-      validate(val: any) {
-        if (!Array.isArray(val)) return false
-        if (!val.length) return true
-        return !val.some(({ rule }: any) => !Array.isArray(rule))
-      }
-    }
-  }
-]
+const buildBaseRule = ({ t }: any) =>
+  defaultFieldRule({ t }).map((item: any) =>
+    item.field === 'field'
+      ? {
+          // 自带的 FieldInput 是自由输入框。DbFieldSelect 换成从物理列下拉选，
+          // 但原样保留了它的三重校验（非空 / 字母开头 / 同作用域不重名）——
+          // 重名那条尤其不能丢：form-create 按 field 取值，两个控件同名会互相覆盖且毫无提示
+          ...item,
+          type: 'DbFieldSelect',
+          props: {
+            options: fieldOptions,
+            placeholder: '选择数据库字段，或输入自定义字段名'
+          }
+        }
+      : item
+  )
 
 /**
  * 保留列黑名单：不允许在字段映射里选择

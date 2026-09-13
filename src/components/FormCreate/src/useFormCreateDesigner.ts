@@ -24,7 +24,6 @@ import {
 } from './config'
 import { useOptionSource } from './config/useOptionSource'
 import { useFieldDeduplication } from './designer/useFieldDeduplication'
-import { alignContractWidgetTypes } from './designer/useContractWidgetTypes'
 import { Ref } from 'vue'
 import { resetComponentProps } from './designer/useComponentPropsRegistry'
 import { Menu } from '@/components/FormCreate/src/type'
@@ -164,10 +163,6 @@ export const useFormCreateDesigner = async (designer: Ref) => {
     resetComponentProps(designer)
     buildFormComponents()
     buildSystemMenu()
-    // 内核的密码输入 / 日期区间 / 时间区间三个菜单产出的规则类型与契约对不上，
-    // 在这里对齐。见 designer/useContractWidgetTypes.ts —— 不对齐的后果不是少个渲染器，
-    // 而是日期区间的数组值被按标量往日期列里写
-    alignContractWidgetTypes(designer)
     // 把内置选项类控件的「选项来源」改造成 静态数据 / 数据字典 / 数据接口 三选一
     buildOptionSource()
     // 给输入类控件加上「格式校验」属性（内置正则库 + 自定义正则）

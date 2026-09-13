@@ -39,10 +39,41 @@
 | 2 | `index.js` | 删掉 `FcEditor`（`@form-create/component-wangeditor`）的 import 与 `addComponent` | 该包依赖已停止维护的 wangeditor v4，工程用的是 `@wangeditor-next`。且 `useFormCreateDesigner.ts:61` 本来就 `removeMenuItem('fcEditor')` 把它移除了 |
 | 3 | `components/FcDesigner.vue` | 删掉 AI 面板：左侧入口按钮、`<FcAiPanel>`、import 与组件注册；`el-aside` 宽度判断去掉 `activeModule === 'ai'` 分支。同时删除 `components/ai/` | 上游的 AI 生成表单面板未接任何后端，本分支自建了整套低代码体系。顺带省掉 `marked` 依赖 |
 | 4 | `index.js` + `components/SignaturePad.vue` | 删掉 `SignaturePad` 的 import 与 `addComponent`，并删除组件文件 | `useFormCreateDesigner.ts:67` 本来就 `removeMenuItem('signaturePad')`，契约里也标了 `supported=false`（值是 canvas 直出的 base64、未接文件存储），工程用自建的 `Signature.vue` 替代。顺带省掉 `signature_pad` 依赖 |
+| 5 | `config/rule/{password,dateRange,timeRange}.js` | `rule()` 产出的 `type` 由 `input` / `datePicker` / `timePicker` 改成 `password` / `dateRange` / `timeRange` | 见下「控件类型与契约对齐」 |
 
 > **改动 2 / 4 只删组件，不删 `config/rule/{editor,signaturePad}.js` 的菜单规则。**
 > 工程的 `removeMenuItem('fcEditor')` / `removeMenuItem('signaturePad')` 要能命中这两个菜单项，
 > 删掉规则会让那两次调用落空。保留规则 + 移除组件，运行时表现与 vendoring 前完全一致。
+
+## 控件类型与契约对齐（改动 #5 的背景）
+
+上游这三个菜单的**菜单名**与它 `rule()` 产出的**规则类型**不一致：
+
+| 菜单名（= 契约里的 type） | 上游 `rule()` 产出的 type |
+|---|---|
+| `password` | `input` + `props.type='password'` |
+| `dateRange` | `datePicker` + `props.type='datetimerange'` |
+| `timeRange` | `timePicker` + `props.isRange` |
+
+后端 `FormValueSerializer` 与发布校验都按 `rule.type` 去契约里查落库形态与能力位，
+所以类型对不上不是「少个渲染器」这么轻：
+
+- 契约里 `dateRange` 是 `valueType=array`、`storage=delimited`（一列存两头），
+  而 `datePicker` 是 `valueType=date`、`storage=scalar` ——
+  从菜单拖一个日期区间出来，后端查到的是 datePicker 那一行，
+  **一个数组被当标量往日期列里写，而且全程不报错**。
+- `password` 的契约刻意关掉了列表列 / 查询 / 导出三个能力位
+  （密码字段出现在列表或导出文件里本身就是缺陷），类型是 `input` 的话这三条一条都不生效。
+
+渲染器由工程侧的 `registerExtraWidgets.ts` 提供（走 `formCreate.component()`
+这个公开扩展点），两处缺一不可：只对齐类型而没有渲染器，拖出来的控件会变成空白元素。
+
+> 本改动只影响**此后新拖的控件**。已存下来的规则（type 是 input / datePicker /
+> timePicker）照旧按原类型渲染与落库，不需要迁移。
+
+> 这三处原本是工程侧的运行时补丁（`designer/useContractWidgetTypes.ts`，
+> 在 `dragRuleList[x].rule()` 外面包一层改返回值的 type）。
+> vendoring 之后改在源码上，那个文件已删除。
 
 ## CodeMirror 版本冲突（改动 #1 的背景）
 
@@ -78,3 +109,11 @@ designer 用的是 **CodeMirror 5**。它 package.json 里写的 `"codemirror": 
 5. `pnpm ts:check` + **dev 与 build 各跑一遍**
    （依赖预构建与循环依赖两类问题只在 dev 暴露，见方案 §7.2）
 6. 跑 e2e，对照 `docs/form-create-源码集成方案.md` §9 的基线
+
+## 工程侧引用了本目录的地方
+
+除 alias 转发外，还有一处**深层引用**，改上游对应文件时要一并检查：
+
+| 工程文件 | 引用 | 为什么 |
+|---|---|---|
+| `src/views/infra/formDesign/editor/StepFormDesign.vue` | `@/lib/form-designer/config/base/field` | `config.baseRule` 钩子只支持整体替换，没有「只改其中一项」的模式。直接引上游默认规则再替换「字段ID」一项，比手抄一份不容易漂移 |

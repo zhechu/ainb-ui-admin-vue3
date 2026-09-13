@@ -13,7 +13,11 @@ export default {
     event: ['change', 'blur', 'focus', 'calendarChange', 'panelChange', 'visibleChange'],
     rule({t}) {
         return {
-            type: 'datePicker',
+            // 【本地改动 #5，见 ../../VENDOR.md】上游产出 type: 'datePicker'。
+            // 契约里 dateRange 是 valueType=array、storage=delimited（一列存两头），
+            // 而 datePicker 是 valueType=date、storage=scalar —— 类型不对齐的后果是
+            // 一个数组被当标量往日期列里写，而且全程不报错。渲染器见 registerExtraWidgets.ts
+            type: 'dateRange',
             field: uniqueId(),
             title: t('com.dateRange.name'),
             info: '',
