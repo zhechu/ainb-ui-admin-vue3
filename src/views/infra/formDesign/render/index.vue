@@ -3193,7 +3193,10 @@ const handleExport = async () => {
       {
         conditions,
         sortField: sort?.field,
-        sortOrder: sort?.order
+        sortOrder: sort?.order,
+        // ⚠️ 传当前【真正渲染出来的】列，而不是设计期的列 ——
+        // 用户在列设置里隐藏掉的列不该出现在导出文件里
+        visibleFields: columns.value.map((col) => columnKeyOf(col))
       },
       config.value?.name || formCode.value
     )

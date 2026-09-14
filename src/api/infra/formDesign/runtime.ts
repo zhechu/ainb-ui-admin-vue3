@@ -99,6 +99,14 @@ export type RuntimeExportReqVO = {
   conditions?: RuntimeConditionVO[]
   sortField?: string
   sortOrder?: string
+  /**
+   * 当前可见的列，含顺序。明细列用 `子表::字段`（与 columnKeyOf 一致）
+   *
+   * ⚠️ 必须传：列设置存在浏览器本地，服务端不知道。不传的话导出按【设计期】
+   * 的列来 —— 用户隐藏掉的列照样被导出、调过的顺序也不生效，
+   * 而「所见即所得」正是导出这件事的全部要求。
+   */
+  visibleFields?: string[]
 }
 
 /** 获得渲染配置 */
