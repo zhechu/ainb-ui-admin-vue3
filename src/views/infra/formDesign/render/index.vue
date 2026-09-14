@@ -617,6 +617,14 @@
         </el-timeline-item>
       </el-timeline>
     </Dialog>
+
+    <!--
+      导入向导
+
+      放在这里而不是做成路由页：导入的上下文就是「这张列表」——
+      它要用当前表单的字段定义、当前表单的权限点，离开这张列表就没有意义。
+    -->
+    <ImportDialog ref="importDialogRef" @success="handleImportSuccess" />
   </template>
 </template>
 
@@ -682,6 +690,7 @@ import {
   type ColumnPref
 } from '@/components/FormWidgets/columnSetting'
 import GroupRowCell from './GroupRowCell.vue'
+import ImportDialog from './ImportDialog.vue'
 import ColumnSettingPanel from './ColumnSettingPanel.vue'
 import { useUserStore } from '@/store/modules/user'
 import { collapseUploadValues } from '@/components/FormWidgets/uploadValue'
@@ -1692,6 +1701,9 @@ const gridBorderNeeded = computed(
 const toolbarButtonType = (key: string): any => {
   if (key === 'create') return 'primary'
   if (key === 'export') return 'success'
+  // 导入与导出同为数据进出口，但导入会**改数据** —— 用 warning 与导出区分开，
+  // 两个都用成功色的话，用户点错的概率明显更高
+  if (key === 'import') return 'warning'
   if (key === 'batchDelete') return 'danger'
   return undefined
 }
@@ -1801,6 +1813,8 @@ const runBuiltinButton = (key: string) => {
   switch (key) {
     case 'create':
       return openForm('create')
+    case 'import':
+      return handleImport()
     case 'export':
       return handleExport()
     case 'batchDelete':
@@ -3141,6 +3155,24 @@ const handleDelete = async (row: any) => {
     message.success('删除成功')
     await loadList()
   } catch {}
+}
+
+/** 导入数据 */
+const importDialogRef = ref()
+
+const handleImport = () => {
+  importDialogRef.value?.open(formCode.value, config.value?.name || formCode.value)
+}
+
+/**
+ * 导入完成
+ *
+ * 无条件刷新列表，不管导了几条 —— 用户刚在向导里看到「成功 95 条」，
+ * 关掉弹窗却发现列表还是老样子，会以为没真的导进去。
+ */
+const handleImportSuccess = async () => {
+  queryParams.pageNo = 1
+  await loadList()
 }
 
 /** 导出列表数据 */
