@@ -119,16 +119,33 @@
         </el-collapse-item>
       </el-collapse>
 
-      <!-- 整表级问题：缺必填列、被行数上限截断。这类问题一条都导不了或导不全，必须显眼 -->
+      <!--
+        整表级提示按级别分成两条，不是混在一条红色里。
+
+        ERROR（缺必填列）是「不先改就一条都导不了」；
+        WARN（文件超行数被截断）是「前 N 行照样能导，但你得知道剩下的没进来」。
+        混在一起的话，用户看到的是一句「请先处理」加一条其实不用处理的提示 ——
+        而下一次真有阻断性问题时，他已经学会忽略这块了
+      -->
       <el-alert
-        v-if="preview?.tableErrors.length"
+        v-if="tableErrors.length"
         type="error"
         :closable="false"
         class="ui-alert"
         show-icon
       >
         <template #title>这份文件有以下问题，请先处理</template>
-        <div v-for="(err, i) in preview.tableErrors" :key="i">{{ err.message }}</div>
+        <div v-for="(err, i) in tableErrors" :key="i">{{ err.message }}</div>
+      </el-alert>
+      <el-alert
+        v-if="tableWarnings.length"
+        type="warning"
+        :closable="false"
+        class="ui-alert"
+        show-icon
+      >
+        <template #title>这些情况不影响导入，但你需要知道</template>
+        <div v-for="(warn, i) in tableWarnings" :key="i">{{ warn.message }}</div>
       </el-alert>
 
       <!--
@@ -302,6 +319,19 @@ const maxImportRows = ref(DEFAULT_MAX_ROWS)
 const maxFileSizeMb = ref(DEFAULT_MAX_FILE_SIZE_MB)
 
 const hasExists = computed(() => (preview.value?.summary.existsCount ?? 0) > 0)
+
+/**
+ * 整表级提示按级别拆开
+ *
+ * 没有 level 的按 ERROR 算 —— 与服务端 PreviewError 的默认值一致。
+ * 反过来（拿不准就当警告）会把真正阻断的问题降级成一条不起眼的黄条。
+ */
+const tableErrors = computed(
+  () => preview.value?.tableErrors.filter((it) => it.level !== 'WARN') ?? []
+)
+const tableWarnings = computed(
+  () => preview.value?.tableErrors.filter((it) => it.level === 'WARN') ?? []
+)
 
 /**
  * 剔掉的行不显示

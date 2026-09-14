@@ -115,16 +115,33 @@
         </el-collapse-item>
       </el-collapse>
 
-      <!-- 整表级问题：比如明细没排序。这类问题一条都导不了，必须显眼 -->
+      <!--
+        整表级提示按级别分成两条，不是混在一条红色里。
+
+        ERROR（比如明细没排序）是「不先改就导不了」；
+        WARN（跳过了合计行、文件超行数被截断）是「照样能导，但你得知道」。
+        混在一起的话，用户看到的是一句「请先处理」加一条其实不用处理的提示 ——
+        而下一次真有阻断性问题时，他已经学会忽略这块了
+      -->
       <el-alert
-        v-if="preview?.tableErrors.length"
+        v-if="tableErrors.length"
         type="error"
         :closable="false"
         class="ie-alert"
         show-icon
       >
         <template #title>这份文件有以下问题，请先处理</template>
-        <div v-for="(err, i) in preview.tableErrors" :key="i">{{ err.message }}</div>
+        <div v-for="(err, i) in tableErrors" :key="i">{{ err.message }}</div>
+      </el-alert>
+      <el-alert
+        v-if="tableWarnings.length"
+        type="warning"
+        :closable="false"
+        class="ie-alert"
+        show-icon
+      >
+        <template #title>这些情况不影响导入，但你需要知道</template>
+        <div v-for="(warn, i) in tableWarnings" :key="i">{{ warn.message }}</div>
       </el-alert>
 
       <!-- 重复策略：只有当文件里真有「库中已存在」或更新键存在时才有意义 -->
@@ -329,6 +346,19 @@ const summarizeRow = (row: ImportPreviewRowVO): string => {
   const text = parts.join(' · ') || '(这一行是空的)'
   return subCount ? `${text} ｜ 含 ${subCount} 条明细` : text
 }
+
+/**
+ * 整表级提示按级别拆开
+ *
+ * 没有 level 的按 ERROR 算 —— 与服务端 RowError 的默认值一致。
+ * 反过来（拿不准就当警告）会把真正阻断的问题降级成一条不起眼的黄条。
+ */
+const tableErrors = computed(
+  () => preview.value?.tableErrors.filter((it) => it.level !== 'WARN') ?? []
+)
+const tableWarnings = computed(
+  () => preview.value?.tableErrors.filter((it) => it.level === 'WARN') ?? []
+)
 
 /**
  * 剔掉的行不显示
