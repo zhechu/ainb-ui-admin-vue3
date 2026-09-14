@@ -126,7 +126,7 @@
 
 <script lang="ts" setup>
 import { useFormCreateDesigner, createDesignerConfig } from '@/components/FormCreate'
-import { SUB_TABLE_WIDGET_TYPE } from '@/components/FormWidgets/contracts'
+import { SUB_TABLE_WIDGET_TYPE, isNoStorage } from '@/components/FormWidgets/contracts'
 import { encodeConf, encodeFields, setConfAndFields } from '@/utils/formCreate'
 import { useStepRestore } from './useStepRestore'
 import { fieldNameOf } from './fieldNaming'
@@ -214,11 +214,30 @@ const mappingKey = (owner: string | undefined, field: string): string =>
   owner ? `${owner}::${field}` : field
 
 
-/** 还没映射到物理列的字段数。展示型控件没有 field，不会进 designerFields，不计入 */
+/**
+ * 还没映射到物理列、且【本来应该映射】的字段数
+ *
+ * ⚠️ 必须按契约的 storage 过滤掉不落库的控件，否则这条提示会多报一整类。
+ *
+ * 原先的写法是「designerFields 里没有 column 的都算」，注释写着「展示型控件没有
+ * field，不会进 designerFields」——这句话对 col / space 那种成立，对
+ * SystemValue / Link / CodeImage / elImage / fcTitle / FormStep / elTabPane /
+ * fcTable 等**不成立**：它们有 field，会进 designerFields，但 storage=none，
+ * 本来就不该落库。结果是一张放了「创建人」系统值控件的正常表单，
+ * 面板上会一直挂着「有 N 个字段还没有映射到物理列，提交时这些字段不会入库」。
+ *
+ * 后端对这件事的口径是明确的，`FormDesignPublishValidator#validateSystemValueFields`
+ * 里写着「没映射列 —— 纯展示用法，合法」。前端跟上同一个口径。
+ *
+ * 判据取自控件契约（isNoStorage），不另列一份清单——另列必然与契约漂移。
+ * 契约里查不到的类型也按不计入处理：宁可漏报，也不要让一个没见过的控件
+ * 把正常表单标成有问题。
+ */
 const unmappedCount = computed(
   () =>
-    designerFields.value.filter((f) => !fieldMapping.value[mappingKey(f.owner, f.field)]?.column)
-      .length
+    designerFields.value.filter(
+      (f) => !isNoStorage(f.type) && !fieldMapping.value[mappingKey(f.owner, f.field)]?.column
+    ).length
 )
 
 /** 可写表（主表 + 副表）。子表不在其中，它由所属控件决定归属 */
