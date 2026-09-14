@@ -296,6 +296,20 @@ test.describe('导入导出示例', () => {
     await expect(dialog.getByText(/值模式|导出字段|选择字段/)).toHaveCount(0)
   })
 
+  test('导出上限【常驻】显示，不是只在超限时才提', async ({ page }) => {
+    await login(page)
+    await openRuntime(page, CODE_BASIC)
+    const dialog = await openExportDialog(page)
+
+    // 这张示例表单只有几十条数据，远没到上限 —— 也就是说这里【不会】触发超限警告。
+    // 上限仍然要写在界面上：用户要在点导出之前就知道这次能不能一次导完，
+    // 等他导完才发现少了一半，那份不完整的文件多半已经发出去了
+    await expect(dialog.getByText('导出上限')).toBeVisible()
+    await expect(dialog.getByText(/一次最多导出\s*\d+\s*条/)).toBeVisible()
+    // 超限警告确实没出现，否则上面那条断言就退化成「警告里正好也有这几个字」
+    await expect(dialog.locator('.el-alert')).toHaveCount(0)
+  })
+
   test('导出按钮点了真的下文件', async ({ page }) => {
     await login(page)
     await openRuntime(page, CODE_BASIC)

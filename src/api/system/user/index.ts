@@ -142,6 +142,143 @@ export const importUserTemplate = () => {
   return request.download({ url: '/system/user/get-import-template' })
 }
 
+// ==================== 导入导出的限制 ====================
+
+export interface UserImportExportConfigVO {
+  /** 一次最多导出多少条 */
+  maxExportRows: number
+  /** 一次最多导入多少行 */
+  maxImportRows: number
+  /** 导入文件的大小上限（MB） */
+  maxImportFileSizeMb: number
+}
+
+/**
+ * 获得导入导出的限制
+ *
+ * 导出弹窗要在用户点「导出」**之前**就把上限说清楚，而上限是服务端常量。
+ * 前端写死一个 2 万的话，后端哪天调了之后界面上那个数就成了假的 ——
+ * 而用户会照着它规划自己的分批，比根本不提示更糟。
+ */
+export const getImportExportConfig = () => {
+  return request.get<UserImportExportConfigVO>({ url: '/system/user/import-export-config' })
+}
+
+// ==================== 导入：预检 + 执行 ====================
+
+export interface UserImportProblemVO {
+  rowNo?: number
+  columnLetter?: string
+  field?: string
+  fieldLabel?: string
+  message: string
+  rawValue?: string
+  level?: string
+}
+
+export interface UserImportColumnMappingVO {
+  columnLetter: string
+  header: string
+  field: string
+  fieldLabel: string
+  required?: boolean
+  dict?: boolean
+}
+
+export interface UserImportUnmatchedColumnVO {
+  columnLetter: string
+  header: string
+  reason: string
+  firstColumnLetter?: string
+}
+
+export interface UserImportPreviewRowVO {
+  rowNo: number
+  /** NEW / EXISTS / DUPLICATE_IN_FILE / INVALID */
+  status: string
+  statusText: string
+  data?: Record<string, any>
+  errors?: UserImportProblemVO[]
+  warnings?: UserImportProblemVO[]
+}
+
+export interface UserImportSummaryVO {
+  totalRows: number
+  newCount: number
+  existsCount: number
+  duplicateCount: number
+  invalidCount: number
+  previewRowCount: number
+  /** 文件是不是被行数上限截断了 */
+  truncated: boolean
+  maxRows?: number
+}
+
+export interface UserImportPreviewVO {
+  /** 执行时必须原样带回，且只能用一次 */
+  importToken: string
+  mappings: UserImportColumnMappingVO[]
+  unmatchedColumns: UserImportUnmatchedColumnVO[]
+  duplicateColumns: UserImportUnmatchedColumnVO[]
+  missingRequiredFields: string[]
+  rows: UserImportPreviewRowVO[]
+  summary: UserImportSummaryVO
+  tableErrors: UserImportProblemVO[]
+  updateKeyFields: string[]
+}
+
+export interface UserImportFailureVO {
+  rowNo?: number
+  username?: string
+  fieldLabel?: string
+  message: string
+  rawValue?: string
+}
+
+export interface UserImportResultVO {
+  createCount: number
+  updateCount: number
+  skipCount: number
+  failCount: number
+  failures: UserImportFailureVO[]
+  tableErrors: UserImportProblemVO[]
+}
+
+/**
+ * 上传 Excel 做预检
+ *
+ * ⚠️ 必须用 `request.upload`，不能用 `request.post`
+ *
+ * `post` 会把 Content-Type 设成 application/json，后端的 `@RequestParam("file")`
+ * 拿不到文件，表现是「点了下一步、接口返回 200，但弹窗停在第一步」，极难归因。
+ * `upload` 把头设成 multipart/form-data，axios 见到 FormData 会把这个头删掉
+ * 交给浏览器补 boundary，链路才是通的。
+ *
+ * ⚠️ `upload` 返回的是整个响应体 `{code,msg,data}`，不像 `post` 那样已经剥过一层。
+ */
+export const importPreview = async (file: File): Promise<UserImportPreviewVO> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await request.upload({
+    url: '/system/user/import-preview',
+    data: formData,
+    timeout: 120_000
+  })
+  return (res as any)?.data as UserImportPreviewVO
+}
+
+/** 执行导入。importToken 只能用一次 */
+export const importExecute = (data: {
+  importToken: string
+  /** 用户在预检表里剔掉的行号 */
+  removedRows?: number[]
+  /** SKIP-跳过并列出 / UPDATE-按登录名覆盖更新 */
+  duplicateStrategy?: string
+  allOrNothing?: boolean
+}): Promise<UserImportResultVO> => {
+  return request.post({ url: '/system/user/import-execute', data, timeout: 120_000 })
+}
+
 // 用户密码重置
 export const resetUserPassword = (id: number, password: string) => {
   const data = {

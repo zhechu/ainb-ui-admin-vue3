@@ -31,6 +31,21 @@
         </div>
       </el-form-item>
 
+      <!--
+        上限常驻显示，不是只在超限时才提。
+        用户要在【点导出之前】就知道这次查询能不能一次导完 ——
+        等他导完才发现少了一半，那份不完整的文件多半已经发出去了。
+
+        这个数由表单设计者在列表设计里配（listConf.exportMaxRows），
+        所以不同表单不一样，更不能靠用户自己记
+      -->
+      <el-form-item label="导出上限">
+        <div class="ie-hint ie-block">
+          这张列表一次最多导出 <b class="ie-max">{{ maxRows }}</b> 条。
+          超出请用查询条件缩小范围后分次导出。
+        </div>
+      </el-form-item>
+
       <el-alert v-if="willTruncate" type="warning" :closable="false" show-icon class="ie-alert">
         当前查询共 {{ total }} 条，超过导出上限 {{ maxRows }} 条，
         只会导出前 {{ maxRows }} 条。请用查询条件缩小范围后分次导出。
@@ -173,6 +188,10 @@ defineExpose({ open })
 .ie-block {
   display: block;
   line-height: 1.7;
+}
+
+.ie-max {
+  color: var(--el-text-color-primary);
 }
 
 .ie-alert {

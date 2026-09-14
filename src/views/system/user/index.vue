@@ -83,34 +83,19 @@
               <Icon icon="ep:upload" /> 导入
             </el-button>
             <!--
-              导出分「当前页」与「全部」两种。
-              用下拉而不是弹窗：只有一个选项要选，弹窗太重。
-
-              「全部」受服务端 2 万条上限约束 —— 超了会提示并在文件名上标出来，
-              不会静默给一个不完整的文件
+              导出走弹窗，不走下拉。
+              下拉放得下选项，放不下【前提】—— 上限多少、这次查询有多少条、
+              会不会被截断，这三件事在下拉里没有位置，只能塞一句既不知道
+              用户查了多少条、也不会在超限时变色的小字
             -->
-            <el-dropdown
+            <el-button
+              type="success"
+              plain
               v-hasPermi="['system:user:export']"
-              @command="handleExport"
+              @click="handleExport"
             >
-              <el-button type="success" plain :loading="exportLoading">
-                <Icon icon="ep:download" />导出<Icon class="ml-4px" icon="ep:arrow-down" />
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="CURRENT_PAGE">
-                    导出当前页
-                    <span class="ml-4px text-12px text-#909399">
-                      第 {{ queryParams.pageNo }} 页
-                    </span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="ALL">
-                    导出全部
-                    <span class="ml-4px text-12px text-#909399">最多 2 万条</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+              <Icon icon="ep:download" /> 导出
+            </el-button>
             <el-button
               type="danger"
               plain
@@ -226,6 +211,8 @@
   <UserForm ref="formRef" @success="getList" />
   <!-- 用户导入对话框 -->
   <UserImportForm ref="importFormRef" @success="getList" />
+  <!-- 用户导出对话框 -->
+  <UserExportForm ref="exportFormRef" />
   <!-- 分配角色 -->
   <UserAssignRoleForm ref="assignRoleFormRef" @success="getList" />
 </template>
@@ -233,11 +220,11 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { checkPermi } from '@/utils/permission'
 import { dateFormatter } from '@/utils/formatTime'
-import download from '@/utils/download'
 import { CommonStatusEnum } from '@/utils/constants'
 import * as UserApi from '@/api/system/user'
 import UserForm from './UserForm.vue'
 import UserImportForm from './UserImportForm.vue'
+import UserExportForm from './UserExportForm.vue'
 import UserAssignRoleForm from './UserAssignRoleForm.vue'
 import DeptTreeSelect from '@/views/system/dept/components/DeptTreeSelect.vue'
 
@@ -322,42 +309,17 @@ const handleStatusChange = async (row: UserApi.UserVO) => {
 /**
  * 导出
  *
- * 分「当前页」与「全部」两种 —— 全部受服务端 2 万条上限约束。
- * 用下拉而不是弹窗：只有一个选项要选，弹窗太重。
- *
- * ⚠️ 截断必须提示。服务端超了上限会带 X-Export-Truncated 响应头，
- * 不说的话用户以为导全了，而少掉的那部分他永远不会去找。
+ * 真正的下载在 UserExportForm 里做 —— 范围、上限提示、截断警告都在那一屏，
+ * 这里只负责把「当前查的是什么」交过去。
  */
-const exportLoading = ref(false)
-const handleExport = async (scope: 'CURRENT_PAGE' | 'ALL') => {
-  try {
-    exportLoading.value = true
-    const result = await UserApi.exportUser(queryParams, scope)
-    const suffix = [
-      scope === 'CURRENT_PAGE' ? `第${queryParams.pageNo}页` : '',
-      result.truncated && result.maxRows ? `前${result.maxRows}条` : ''
-    ]
-      .filter(Boolean)
-      .map((part) => `(${part})`)
-      .join('')
-    download.excel(result.blob, `用户数据${suffix}.xlsx`)
-
-    if (result.truncated) {
-      message.warning(
-        `共 ${result.total} 条，超过导出上限 ${result.maxRows} 条，` +
-          `只导出了前 ${result.maxRows} 条。请用查询条件缩小范围后分次导出`
-      )
-    } else {
-      message.success('导出成功')
-    }
-  } catch (e: any) {
-    // 原先这里是 `catch {}`：服务端报错时界面上什么也不发生，
-    // 用户只会以为「点了没反应」，而浏览器根本没下载任何文件
-    console.error('[user] 导出失败', e)
-    message.error(e?.msg || e?.message || '导出失败，请稍后重试')
-  } finally {
-    exportLoading.value = false
-  }
+const exportFormRef = ref()
+const handleExport = () => {
+  exportFormRef.value?.open({
+    pageNo: queryParams.pageNo,
+    pageSize: queryParams.pageSize,
+    total: total.value,
+    buildParams: () => ({ ...queryParams })
+  })
 }
 
 /** 操作分发 */
