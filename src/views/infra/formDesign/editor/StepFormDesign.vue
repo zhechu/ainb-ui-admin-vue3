@@ -156,17 +156,35 @@ defineOptions({ name: 'FormDesignStepFormDesign' })
 const message = useMessage()
 const modelData = defineModel<any>({ required: true })
 
+const emit = defineEmits<{
+  /** 请求打开「逻辑与扩展」弹窗。弹窗挂在向导页（editor/index.vue）上 */
+  (e: 'open-logic'): void
+}>()
+
+const props = defineProps<{
+  /**
+   * 「逻辑与扩展」当前的问题清单，用于入口按钮的角标
+   *
+   * 由向导页算好传下来 —— 它是从 formData 与表单字段推出来的，
+   * 与弹窗有没有被打开过无关（这一点很重要，见 index.vue 里保存前的校验）
+   */
+  logicProblems?: string[]
+}>()
+
 /**
  * 设计器配置
  *
  * 与 bpm/form/editor 共用同一个配置工厂 —— 改造前两处各维护一份近乎相同的配置，
- * 已经出现漂移。场景差异（本模块关掉 AI 生成字段、字段ID 改为从物理列下拉选）
- * 通过参数表达，而不是各自复制一份基线。
+ * 已经出现漂移。场景差异（本模块关掉 AI 生成字段、字段ID 改为从物理列下拉选、
+ * 表单配置面板里加「逻辑与扩展」入口）通过参数表达，而不是各自复制一份基线。
  */
 const designerConfig = ref(
   createDesignerConfig('formDesign', {
     // 字段ID 改为从物理列里下拉选择，见 buildBaseRule
-    baseRule: (arg: any) => buildBaseRule(arg)
+    baseRule: (arg: any) => buildBaseRule(arg),
+    onOpenLogic: () => emit('open-logic'),
+    // 传 getter：属性面板规则只构造一次，传值的话角标不会跟着变
+    getLogicProblems: () => props.logicProblems ?? []
   })
 )
 

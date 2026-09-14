@@ -114,12 +114,12 @@
 
         <!-- 表单设计。设计器需要铺满宽度，不加 mx-auto 限制 -->
         <div v-show="activeStepKey === 'form'">
-          <StepFormDesign ref="stepFormRef" v-model="formData" />
-        </div>
-
-        <!-- 逻辑与扩展：联动规则、跨字段校验、扩展方式 -->
-        <div v-show="activeStepKey === 'logic'">
-          <StepLogic ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
+          <StepFormDesign
+            ref="stepFormRef"
+            v-model="formData"
+            :logic-problems="logicProblems"
+            @open-logic="logicDialogVisible = true"
+          />
         </div>
 
         <!-- 列表设计。仅表单+列表类型出现 -->
@@ -128,6 +128,19 @@
         </div>
       </div>
     </div>
+
+    <!--
+      逻辑与扩展。入口在设计器的「表单配置」面板里（见 StepFormDesign 的 onOpenLogic）。
+
+      ⚠️ 弹窗内容是懒渲染的：没打开过时 stepLogicRef 为 null，collect() / validate()
+      都会静默跳过。所以保存前的拦截不能只靠它 —— 见 validateLogicBeforeSave()。
+    -->
+    <Dialog v-model="logicDialogVisible" title="逻辑与扩展" width="1080px" max-height="70vh">
+      <StepLogic ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
+      <template #footer>
+        <el-button type="primary" @click="handleLogicDialogClose">完成</el-button>
+      </template>
+    </Dialog>
 
     <!-- 发布对话框 -->
     <PublishDialog ref="publishDialogRef" @success="handlePublishSuccess" />
@@ -175,6 +188,8 @@ import StepFormDesign from './StepFormDesign.vue'
 import StepListDesign from './StepListDesign.vue'
 import StepLogic from './StepLogic.vue'
 import { decodeFields } from '@/utils/formCreate'
+import { findInvalidFieldRefs } from '@/components/FormLogic/invalidFieldRefs'
+import { parseFormFields } from '@/components/FormCreate/src/utils'
 import PublishDialog from '../components/PublishDialog.vue'
 
 defineOptions({ name: 'InfraFormDesignEditor' })
@@ -193,8 +208,9 @@ const ALL_STEPS = [
   { key: 'basic', title: '基础设置' },
   { key: 'binding', title: '数据绑定' },
   { key: 'form', title: '表单设计' },
-  // 放在表单设计之后：配联动要先有字段可选
-  { key: 'logic', title: '逻辑与扩展' },
+  // 「逻辑与扩展」原先是这里的一步。独立成步的代价是配联动时看不到刚设计的表单，
+  // 只能靠记；现在改成从设计器的表单配置面板里开弹窗，上下文不丢、向导也少一步。
+  // 见下方 logicDialogVisible
   { key: 'list', title: '列表设计' }
 ]
 
@@ -247,6 +263,72 @@ const stepBindingRef = ref()
 const stepFormRef = ref()
 const stepListRef = ref()
 const stepLogicRef = ref()
+const logicDialogVisible = ref(false)
+
+/**
+ * 「逻辑与扩展」当前的问题清单
+ *
+ * <h3>为什么算在这里、而不是读弹窗组件</h3>
+ *
+ * 它有两个用途：设计器里入口按钮的角标，以及保存前的拦截。
+ * 两者都**不能依赖弹窗有没有被打开过** —— 弹窗是懒渲染的，没打开时
+ * stepLogicRef 是 null，读组件会得到空清单，校验静默通过。
+ * 而它要防的恰恰是静默失效：先配好联动、之后回表单设计把字段删了。
+ *
+ * 这里读的是 formData 与 designerFields，两者与挂载无关，任何时候都准。
+ */
+const logicProblems = computed(() => {
+  let rules: any[] = []
+  try {
+    rules = JSON.parse(formData.value.logicRules || '[]')
+  } catch {
+    return []
+  }
+  if (!Array.isArray(rules) || rules.length === 0) {
+    return []
+  }
+  const collected: Array<Record<string, any>> = []
+  for (const rule of designerFields.value) {
+    parseFormFields(rule, collected)
+  }
+  const known = collected.filter((f) => f.field).map((f) => f.field as string)
+  return findInvalidFieldRefs(rules, known).map(
+    (field) => `联动规则引用了已不存在的字段「${field}」`
+  )
+})
+
+/**
+ * 保存前校验「逻辑与扩展」
+ *
+ * 弹窗打开过就走组件自己的 validate()（环形赋值、跨字段不完整、脚本静态检查
+ * 都要读编辑器状态，只有组件知道）；没打开过则至少跑一遍与挂载无关的那条。
+ *
+ * 这个分工是有意的：没打开过弹窗，就说明本次会话没动过这三项配置，
+ * 存量配置里的其它问题由后端发布校验兜底（FormDesignPublishValidator），
+ * 与别处「前端保即时反馈、发布校验保配置正确」的分工一致。
+ * 唯独「引用了已删字段」这条必须在前端也拦 —— 删字段正是在本次会话里做的。
+ */
+const validateLogicBeforeSave = async () => {
+  if (stepLogicRef.value) {
+    await stepLogicRef.value.validate()
+    return
+  }
+  if (logicProblems.value.length > 0) {
+    logicDialogVisible.value = true
+    message.error(logicProblems.value.join('；'))
+    throw new Error('logic invalid field ref')
+  }
+}
+
+/** 弹窗「完成」：收一次并就地校验，把问题拦在关闭之前 */
+const handleLogicDialogClose = async () => {
+  try {
+    await stepLogicRef.value?.validate()
+  } catch {
+    return
+  }
+  logicDialogVisible.value = false
+}
 
 /**
  * 表单字段列表，供列表设计器选择列与查询字段
@@ -303,8 +385,6 @@ const validateCurrentStep = async () => {
     await stepBindingRef.value?.validate()
   } else if (activeStepKey.value === 'form') {
     await stepFormRef.value?.validate()
-  } else if (activeStepKey.value === 'logic') {
-    await stepLogicRef.value?.validate()
   } else if (activeStepKey.value === 'list') {
     // 列表设计没有必填校验，只收集配置
     stepListRef.value?.collect()
@@ -340,6 +420,8 @@ const handleNext = async () => {
 const handleSave = async () => {
   try {
     await validateCurrentStep()
+    // 逻辑与扩展不再是一步，validateCurrentStep 不会覆盖它，这里单独过一次
+    await validateLogicBeforeSave()
   } catch {
     return
   }

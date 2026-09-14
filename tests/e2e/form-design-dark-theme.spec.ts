@@ -177,8 +177,8 @@ test('表单构建与设计页面应支持暗黑主题', async ({ page, request 
     expect(formDesignStyle.backgroundColor).not.toBe('rgb(255, 255, 255)')
     expect(mappingStyle.backgroundColor).not.toBe('rgb(255, 255, 255)')
 
-    // 按名字定位而不是「序号+名字」：步骤序号会随着新增步骤而变
-    // （「逻辑与扩展」插在表单设计之后，列表设计就从 4 变成了 5）。
+    // 按名字定位而不是「序号+名字」：步骤序号会随步骤增减而变
+    // （「逻辑与扩展」曾经插在表单设计之后，现已改成设计器里的弹窗入口，序号又变了一次）。
     // 用例本不该被步骤顺序绑住，它关心的只是「列表设计这一步长什么样」
     await page.locator('.cursor-pointer').filter({ hasText: '列表设计' }).click()
     await expect(page.locator('.step-list-design')).toBeVisible()

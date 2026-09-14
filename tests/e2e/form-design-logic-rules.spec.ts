@@ -5,6 +5,7 @@ import {
   type Locator,
   type Page
 } from '@playwright/test'
+import { closeLogicDialog, openLogicDialog } from './helpers/designer'
 
 /**
  * 联动规则与扩展模式的端到端验证（B1）
@@ -237,7 +238,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
       await expect(addButton).toBeVisible({ timeout: 30_000 })
@@ -260,7 +261,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
       await expect(addButton).toBeVisible({ timeout: 30_000 })
@@ -269,6 +270,8 @@ test.describe('联动规则编辑器', () => {
       await page.getByPlaceholder('给规则起个名字，便于日后维护').fill('大额需填说明')
       await pickRadio(page, '提交前')
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -288,7 +291,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
       await expect(addButton).toBeVisible({ timeout: 30_000 })
@@ -310,6 +313,8 @@ test.describe('联动规则编辑器', () => {
       await pickOption(page, actionRow.locator('.el-select').nth(0), '置为必填')
       await pickOption(page, actionRow.locator('.el-select').nth(1), /说明/)
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -334,11 +339,13 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
       await typeInMonaco(page, "setVisible('reason', true)")
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -355,7 +362,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('tab', { name: '跨字段校验' }).click()
 
       await page.getByRole('button', { name: /添加跨字段规则/ }).click()
@@ -372,6 +379,8 @@ test.describe('联动规则编辑器', () => {
       await pickOption(page, condRow.locator('.el-select').nth(1), '小于等于')
       await condRow.getByPlaceholder('输入比较值').fill('10000')
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -406,7 +415,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, rules)
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       // 折叠态就该显示规则名与触发时机
       const ruleName = page.locator('.rule-name').filter({ hasText: '大额需填说明' })
@@ -437,7 +446,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('button', { name: /新增规则/ }).click()
 
       // 外层加一个条件组，再在组内加一个条件
@@ -449,6 +458,8 @@ test.describe('联动规则编辑器', () => {
       await pickOption(page, nestedRow.locator('.el-select').nth(1), '大于')
       await nestedRow.getByPlaceholder('输入比较值').fill('500')
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -479,7 +490,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, rules)
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       const ruleName = page.locator('.rule-name').filter({ hasText: '待删除的规则' })
       await expect(ruleName).toBeVisible({ timeout: 30_000 })
@@ -487,6 +498,8 @@ test.describe('联动规则编辑器', () => {
       await page.getByRole('button', { name: '确定' }).click()
       await expect(ruleName).toBeHidden()
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -502,7 +515,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
       // 默认是「前端脚本」(1) + 「阻断提交」(1)，两个都改掉再存
@@ -510,6 +523,8 @@ test.describe('联动规则编辑器', () => {
       await pickRadio(page, '放行')
       await pickRadio(page, '无')
 
+      // 弹窗是模态的，不先关掉点不到向导页上的保存按钮
+      await closeLogicDialog(page)
       await saveForm(page)
 
       const saved = await getForm(request, token, id)
@@ -539,7 +554,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, rules)
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
 
       // 两个失效引用都要被点名，否则用户不知道该改哪一处
       const alert = page.getByText(/联动规则引用了已不存在的字段/)
@@ -556,7 +571,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
       await expect(page.getByText('无', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
@@ -581,7 +596,7 @@ test.describe('联动规则编辑器', () => {
     const { id } = await createFormWithRules(request, token, [])
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
       await typeInMonaco(page, "const a = 1\nfetch('/admin-api/system/user/list')")

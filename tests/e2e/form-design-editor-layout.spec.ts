@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { closeLogicDialog, openLogicDialog } from './helpers/designer'
 
 /**
  * 设计器里各配置行的布局验证
@@ -92,7 +93,7 @@ test.describe('设计器配置行的布局', () => {
     const id = await createForm(request, token, FIELDS)
     try {
       await page.goto(`/infra/form-design/editor?id=${id}`)
-      await page.getByText('逻辑与扩展', { exact: true }).last().click()
+      await openLogicDialog(page)
       await page.getByRole('button', { name: /新增规则/ }).click({ timeout: 30_000 })
       await page
         .locator('button')

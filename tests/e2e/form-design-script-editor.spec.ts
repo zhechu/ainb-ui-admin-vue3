@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { closeLogicDialog, openLogicDialog } from './helpers/designer'
 
 /**
  * 前端脚本编辑器的端到端验证
@@ -86,7 +87,7 @@ async function deleteForm(request: APIRequestContext, token: string, id: number)
 /** 打开设计器 → 逻辑与扩展 → 扩展方式页签 */
 async function openScriptPanel(page: Page, id: number) {
   await page.goto(`/infra/form-design/editor?id=${id}`)
-  await page.getByText('逻辑与扩展', { exact: true }).last().click()
+  await openLogicDialog(page)
   await page.getByRole('tab', { name: '扩展方式' }).click()
   const editor = page.locator('.monaco-editor').first()
   await expect(editor).toBeVisible({ timeout: 30_000 })
