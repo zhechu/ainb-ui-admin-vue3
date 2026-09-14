@@ -41,7 +41,8 @@
                     <!-- 【本地改动 #3，见 ../VENDOR.md】上游此处是 AI 生成表单的入口按钮，
                          本项目自建了整套低代码体系、该面板未接任何后端，已整体移除 -->
                 </el-aside>
-                <el-aside class="_fc-l" v-if="!hiddenLeft" :width="activeModule === 'language' ? '450px' : '266px'">
+                <el-aside class="_fc-l" v-if="!hiddenLeft"
+                          :width="activeModule === 'language' ? '450px' : (activeMenuTab === 'extra' ? '360px' : '266px')">
                     <div class="_fc-l-close" @click="hiddenLeft = true"><i class="fc-icon icon-arrow"></i></div>
                     <LanguageConfig v-if="activeModule === 'language'"></LanguageConfig>
                     <JsonPreview v-if="activeModule === 'json'"></JsonPreview>
@@ -52,6 +53,19 @@
                             </div>
                             <div class="_fc-l-tab" :class="{active: activeMenuTab==='tree'}"
                                  @click="activeMenuTab='tree'"> {{ t('menu.tree') }}
+                            </div>
+                            <!--
+                              【本地改动 #8，见 ../VENDOR.md】上游左栏只有「组件」「大纲」两个页签，
+                              且是写死的、没有扩展点。这里开一对插槽，让使用方能在大纲之后再挂一个页签
+                              （本项目用它放「字段映射」）。
+
+                              用 $slots 自门控而不是加 config 开关：不传插槽就没有这个页签，
+                              bpm 的流程表单设计器不受影响，也不必再维护一个配置项。
+                            -->
+                            <div v-if="$slots['l-tab-extra']" class="_fc-l-tab"
+                                 :class="{active: activeMenuTab==='extra'}"
+                                 @click="activeMenuTab='extra'">
+                                <slot name="l-tab-extra-title">扩展</slot>
                             </div>
                         </el-header>
                         <el-main v-show="activeMenuTab === 'menu'">
@@ -124,6 +138,11 @@
                                     </div>
                                 </template>
                             </el-tree>
+                        </el-main>
+                        <!-- 【本地改动 #8】第三个页签的内容区，见上方页签头的说明 -->
+                        <el-main v-if="$slots['l-tab-extra']" v-show="activeMenuTab === 'extra'"
+                                 class="_fc-l-tab-extra">
+                            <slot name="l-tab-extra"></slot>
                         </el-main>
                     </el-container>
                 </el-aside>

@@ -1,133 +1,132 @@
 <template>
   <div class="form-design-wrapper">
-    <!-- 设计器主体。不加任何工具条，整块高度都留给画布 -->
+    <!--
+      设计器主体。字段映射挂在左栏「大纲」之后的第三个页签里（vendored 的 l-tab-extra 插槽，
+      见 src/lib/form-designer/VENDOR.md 本地改动 #8）——它和大纲一样是「按字段看表单」，
+      放一起比原先在右边单开一条侧栏更顺手。
+
+      页签标题带未映射角标：未映射的字段提交时静默不入库，这条提示不能藏起来。
+    -->
     <div class="designer-area">
-      <fc-designer ref="designer" :config="designerConfig" class="h-full" />
-    </div>
-
-    <!-- 收起态：只留一条竖边，未映射数量挂在角标上 -->
-    <div v-if="mappingCollapsed" class="mapping-handle" @click="mappingCollapsed = false">
-      <el-badge
-        :hidden="unmappedCount === 0"
-        :value="unmappedCount"
-        type="danger"
-        class="mapping-handle-badge"
-      >
-        <Icon icon="ep:d-arrow-left" />
-      </el-badge>
-      <span class="mapping-handle-text">字段映射</span>
-    </div>
-
-    <!-- 字段映射侧栏 -->
-    <div v-else class="mapping-area">
-      <div class="mapping-header">
-        <span class="mapping-title">字段映射</span>
-        <div>
-          <el-button link type="primary" size="small" @click="handleRefreshFields">
-            <Icon icon="ep:refresh" class="mr-3px" />
-            刷新字段
-          </el-button>
-          <el-button link size="small" title="收起" @click="mappingCollapsed = true">
-            <Icon icon="ep:d-arrow-right" />
-          </el-button>
-        </div>
-      </div>
-
-      <!--
-        字段ID 已经能从物理列里直接选，选完映射会自动补上，所以这个面板平时用不到。
-        留着是因为它仍是两件事的唯一入口：把自定义命名的字段绑到列上，
-        以及看出哪些字段【没有】映射 —— 少了它，漏配会重新变成运行时才发现的静默失败。
-      -->
-      <el-alert
-        v-if="unmappedCount > 0"
-        :title="`有 ${unmappedCount} 个字段还没有映射到物理列，提交时这些字段不会入库`"
-        type="warning"
-        :closable="false"
-        class="mb-10px"
-      />
-
-      <el-alert
-        v-if="!modelData.mainTable"
-        title="请先在「数据绑定」步骤选择主表"
-        type="warning"
-        :closable="false"
-        class="mb-10px"
-      />
-
-      <!-- 一键生成。放在面板里而不是画布上方：常驻工具条要横占一整行，太吃高度 -->
-      <el-button
-        v-else
-        type="primary"
-        plain
-        size="small"
-        class="w-full mb-10px"
-        @click="handleGenerateFromColumns"
-      >
-        <Icon icon="ep:magic-stick" class="mr-3px" />
-        从 {{ modelData.mainTable }} 一键生成字段
-      </el-button>
-
-      <!-- 映射表。按归属分组：主表/副表字段一组，每张子表各一组 -->
-      <div v-if="mappingGroups.length > 0" class="mapping-list">
-        <div v-for="group in mappingGroups" :key="group.key" class="mapping-group">
-          <div class="mapping-group-title">
-            <span>{{ group.label }}</span>
-            <span v-if="group.table" class="mapping-group-table">{{ group.table }}</span>
+      <fc-designer ref="designer" :config="designerConfig" class="h-full">
+        <template #l-tab-extra-title>
+          <el-badge
+            :hidden="unmappedCount === 0"
+            :value="unmappedCount"
+            type="danger"
+            class="mapping-tab-badge"
+          >
+            <span>字段映射</span>
+          </el-badge>
+        </template>
+        <template #l-tab-extra>
+          <div class="mapping-area">
+          <!-- 标题已在页签头上，这里只留动作 -->
+          <div class="mapping-header">
+            <el-button link type="primary" size="small" @click="handleRefreshFields">
+              <Icon icon="ep:refresh" class="mr-3px" />
+              刷新字段
+            </el-button>
           </div>
 
+          <!--
+            字段ID 已经能从物理列里直接选，选完映射会自动补上，所以这个面板平时用不到。
+            留着是因为它仍是两件事的唯一入口：把自定义命名的字段绑到列上，
+            以及看出哪些字段【没有】映射 —— 少了它，漏配会重新变成运行时才发现的静默失败。
+          -->
           <el-alert
-            v-if="group.owner && !group.table"
-            title="该子表控件还没有在「数据绑定」步骤配置对应的明细表，字段无法映射"
+            v-if="unmappedCount > 0"
+            :title="`有 ${unmappedCount} 个字段还没有映射到物理列，提交时这些字段不会入库`"
             type="warning"
             :closable="false"
-            class="mb-8px"
+            class="mb-10px"
           />
 
-          <div v-for="field in group.fields" :key="group.key + '::' + field.field" class="mapping-item">
-            <div class="mapping-field">
-              <span class="field-title">{{ field.title || field.field }}</span>
-              <span class="field-name">{{ field.field }}</span>
-            </div>
-            <!-- 主表作用域下有副表时才显示表选择器；子表字段的表由控件归属决定，不给选 -->
-            <el-select
-              v-if="!group.owner && writableTables.length > 1"
-              :model-value="mappingOf(group, field)?.table || modelData.mainTable"
-              placeholder="选择表"
-              size="small"
-              class="mb-4px"
-              @update:model-value="(t) => handleMappingTableChange(group, field, t)"
-            >
-              <el-option v-for="t in writableTables" :key="t.table" :label="t.label" :value="t.table" />
-            </el-select>
-            <el-select
-              :model-value="mappingOf(group, field)?.column"
-              :disabled="!!group.owner && !group.table"
-              placeholder="选择物理列"
-              clearable
-              size="small"
-              filterable
-              @update:model-value="(c) => handleMappingColumnChange(group, field, c)"
-            >
-              <el-option
-                v-for="col in mappableColumnsOf(mappingOf(group, field)?.table || group.table)"
-                :key="col.columnName"
-                :label="
-                  col.columnComment ? `${col.columnName}（${col.columnComment}）` : col.columnName
-                "
-                :value="col.columnName"
+          <el-alert
+            v-if="!modelData.mainTable"
+            title="请先在「数据绑定」步骤选择主表"
+            type="warning"
+            :closable="false"
+            class="mb-10px"
+          />
+
+          <!-- 一键生成。放在面板里而不是画布上方：常驻工具条要横占一整行，太吃高度 -->
+          <el-button
+            v-else
+            type="primary"
+            plain
+            size="small"
+            class="w-full mb-10px"
+            @click="handleGenerateFromColumns"
+          >
+            <Icon icon="ep:magic-stick" class="mr-3px" />
+            从 {{ modelData.mainTable }} 一键生成字段
+          </el-button>
+
+          <!-- 映射表。按归属分组：主表/副表字段一组，每张子表各一组 -->
+          <div v-if="mappingGroups.length > 0" class="mapping-list">
+            <div v-for="group in mappingGroups" :key="group.key" class="mapping-group">
+              <div class="mapping-group-title">
+                <span>{{ group.label }}</span>
+                <span v-if="group.table" class="mapping-group-table">{{ group.table }}</span>
+              </div>
+
+              <el-alert
+                v-if="group.owner && !group.table"
+                title="该子表控件还没有在「数据绑定」步骤配置对应的明细表，字段无法映射"
+                type="warning"
+                :closable="false"
+                class="mb-8px"
               />
-            </el-select>
+
+              <div v-for="field in group.fields" :key="group.key + '::' + field.field" class="mapping-item">
+                <div class="mapping-field">
+                  <span class="field-title">{{ field.title || field.field }}</span>
+                  <span class="field-name">{{ field.field }}</span>
+                </div>
+                <!-- 主表作用域下有副表时才显示表选择器；子表字段的表由控件归属决定，不给选 -->
+                <el-select
+                  v-if="!group.owner && writableTables.length > 1"
+                  :model-value="mappingOf(group, field)?.table || modelData.mainTable"
+                  placeholder="选择表"
+                  size="small"
+                  class="mb-4px"
+                  @update:model-value="(t) => handleMappingTableChange(group, field, t)"
+                >
+                  <el-option v-for="t in writableTables" :key="t.table" :label="t.label" :value="t.table" />
+                </el-select>
+                <el-select
+                  :model-value="mappingOf(group, field)?.column"
+                  :disabled="!!group.owner && !group.table"
+                  placeholder="选择物理列"
+                  clearable
+                  size="small"
+                  filterable
+                  @update:model-value="(c) => handleMappingColumnChange(group, field, c)"
+                >
+                  <el-option
+                    v-for="col in mappableColumnsOf(mappingOf(group, field)?.table || group.table)"
+                    :key="col.columnName"
+                    :label="
+                      col.columnComment ? `${col.columnName}（${col.columnComment}）` : col.columnName
+                    "
+                    :value="col.columnName"
+                  />
+                </el-select>
+              </div>
+
+              <el-empty
+                v-if="group.fields.length === 0"
+                description="该子表控件内还没有字段"
+                :image-size="40"
+              />
+            </div>
           </div>
 
-          <el-empty
-            v-if="group.fields.length === 0"
-            description="该子表控件内还没有字段"
-            :image-size="40"
-          />
-        </div>
-      </div>
-
-      <el-empty v-else description="设计器中还没有字段，请先拖入控件" :image-size="60" />
+          <el-empty v-else description="设计器中还没有字段，请先拖入控件" :image-size="60" />
+          </div>
+        </template>
+      </fc-designer>
     </div>
   </div>
 </template>
@@ -221,25 +220,6 @@ const fieldMapping = ref<Record<string, { table?: string; column?: string }>>({}
 const mappingKey = (owner: string | undefined, field: string): string =>
   owner ? `${owner}::${field}` : field
 
-/**
- * 映射面板是否收起
- *
- * 默认收起：字段ID 现在能直接从物理列里选，选完映射自动补上，
- * 常规流程根本不需要展开这个面板，让它长期占着 320px 不合适。
- *
- * 但不能删掉 —— 见模板里的说明。收起态用角标暴露「还有几个字段没映射」，
- * 否则漏配就藏起来了，那正是这个面板存在的意义。
- */
-/**
- * 映射面板是否收起
- *
- * 默认收起且【不会】自动弹出：字段ID 能直接从物理列里选，选完映射自动补上，
- * 常规流程根本不需要展开。自动弹出会在用户正拖控件时突然抢走 320px，很打断操作。
- *
- * 但面板不能删 —— 见模板里的说明。漏配的可见性由两处兜住，都不依赖面板是否展开：
- * 顶部工具条的告警按钮（点一下直接展开去处理），以及收起态竖边上的角标。
- */
-const mappingCollapsed = ref(true)
 
 /** 还没映射到物理列的字段数。展示型控件没有 field，不会进 designerFields，不计入 */
 const unmappedCount = computed(
@@ -996,58 +976,23 @@ onMounted(async () => {
   border: 1px solid var(--el-border-color-lighter);
 }
 
+/* 面板现在住在设计器左栏的第三个页签里，宽度由左栏给（激活时 360px），自己不再定宽 */
 .mapping-area {
-  width: 320px;
-  flex-shrink: 0;
-  padding: 12px;
+  height: 100%;
   overflow-y: auto;
-  background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
 }
 
-/* 收起态：一条可点击的竖边，把宽度还给设计器 */
-.mapping-handle {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: 12px;
-  align-items: center;
-  width: 36px;
-  padding-top: 12px;
-  cursor: pointer;
-  background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-
-  &:hover {
-    color: var(--el-color-primary);
-    background-color: var(--el-fill-color-light);
-  }
-}
-
-/* 竖排文字，窄边里放得下 */
-.mapping-handle-text {
-  font-size: 13px;
-  line-height: 1.2;
-  writing-mode: vertical-rl;
-  letter-spacing: 2px;
-}
-
-/* 角标默认会把图标挤出容器，收窄一点 */
-.mapping-handle-badge :deep(.el-badge__content) {
-  transform: translateY(-50%) translateX(60%);
+/* 页签标题上的未映射角标。默认位置会顶出页签，往回收一点 */
+.mapping-tab-badge :deep(.el-badge__content) {
+  transform: translateY(-50%) translateX(100%);
 }
 
 .mapping-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
-.mapping-title {
-  font-size: 15px;
-  font-weight: bold;
-}
 
 .mapping-item {
   padding: 8px 0;

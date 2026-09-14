@@ -165,13 +165,10 @@ test('表单构建与设计页面应支持暗黑主题', async ({ page, request 
 
     const formDesignStyle = await visibleElementStyle(page, '.form-design-wrapper')
 
-    // 字段映射面板默认是收起的（mappingCollapsed 初值为 true），收起时 DOM 里只有
-    // .mapping-handle，没有 .mapping-area。不先展开就直接取 .mapping-area 的样式，
-    // locator 永远解析不到，而 actionTimeout 默认不限时，会一直挂到用例超时
-    const mappingHandle = page.locator('.mapping-handle')
-    if (await mappingHandle.isVisible().catch(() => false)) {
-      await mappingHandle.click()
-    }
+    // 字段映射已挪到设计器左栏「大纲」之后的第三个页签，默认不激活 ——
+    // 不先切过去，.mapping-area 在 DOM 里是 v-show 隐藏的，取不到可见样式，
+    // 而 actionTimeout 默认不限时，会一直挂到用例超时
+    await page.locator('._fc-l-tab').filter({ hasText: '字段映射' }).first().click()
     await expect(page.locator('.mapping-area')).toBeVisible()
     const mappingStyle = await visibleElementStyle(page, '.mapping-area')
     expect(formDesignStyle.backgroundColor).not.toBe('rgb(255, 255, 255)')
