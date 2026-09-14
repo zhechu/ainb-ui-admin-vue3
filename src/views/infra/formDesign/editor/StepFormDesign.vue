@@ -5,20 +5,13 @@
       见 src/lib/form-designer/VENDOR.md 本地改动 #8）——它和大纲一样是「按字段看表单」，
       放一起比原先在右边单开一条侧栏更顺手。
 
-      页签标题带未映射角标：未映射的字段提交时静默不入库，这条提示不能藏起来。
+      ⚠️ 未映射的字段提交时静默不入库，而这件事目前【只有本面板顶部那条告警】在报
+      —— 设计期体检与后端发布校验都不查。也就是说不切到这个页签就看不见。
+      正确的做法是把它补成发布校验的一条，见 docs 里的说明。
     -->
     <div class="designer-area">
       <fc-designer ref="designer" :config="designerConfig" class="h-full">
-        <template #l-tab-extra-title>
-          <el-badge
-            :hidden="unmappedCount === 0"
-            :value="unmappedCount"
-            type="danger"
-            class="mapping-tab-badge"
-          >
-            <span>字段映射</span>
-          </el-badge>
-        </template>
+        <template #l-tab-extra-title>字段映射</template>
         <template #l-tab-extra>
           <div class="mapping-area">
           <!-- 标题已在页签头上，这里只留动作 -->
@@ -980,11 +973,6 @@ onMounted(async () => {
 .mapping-area {
   height: 100%;
   overflow-y: auto;
-}
-
-/* 页签标题上的未映射角标。默认位置会顶出页签，往回收一点 */
-.mapping-tab-badge :deep(.el-badge__content) {
-  transform: translateY(-50%) translateX(100%);
 }
 
 .mapping-header {

@@ -41,8 +41,7 @@
                     <!-- 【本地改动 #3，见 ../VENDOR.md】上游此处是 AI 生成表单的入口按钮，
                          本项目自建了整套低代码体系、该面板未接任何后端，已整体移除 -->
                 </el-aside>
-                <el-aside class="_fc-l" v-if="!hiddenLeft"
-                          :width="activeModule === 'language' ? '450px' : (activeMenuTab === 'extra' ? '360px' : '266px')">
+                <el-aside class="_fc-l" v-if="!hiddenLeft" :width="activeModule === 'language' ? '450px' : '266px'">
                     <div class="_fc-l-close" @click="hiddenLeft = true"><i class="fc-icon icon-arrow"></i></div>
                     <LanguageConfig v-if="activeModule === 'language'"></LanguageConfig>
                     <JsonPreview v-if="activeModule === 'json'"></JsonPreview>

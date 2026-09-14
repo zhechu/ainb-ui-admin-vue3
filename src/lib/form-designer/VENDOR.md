@@ -43,7 +43,7 @@
 | 6 | `locale/{zh-cn,en}.js` + `config/base/{field,form}.js` + `components/EventConfig.vue` + `utils/index.js` | 去掉 4 处指向 form-create.com 的文档外链，改为纯文本指向工程自带的中文手册 | 不把用户导向上游站点；工程有自己的 `docs/form-design-guide/`。`form.document` 的文案一并从「帮助文档」改成「表单设计使用手册（docs/form-design-guide）」，这样调用点只需去掉 `<a>` 包装，i18n 结构不变 |
 | 7 | `components/FcDesigner.vue` + `style/index.css` + `config/rule/image.js` | 移除画布底部链到 form-create.com 的品牌水印，并把 `._fc-m-con` 的 `padding` 从 `20px 20px 36px` 改回四边一致的 `20px`；图片控件默认 `src` 由上游 CDN 地址改为空串 | 本项目已改名「X评云」，水印对使用者是干扰（form-create 是 MIT 许可，去品牌不受限制）。底部那多出的 16px 是给水印预留的（水印 `bottom:9px` + `height:17px`，占到距底 26px），水印删了就该还给画布。默认 `src` 更要紧：它会随表单 JSON **落库**，并在生产环境对每个未配置的图片控件发起到上游 CDN 的请求 |
 
-| 8 | `components/FcDesigner.vue` | 左栏（组件 / 大纲）之后开一对插槽 `l-tab-extra-title` / `l-tab-extra`，允许使用方追加第三个页签；该页签激活时左栏宽度由 266px 放宽到 360px | 上游左栏的两个页签是写死的、没有任何扩展点。本项目用它放「字段映射」——它和大纲一样是「按字段看表单」，放一起比原先在画布右侧单开一条侧栏更顺手。用 `$slots` 自门控而不是加 config 开关：不传插槽就没有这个页签，bpm 的流程表单设计器不受影响 |
+| 8 | `components/FcDesigner.vue` | 左栏（组件 / 大纲）之后开一对插槽 `l-tab-extra-title` / `l-tab-extra`，允许使用方追加第三个页签 | 上游左栏的两个页签是写死的、没有任何扩展点。本项目用它放「字段映射」——它和大纲一样是「按字段看表单」，放一起比原先在画布右侧单开一条侧栏更顺手。用 `$slots` 自门控而不是加 config 开关：不传插槽就没有这个页签，bpm 的流程表单设计器不受影响。**只加插槽，不碰左栏宽度**——切页签时宽度跳变很影响体验 |
 
 > **升级时第 6、7 项最容易被漏。** 它们改的是文案与默认值，不是逻辑 ——
 > 覆盖上游文件后不会报错、不会有测试变红，只会悄悄把外链和 CDN 地址放回来。
