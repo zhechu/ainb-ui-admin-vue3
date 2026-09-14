@@ -107,6 +107,19 @@ export type RuntimeExportReqVO = {
    * 而「所见即所得」正是导出这件事的全部要求。
    */
   visibleFields?: string[]
+  /** 导出范围：CURRENT_PAGE-当前页 / ALL-全部。默认 ALL */
+  scope?: 'CURRENT_PAGE' | 'ALL'
+  /** 页码。仅 CURRENT_PAGE 用 */
+  pageNo?: number
+  /** 每页条数。仅 CURRENT_PAGE 用 */
+  pageSize?: number
+  /**
+   * 要不要导出合计行。
+   *
+   * ⚠️ 不传表示「跟随列表」。列表上没有合计行时应当【不传】而不是传 false ——
+   * 传 false 会把「跟随」这层语义盖掉，日后列表加了合计行也导不出来
+   */
+  includeSummary?: boolean
 }
 
 /** 获得渲染配置 */
@@ -233,11 +246,19 @@ export const getDistinctValues = (code: string, field: string): Promise<any[]> =
  *
  * @param fileNameHint 保存时用的文件名（不含扩展名）。见下面取名那一段的说明
  */
+export interface ExportResultVO {
+  /** 是否因为超过导出上限被截断 */
+  truncated: boolean
+  /** 服务端生效的上限。仅 truncated 时有值 */
+  maxRows?: number
+}
+
 export const exportData = async (
   code: string,
   data: RuntimeExportReqVO,
-  fileNameHint?: string
-): Promise<void> => {
+  fileNameHint?: string,
+  fileNameSuffix?: string
+): Promise<ExportResultVO> => {
   const { getAccessToken, getTenantId } = await import('@/utils/auth')
   const axios = (await import('axios')).default
   const baseUrl = import.meta.env.VITE_BASE_URL + import.meta.env.VITE_API_URL
@@ -297,11 +318,27 @@ export const exportData = async (
   // 仍然先读一次响应头：哪天框架把设头的时机挪到写流之前，这里自动就用上了，
   // 不必再改一遍。
   //
+  //
+  // 截断信息走普通响应头，读得到
+  //
+  // ⚠️ 与 Content-Disposition 不同：X-Export-Truncated 是在 ExcelUtils.write
+  // 【之前】设的，所以能正常发出来。服务端在文件名里也标了「前 N 条」，
+  // 但那份文件名随 Content-Disposition 一起发不出去，所以这里要自己拼。
+  const truncated = String(res.headers['x-export-truncated'] || '') === 'true'
+  const maxRows = Number(res.headers['x-export-max-rows']) || undefined
+
   const disposition = res.headers['content-disposition'] || ''
   const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i)
+  const suffix = [
+    fileNameSuffix,
+    truncated && maxRows ? `前${maxRows}条` : ''
+  ]
+    .filter(Boolean)
+    .map((part) => `(${part})`)
+    .join('')
   const fileName = match
     ? decodeURIComponent(match[1])
-    : `${sanitizeFileName(fileNameHint || code)}.xlsx`
+    : `${sanitizeFileName(fileNameHint || code)}${suffix}.xlsx`
 
   // 触发浏览器下载
   const url = URL.createObjectURL(new Blob([res.data]))
@@ -310,6 +347,8 @@ export const exportData = async (
   a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
+
+  return { truncated, maxRows }
 }
 
 /**

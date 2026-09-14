@@ -625,6 +625,14 @@
       它要用当前表单的字段定义、当前表单的权限点，离开这张列表就没有意义。
     -->
     <ImportDialog ref="importDialogRef" @success="handleImportSuccess" />
+
+    <!--
+      导出设置
+
+      只放范围与合计行两项 —— 列、顺序、格式都由列表本身决定，
+      不该让用户每次导出再选一遍
+    -->
+    <ExportDialog ref="exportDialogRef" />
   </template>
 </template>
 
@@ -691,6 +699,7 @@ import {
 } from '@/components/FormWidgets/columnSetting'
 import GroupRowCell from './GroupRowCell.vue'
 import ImportDialog from './ImportDialog.vue'
+import ExportDialog from './ExportDialog.vue'
 import ColumnSettingPanel from './ColumnSettingPanel.vue'
 import { useUserStore } from '@/store/modules/user'
 import { collapseUploadValues } from '@/components/FormWidgets/uploadValue'
@@ -904,6 +913,16 @@ const operationColumn = ref({
   maxInline: DEFAULT_MAX_INLINE_BUTTONS,
   buttons: ['edit', 'detail', 'delete'] as any
 })
+/**
+ * 导出行数上限
+ *
+ * 由表单设计者在列表设计里配（listConf.exportMaxRows），默认 2 万。
+ * 前端只用它在导出弹窗上提示「会被截断」—— 真正的约束在服务端，
+ * 前端拦不住也不该拦（用户可以直接调接口）。
+ */
+const DEFAULT_EXPORT_MAX_ROWS = 20000
+const exportMaxRows = ref(DEFAULT_EXPORT_MAX_ROWS)
+
 /** 合计行配置 */
 const showSummary = ref(false)
 const summaryColumns = ref<string[]>([])
@@ -2768,6 +2787,10 @@ const parseListConf = (listConf: string) => {
       maxInline: normalizeMaxInline(storedOperation.maxInline),
       buttons: storedOperation.buttons ?? ['edit', 'detail', 'delete']
     }
+    exportMaxRows.value =
+      typeof conf.exportMaxRows === 'number' && conf.exportMaxRows > 0
+        ? conf.exportMaxRows
+        : DEFAULT_EXPORT_MAX_ROWS
     showSummary.value = conf.showSummary || false
     summaryColumns.value = conf.summaryColumns || []
     // 存量表单的配置里没有这个键，缺省按「显示」——序号是列表的默认预期，
@@ -2798,6 +2821,7 @@ const parseListConf = (listConf: string) => {
     defaultSort.value = undefined
     showSummary.value = false
     summaryColumns.value = []
+    exportMaxRows.value = DEFAULT_EXPORT_MAX_ROWS
     showIndexColumn.value = true
     formViewMode.value = 'DIALOG'
     tabConfig.value = undefined
@@ -3175,39 +3199,44 @@ const handleImportSuccess = async () => {
   await loadList()
 }
 
-/** 导出列表数据 */
-const handleExport = async () => {
-  // 确认框取消是用户的正常动作，不该弹错误 —— 与导出本身失败分开处理
-  try {
-    await message.exportConfirm()
-  } catch {
-    return
-  }
-  try {
-    const conditions = buildConditions()
-    const sort = currentSort.value || defaultSort.value
-    // 文件名由这里给：响应头带不出来（理由见 exportData），而表单的中文名
-    // 只有这边拿得到 —— 用表单编码当文件名，用户拿到的是一堆 test_demo_xxx.xlsx
-    await RuntimeApi.exportData(
-      formCode.value,
-      {
-        conditions,
+/** 导出设置弹窗。真正的下载在它里面做 */
+const exportDialogRef = ref()
+
+/**
+ * 导出
+ *
+ * 不直接下载，而是先开一个设置弹窗 —— 范围（当前页 / 全部）与合计行
+ * 这两件事同一张列表的不同次导出可能不同，得让用户选。
+ *
+ * 列、顺序、格式一概不在弹窗里 —— 它们由列表本身决定（所见即所得）。
+ */
+const handleExport = () => {
+  const visibleKeys = columns.value.map((col) => columnKeyOf(col))
+  exportDialogRef.value?.open({
+    code: formCode.value,
+    name: config.value?.name || formCode.value,
+    pageNo: queryParams.pageNo,
+    pageSize: queryParams.pageSize,
+    total: total.value,
+    maxRows: exportMaxRows.value,
+    columnCount: visibleKeys.length,
+    // 设计期有多少列、现在显示多少列，差额就是用户自己隐藏掉的
+    hiddenCount: Math.max(designColumns.value.length - visibleKeys.length, 0),
+    hasSummary: showSummary.value && summaryColumns.value.length > 0,
+    buildRequest: () => {
+      const sort = currentSort.value || defaultSort.value
+      return {
+        conditions: buildConditions(),
         sortField: sort?.field,
         sortOrder: sort?.order,
         // ⚠️ 传当前【真正渲染出来的】列，而不是设计期的列 ——
         // 用户在列设置里隐藏掉的列不该出现在导出文件里
-        visibleFields: columns.value.map((col) => columnKeyOf(col))
-      },
-      config.value?.name || formCode.value
-    )
-    message.success('导出成功')
-  } catch (e: any) {
-    // 原先这里是 `catch {}`：后端报错时界面上什么也不发生，
-    // 用户只会以为「点了没反应」，而浏览器根本没下载任何文件
-    console.error('[FormDesignRender] 导出失败', e)
-    message.error(e?.msg || e?.message || '导出失败，请稍后重试')
-  }
+        visibleFields: visibleKeys
+      }
+    }
+  })
 }
+
 
 onMounted(() => {
   loadConfig()

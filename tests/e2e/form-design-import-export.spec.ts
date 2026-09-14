@@ -268,23 +268,72 @@ test.describe('导入导出示例', () => {
     await expect(dialog.getByRole('button', { name: '确认导入' })).toBeHidden()
   })
 
+  /** 打开导出设置弹窗 */
+  async function openExportDialog(page: Page) {
+    await page.getByRole('button', { name: /导出/ }).first().click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '导出数据' })
+    await expect(dialog).toBeVisible({ timeout: 30_000 })
+    return dialog
+  }
+
+  test('导出先开设置弹窗，范围与合计行都能选', async ({ page }) => {
+    await login(page)
+    await openRuntime(page, CODE_BASIC)
+    const dialog = await openExportDialog(page)
+
+    // 两种范围
+    await expect(dialog.getByText('当前页')).toBeVisible()
+    await expect(dialog.getByText('全部', { exact: false }).first()).toBeVisible()
+    // 合计行开关（这张表单配了合计行）
+    //
+    // ⚠️ 走 label 而不是 getByRole('checkbox')：Element Plus 把原生 input
+    // 用 CSS 藏了起来（.el-checkbox__original），可见的是外层 label。
+    // 按 role 定位会拿到那个 hidden 的 input，断言 toBeVisible 必然失败
+    await expect(dialog.locator('.el-checkbox', { hasText: '导出合计行' })).toBeVisible()
+
+    // ⚠️ 弹窗里不该出现任何「格式」「选字段」之类的选项 ——
+    // 导出的原则是照列表来，给选项等于把该由列表决定的事推给用户
+    await expect(dialog.getByText(/值模式|导出字段|选择字段/)).toHaveCount(0)
+  })
+
   test('导出按钮点了真的下文件', async ({ page }) => {
     await login(page)
     await openRuntime(page, CODE_BASIC)
+    const dialog = await openExportDialog(page)
 
     const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
-    await page.getByRole('button', { name: /导出/ }).first().click()
-    // 导出前有一个确认框
-    const confirm = page.getByRole('button', { name: /确定|确 定/ }).last()
-    if (await confirm.isVisible().catch(() => false)) {
-      await confirm.click()
-    }
+    await dialog.getByRole('button', { name: '导出' }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toMatch(/\.xlsx$/)
 
     const filePath = await download.path()
     const head = fs.readFileSync(filePath!).subarray(0, 2)
     expect(head.toString('latin1'), '导出的必须是真 xlsx').toBe('PK')
+  })
+
+  test('选「当前页」导出的文件名带页码，且行数明显更少', async ({ page }) => {
+    await login(page)
+    await openRuntime(page, CODE_BASIC)
+
+    // 先量一次「全部」的大小
+    let dialog = await openExportDialog(page)
+    let downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+    await dialog.getByRole('button', { name: '导出' }).click()
+    const allFile = await (await downloadPromise).path()
+    const allSize = fs.statSync(allFile!).size
+
+    // 再导当前页
+    dialog = await openExportDialog(page)
+    // 同上：点可见的 label，不点被藏起来的原生 radio
+    await dialog.locator('.el-radio', { hasText: '当前页' }).click()
+    downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+    await dialog.getByRole('button', { name: '导出' }).click()
+    const download = await downloadPromise
+
+    // 文件名要带页码 —— 不带的话两个文件混在下载目录里分不出谁是谁
+    expect(download.suggestedFilename()).toMatch(/第\d+页/)
+    const pageSize = fs.statSync((await download.path())!).size
+    expect(pageSize, '当前页的文件应当明显小于全部').toBeLessThan(allSize)
   })
 
   test('主子表示例：明细列出现在表头匹配结果里', async ({ page }) => {
