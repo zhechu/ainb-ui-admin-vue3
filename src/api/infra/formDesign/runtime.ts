@@ -132,6 +132,33 @@ export const getDataPage = (code: string, data: RuntimePageReqVO) => {
   return request.post({ url: `/infra/form-design/runtime/${code}/page`, data })
 }
 
+/**
+ * 关联表单控件的候选数据
+ *
+ * ⚠️ 不要图省事改回 getDataPage。两者的权限语义不同：
+ * 分页查询要目标表单的完整 query 权限，于是「填订单要选客户」这件事
+ * 会逼着管理员把整个客户列表的查看权发下去。本接口校验的是目标表单的
+ * reference（没有则回落 query），让「能填订单但不该浏览客户列表」的人
+ * 也选得到客户。
+ *
+ * 入参里没有 targetCode 与字段列表 —— 那两样由服务端从**源表单的已发布配置**
+ * 里读。允许前端传的话，这个接口就成了「任意表单任意字段」的读取口
+ *
+ * @param code  正在填写的表单编码（引用方）
+ * @param field 该表单上关联控件的字段名
+ */
+export const getReferenceOptions = (
+  code: string,
+  field: string,
+  keyword?: string,
+  limit?: number
+): Promise<Record<string, any>[]> => {
+  return request.get({
+    url: `/infra/form-design/runtime/${code}/reference-options`,
+    params: { field, keyword, limit }
+  })
+}
+
 /** 详情。含子表明细 */
 export const getData = (code: string, id: string | number) => {
   return request.get({ url: `/infra/form-design/runtime/${code}/get`, params: { id } })
@@ -263,17 +290,13 @@ export const exportData = async (
   const axios = (await import('axios')).default
   const baseUrl = import.meta.env.VITE_BASE_URL + import.meta.env.VITE_API_URL
 
-  const res = await axios.post(
-    `${baseUrl}/infra/form-design/runtime/${code}/export`,
-    data,
-    {
-      responseType: 'blob',
-      headers: {
-        Authorization: 'Bearer ' + getAccessToken(),
-        'tenant-id': getTenantId() || ''
-      }
+  const res = await axios.post(`${baseUrl}/infra/form-design/runtime/${code}/export`, data, {
+    responseType: 'blob',
+    headers: {
+      Authorization: 'Bearer ' + getAccessToken(),
+      'tenant-id': getTenantId() || ''
     }
-  )
+  })
 
   //
   // 判断这一响应到底是 Excel 还是一段错误 JSON
@@ -329,10 +352,7 @@ export const exportData = async (
 
   const disposition = res.headers['content-disposition'] || ''
   const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i)
-  const suffix = [
-    fileNameSuffix,
-    truncated && maxRows ? `前${maxRows}条` : ''
-  ]
+  const suffix = [fileNameSuffix, truncated && maxRows ? `前${maxRows}条` : '']
     .filter(Boolean)
     .map((part) => `(${part})`)
     .join('')
@@ -539,16 +559,13 @@ export const downloadTemplate = async (code: string): Promise<void> => {
   const axios = (await import('axios')).default
   const baseUrl = import.meta.env.VITE_BASE_URL + import.meta.env.VITE_API_URL
 
-  const res = await axios.get(
-    `${baseUrl}/infra/form-design/runtime/${code}/import/template`,
-    {
-      responseType: 'blob',
-      headers: {
-        Authorization: 'Bearer ' + getAccessToken(),
-        'tenant-id': getTenantId() || ''
-      }
+  const res = await axios.get(`${baseUrl}/infra/form-design/runtime/${code}/import/template`, {
+    responseType: 'blob',
+    headers: {
+      Authorization: 'Bearer ' + getAccessToken(),
+      'tenant-id': getTenantId() || ''
     }
-  )
+  })
 
   // 与导出同一个判据：xlsx 是 zip，必然以 "PK" 开头。
   // 不能看 Content-Type —— 理由见上面 exportData 里那段注释

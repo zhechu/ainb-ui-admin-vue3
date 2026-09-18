@@ -149,6 +149,14 @@
             数据权限
           </el-button>
           <el-button
+            v-hasPermi="['system:grant:query']"
+            link
+            type="primary"
+            @click="openGrantAssignForm(scope.row)"
+          >
+            资源授权
+          </el-button>
+          <el-button
             v-hasPermi="['system:role:delete']"
             link
             type="danger"
@@ -174,6 +182,8 @@
   <RoleAssignMenuForm ref="assignMenuFormRef" @success="getList" />
   <!-- 表单弹窗：数据权限 -->
   <RoleDataPermissionForm ref="dataPermissionFormRef" @success="getList" />
+  <!-- 表单弹窗：资源授权 -->
+  <GrantAssignForm ref="grantAssignFormRef" />
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
@@ -183,6 +193,7 @@ import * as RoleApi from '@/api/system/role'
 import RoleForm from './RoleForm.vue'
 import RoleAssignMenuForm from './RoleAssignMenuForm.vue'
 import RoleDataPermissionForm from './RoleDataPermissionForm.vue'
+import GrantAssignForm from './components/GrantAssignForm.vue'
 
 defineOptions({ name: 'SystemRole' })
 
@@ -243,6 +254,16 @@ const openDataPermissionForm = async (row: RoleApi.RoleVO) => {
 const assignMenuFormRef = ref()
 const openAssignMenuForm = async (row: RoleApi.RoleVO) => {
   assignMenuFormRef.value.open(row)
+}
+
+/** 资源授权操作 */
+const grantAssignFormRef = ref()
+const openGrantAssignForm = (row: RoleApi.RoleVO) => {
+  grantAssignFormRef.value.open({
+    subjectType: 'ROLE',
+    subjectRefId: row.id,
+    name: row.name,
+  })
 }
 
 /** 删除按钮操作 */

@@ -194,3 +194,70 @@ export function buildXlsx(rows: (string | number | null | undefined)[][]): Buffe
     { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheet, 'utf8') }
   ])
 }
+
+/**
+ * 读一份 xlsx，返回里面出现的全部文本
+ *
+ * ## 为什么需要它
+ *
+ * 断言「导出没有绕过列权限」时，光验「下下来的是不是真 xlsx」不够 ——
+ * 那种断言在**整列明文被导出去**的情况下照样是绿的。必须真的看文件里
+ * 有没有那一列的表头。
+ *
+ * ## 为什么还是自己写
+ *
+ * 理由同上面的 {@link buildXlsx}：仓库里没有 xlsx/zip 读库，为一条断言
+ * 加一条依赖不合算。xlsx 就是 zip + XML，解出来做子串匹配足够 ——
+ * 这里不需要还原单元格结构，只需要回答「这个表头在不在文件里」。
+ *
+ * ## 为什么走中央目录而不是顺序扫本地头
+ *
+ * 顺序扫 `PK\x03\x04` 看着更简单，但流式写出的 zip（FastExcel 就是流式写的）
+ * 会把 compressedSize 留成 0、把真实长度放进 data descriptor，
+ * 顺序扫会当场读错长度。中央目录里的长度总是准的。
+ */
+export function readXlsxText(buffer: Buffer): string {
+  // 1. 从尾部找 EOCD（0x06054b50）。注释可达 64KB，所以往前找足够远
+  let eocd = -1
+  for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 66_000); i--) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) {
+      eocd = i
+      break
+    }
+  }
+  if (eocd < 0) {
+    throw new Error('不是合法的 zip/xlsx：找不到中央目录结尾')
+  }
+  const entryCount = buffer.readUInt16LE(eocd + 10)
+  let pointer = buffer.readUInt32LE(eocd + 16)
+
+  const texts: string[] = []
+  for (let i = 0; i < entryCount; i++) {
+    if (buffer.readUInt32LE(pointer) !== 0x02014b50) break
+    const method = buffer.readUInt16LE(pointer + 10)
+    const compressedSize = buffer.readUInt32LE(pointer + 20)
+    const nameLen = buffer.readUInt16LE(pointer + 28)
+    const extraLen = buffer.readUInt16LE(pointer + 30)
+    const commentLen = buffer.readUInt16LE(pointer + 32)
+    const localOffset = buffer.readUInt32LE(pointer + 42)
+    const name = buffer.toString('utf8', pointer + 46, pointer + 46 + nameLen)
+    pointer += 46 + nameLen + extraLen + commentLen
+
+    // 只关心放文本的那几个部件，跳过图片、样式之类
+    if (!name.endsWith('.xml')) continue
+    if (!name.startsWith('xl/')) continue
+
+    // 本地头是定长 30 字节 + 文件名 + 扩展区，之后才是数据
+    const localNameLen = buffer.readUInt16LE(localOffset + 26)
+    const localExtraLen = buffer.readUInt16LE(localOffset + 28)
+    const dataStart = localOffset + 30 + localNameLen + localExtraLen
+    const raw = buffer.subarray(dataStart, dataStart + compressedSize)
+    try {
+      texts.push((method === 0 ? raw : zlib.inflateRawSync(raw)).toString('utf8'))
+    } catch {
+      // 单个部件解不开不该让整条断言失败 —— 表头在别的部件里照样找得到
+    }
+  }
+  // 去掉标签，只留文本。够用了：我们只做子串匹配
+  return texts.join('\n').replace(/<[^>]*>/g, ' ')
+}

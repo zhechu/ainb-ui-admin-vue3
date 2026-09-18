@@ -730,6 +730,7 @@ import {
 import * as RuntimeApi from '@/api/infra/formDesign/runtime'
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
 import { applyPlainTextToggle } from '@/components/FormWidgets/plainText'
+import { applyRelationSource } from '@/components/FormWidgets/relationSource'
 import { getDictTree, getStrDictOptions } from '@/utils/dict'
 import { isValuelessOperator } from '@/components/FormWidgets/searchWidget'
 import {
@@ -2649,6 +2650,10 @@ const loadConfig = async () => {
       // 千分位：给数字输入框装上 formatter / parser。
       // 必须在赋给 formRule 之前 —— 之后 form-create 已经建好了控件实例
       applyThousandsFormat(rules)
+      // 关联控件要知道自己长在哪张表单上 —— 它取候选数据走的是 REFERENCE 接口，
+      // 入参是「源表单 + 控件字段」而不是「目标表单 + 字段列表」。
+      // 不注入的话下拉框取不到数，且界面上只是空着、不报错
+      applyRelationSource(rules, formCode.value)
       // 分步校验：标签页切走之前校验当前页的字段。
       // 校验函数在这里注入 —— stepValidate 模块不认识 form-create 的 api
       const validateStepFields = async (fields: string[]) => {
