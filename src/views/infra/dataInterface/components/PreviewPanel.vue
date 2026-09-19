@@ -1,5 +1,18 @@
 <template>
-  <Dialog :title="`在线预览 - ${interfaceName}`" v-model="dialogVisible" width="900px">
+  <ContentWrap>
+    <!-- 顶部操作栏：内容较多，页内展示 -->
+    <div class="di-panel-header mb-15px flex items-center justify-between">
+      <div class="flex items-center">
+        <el-button link @click="emit('back')">
+          <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
+        </el-button>
+        <span class="di-panel-title ml-8px">在线预览 - {{ interfaceName }}</span>
+      </div>
+      <el-button type="primary" :loading="loading" @click="doPreview">
+        <Icon icon="ep:video-play" class="mr-5px" /> 执行
+      </el-button>
+    </div>
+
     <!-- 参数录入区：按入参定义动态渲染 -->
     <template v-if="paramList.length > 0">
       <div class="mb-8px font-bold">请求参数</div>
@@ -58,10 +71,7 @@
       </el-form>
     </template>
 
-    <el-button type="primary" :loading="loading" @click="doPreview">
-      <Icon icon="ep:video-play" class="mr-5px" /> 执行
-    </el-button>
-    <span class="ml-10px text-12px text-gray-500">预览最多返回 100 条</span>
+    <span class="text-12px text-[var(--el-text-color-secondary)]">预览最多返回 100 条</span>
 
     <!-- 实际执行的 SQL：核对租户条件是否按预期注入 -->
     <template v-if="executeSql">
@@ -72,7 +82,7 @@
     <!-- HTTP 接口配置信息 -->
     <template v-if="interfaceType === 3 && (baseUrl || allowInternalUrl)">
       <div class="mb-6px mt-14px font-bold">HTTP 配置</div>
-      <div class="text-12px text-gray-600 mb-8px">
+      <div class="text-12px text-[var(--el-text-color-secondary)] mb-8px">
         <div v-if="baseUrl"
           >基础URL: <code>{{ baseUrl }}</code></div
         >
@@ -85,17 +95,17 @@
       <div class="mb-6px mt-14px font-bold">
         执行结果
         <!-- 写动作显示影响行数，查询动作显示条数 -->
-        <span v-if="isWriteAction && resultRows?.affectedRows !== undefined" class="ml-6px text-12px text-gray-500">
+        <span v-if="isWriteAction && resultRows?.affectedRows !== undefined" class="ml-6px text-12px text-[var(--el-text-color-secondary)]">
           影响 {{ resultRows.affectedRows }} 行
         </span>
-        <span v-else-if="Array.isArray(resultRows)" class="ml-6px text-12px text-gray-500">
+        <span v-else-if="Array.isArray(resultRows)" class="ml-6px text-12px text-[var(--el-text-color-secondary)]">
           共 {{ resultRows.length }} 条
         </span>
       </div>
       <el-alert v-if="errorMsg" type="error" :closable="false" :title="errorMsg" class="mb-8px" />
       <pre v-else class="code-block">{{ jsonResultText }}</pre>
     </template>
-  </Dialog>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
@@ -104,10 +114,12 @@ import * as DataInterfaceApi from '@/api/infra/dataInterface'
 /** 在线预览面板
  *
  * 与正式调用走同一个后端执行逻辑，所以「预览能跑通」等于「正式调用也能跑通」。
+ * 页内展示（非弹窗），内容较多时体验更好。
  */
 defineOptions({ name: 'PreviewPanel' })
 
-const dialogVisible = ref(false)
+const emit = defineEmits(['back'])
+
 const loading = ref(false)
 const executed = ref(false)
 const interfaceId = ref<number>()
@@ -142,7 +154,6 @@ const jsonResultText = computed(() => {
 const isDateType = (type: string) => ['DATE', 'DATETIME'].includes(type)
 
 const open = (row: DataInterfaceApi.DataInterfaceVO) => {
-  dialogVisible.value = true
   interfaceId.value = row.id
   interfaceName.value = row.name
   interfaceType.value = row.type
@@ -207,6 +218,11 @@ const doPreview = async () => {
 </script>
 
 <style lang="scss" scoped>
+.di-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
 .code-block {
   padding: 10px;
   margin: 0;
@@ -215,7 +231,8 @@ const doPreview = async () => {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
-  background-color: #f5f7fa;
+  color: var(--el-text-color-regular);
+  background-color: var(--el-fill-color-light);
   border-radius: 4px;
 }
 </style>

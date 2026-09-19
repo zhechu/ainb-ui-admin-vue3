@@ -1,4 +1,6 @@
 <template>
+  <!-- 页内视图切换：列表 / 新建编辑表单 / 取号日志，参照数据接口页的做法 -->
+  <template v-if="viewMode === 'list'">
   <ContentWrap>
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true">
       <el-form-item label="模板名称" prop="name">
@@ -75,7 +77,7 @@
             :type="DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY"
             :value="row.category"
           />
-          <span v-else class="text-gray-400">-</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
       <el-table-column label="生成方式" align="center" width="110">
@@ -104,7 +106,7 @@
           >
             <span>{{ row.currentNumber ?? 0 }}</span>
           </el-tooltip>
-          <span v-else class="text-gray-400">-</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="90">
@@ -123,8 +125,24 @@
         width="170"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="140" fixed="right">
+      <el-table-column label="操作" align="center" width="250" fixed="right">
         <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            @click="openTest(row)"
+            v-hasPermi="['infra:bill-template:query']"
+          >
+            测试
+          </el-button>
+          <el-button
+            link
+            type="primary"
+            @click="openLog(row)"
+            v-hasPermi="['infra:bill-template:query']"
+          >
+            取号日志
+          </el-button>
           <el-button
             link
             type="primary"
@@ -151,8 +169,19 @@
       @pagination="getList"
     />
   </ContentWrap>
+  </template>
 
-  <BillTemplateForm ref="formRef" @success="getList" />
+  <BillTemplateForm
+    v-else-if="viewMode === 'form'"
+    ref="formRef"
+    @success="handlePanelDone"
+    @back="handlePanelBack"
+  />
+
+  <BillTemplateLogList v-else-if="viewMode === 'log'" ref="logRef" @back="handlePanelBack" />
+
+  <!-- 取号测试：真实取号会消耗流水并回写统计，返回时刷新列表 -->
+  <BillTemplateTestPanel v-else-if="viewMode === 'test'" ref="testRef" @back="handlePanelDone" />
 </template>
 
 <script lang="ts" setup>
@@ -161,6 +190,8 @@ import { dateFormatter } from '@/utils/formatTime'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as BillTemplateApi from '@/api/infra/billTemplate'
 import BillTemplateForm from './BillTemplateForm.vue'
+import BillTemplateLogList from './BillTemplateLogList.vue'
+import BillTemplateTestPanel from './BillTemplateTestPanel.vue'
 import { GEN_TYPE, GEN_TYPE_OPTIONS, RESET_CYCLE_OPTIONS } from './constants'
 
 /** 单据模板列表 */
@@ -168,6 +199,9 @@ defineOptions({ name: 'InfraBillTemplate' })
 
 const message = useMessage()
 const { t } = useI18n()
+
+/** 页内视图：列表 / 新建编辑表单 / 取号日志 / 取号测试 */
+const viewMode = ref<'list' | 'form' | 'log' | 'test'>('list')
 
 const loading = ref(true)
 const list = ref<BillTemplateApi.BillTemplateVO[]>([])
@@ -222,8 +256,36 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+const openForm = async (type: string, id?: number) => {
+  viewMode.value = 'form'
+  // 面板是条件渲染的，必须等挂载后才能拿到 ref
+  await nextTick()
+  formRef.value?.open(type, id)
+}
+
+const logRef = ref()
+const openLog = async (row: BillTemplateApi.BillTemplateVO) => {
+  viewMode.value = 'log'
+  await nextTick()
+  logRef.value?.open(row.id, row.name)
+}
+
+const testRef = ref()
+const openTest = async (row: BillTemplateApi.BillTemplateVO) => {
+  viewMode.value = 'test'
+  await nextTick()
+  testRef.value?.open(row.id, row.name)
+}
+
+/** 面板内保存成功：回列表并刷新 */
+const handlePanelDone = () => {
+  viewMode.value = 'list'
+  getList()
+}
+
+/** 面板返回：只回列表，不刷新 */
+const handlePanelBack = () => {
+  viewMode.value = 'list'
 }
 
 /** 启用 / 停用 */

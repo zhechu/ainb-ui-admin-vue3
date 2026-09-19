@@ -65,7 +65,10 @@
           </div>
 
           <!-- none: 无 Body -->
-          <div v-if="config.bodyType === 'none'" class="px-12px py-20px text-center text-gray-500">
+          <div
+            v-if="config.bodyType === 'none'"
+            class="px-12px py-20px text-center text-[var(--el-text-color-secondary)]"
+          >
             该请求没有 Body 主体
           </div>
 
@@ -84,6 +87,7 @@
               :language="
                 config.bodyType === 'json' ? 'json' : config.bodyType === 'xml' ? 'xml' : 'plaintext'
               "
+              :readonly="readonly"
               :minLines="8"
               :maxLines="20"
               :placeholder="getBodyPlaceholder()"
@@ -125,10 +129,13 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string
     allowInternalUrl?: number
+    /** 只读态：版本预览用，body 编辑器只读 */
+    readonly?: boolean
   }>(),
   {
     modelValue: '',
-    allowInternalUrl: 1  // 默认开启内网访问
+    allowInternalUrl: 1, // 默认开启内网访问
+    readonly: false
   }
 )
 

@@ -4,10 +4,18 @@
       v-model="scriptText"
       language="javascript"
       :placeholder="PLACEHOLDER"
+      :readonly="readonly"
       :minLines="5"
       :maxLines="10"
     />
-    <el-button link type="primary" size="small" class="mt-6px" @click="fillExample">
+    <el-button
+      v-if="!readonly"
+      link
+      type="primary"
+      size="small"
+      class="mt-6px"
+      @click="fillExample"
+    >
       填入示例
     </el-button>
   </div>
@@ -20,7 +28,10 @@ import CodeEditor from '@/components/CodeEditor'
 /** JS 后处理脚本配置 */
 defineOptions({ name: 'ScriptConfig' })
 
-const props = withDefaults(defineProps<{ modelValue?: string }>(), { modelValue: '' })
+const props = withDefaults(defineProps<{ modelValue?: string; readonly?: boolean }>(), {
+  modelValue: '',
+  readonly: false
+})
 const emit = defineEmits(['update:modelValue'])
 const scriptText = useVModel(props, 'modelValue', emit) as Ref<string>
 

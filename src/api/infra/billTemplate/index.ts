@@ -33,6 +33,8 @@ export type BillTemplateVO = {
   randomDigit?: number
   /** 随机类型：1-纯数字 2-字母+数字 */
   randomType?: number
+  /** 是否记录取号日志，默认关闭 */
+  logEnabled?: boolean
   /** 范例，后端保存时算好，仅供展示 */
   example?: string
   /** 最近一次生成的号码 */
@@ -90,6 +92,31 @@ export type BillTemplateSimpleVO = {
   example?: string
 }
 
+/**
+ * 取号日志
+ *
+ * genType / period / seq 是取号当时的规则快照，模板配置日后被改仍可还原现场
+ */
+export type BillTemplateLogVO = {
+  id: number
+  templateId: number
+  templateCode: string
+  /** 生成的单据号；取号失败时为空 */
+  billNo?: string
+  /** 生成方式快照：1-时间流水 2-随机数 3-UUID */
+  genType: number
+  /** 周期标记快照 */
+  period?: string
+  /** 本次消耗的流水序号；随机/UUID 为空 */
+  seq?: number
+  /** 取号来源：1-业务出号 2-表单预占 */
+  source: number
+  success: boolean
+  errorMsg?: string
+  userId?: number
+  createTime: Date
+}
+
 export const getBillTemplatePage = (params: any) => {
   return request.get({ url: '/infra/bill-template/page', params })
 }
@@ -137,4 +164,31 @@ export const previewBillTemplate = (data: BillTemplatePreviewReqVO): Promise<str
  */
 export const occupyBillNo = (code: string): Promise<string> => {
   return request.post({ url: '/infra/bill-template/occupy', params: { code } })
+}
+
+/** 获得取号日志分页。仅开启「记录取号日志」的模板会产生日志 */
+export const getBillTemplateLogPage = (params: any) => {
+  return request.get({ url: '/infra/bill-template/log-page', params })
+}
+
+/** 测试取号结果 */
+export type BillTemplateTestVO = {
+  /** 生成（或试算）的单据号 */
+  no: string
+  /** 本次使用的流水序号；随机数 / UUID 方式为 null */
+  seq?: number
+  /** 计数周期段 */
+  period?: string
+  /** 是否真实取号：true-已消耗流水 false-仅模拟 */
+  real: boolean
+}
+
+/**
+ * 测试取号
+ *
+ * real=false（默认）为模拟：按「当前流水 + 1」试算下一个号，不消耗流水、不写日志；
+ * real=true 与业务出号同路径，会消耗流水，日志来源记为「测试取号」。
+ */
+export const testBillTemplate = (id: number, real: boolean): Promise<BillTemplateTestVO> => {
+  return request.post({ url: '/infra/bill-template/test', params: { id, real } })
 }

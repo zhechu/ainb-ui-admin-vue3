@@ -1,13 +1,45 @@
 <template>
-  <Dialog :title="dialogTitle" v-model="dialogVisible" width="900px">
-    <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px" v-loading="formLoading">
+  <ContentWrap>
+    <!-- 顶部操作栏：内容较多，页内展示，保存/返回固定在顶部便于随时操作 -->
+    <div class="di-form-header mb-15px flex items-center justify-between">
+      <div class="flex items-center">
+        <el-button link @click="handleCancel">
+          <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
+        </el-button>
+        <span class="di-form-title ml-8px">{{ previewMode ? previewTitle : formTitle }}</span>
+        <el-tag v-if="previewMode" type="info" size="small" class="ml-8px">只读</el-tag>
+      </div>
+      <div v-if="!previewMode" class="flex items-center">
+        <!-- 只有选了写动作才需要确认。后端也会校验，这里让用户提前知晓 -->
+        <el-checkbox
+          v-if="formData.type === 1 && !isSelectAction"
+          v-model="formData.riskConfirmed"
+          class="mr-15px"
+        >
+          我知晓此接口会
+          <b class="text-[var(--el-color-danger)]">{{ currentActionLabel }}</b>
+          数据
+        </el-checkbox>
+        <el-button @click="handleCancel">取 消</el-button>
+        <el-button type="primary" :loading="formLoading" @click="submitForm">保 存</el-button>
+      </div>
+    </div>
+
+    <el-form
+      ref="formRef"
+      :model="formData"
+      :rules="formRules"
+      :disabled="previewMode"
+      label-width="100px"
+      v-loading="formLoading"
+    >
       <el-row :gutter="16">
-        <el-col :span="12">
+        <el-col :span="8">
           <el-form-item label="接口名称" prop="name">
             <el-input v-model="formData.name" placeholder="如 订单列表查询" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="8">
           <el-form-item label="接口编码" prop="code">
             <el-input
               v-model="formData.code"
@@ -16,9 +48,14 @@
             />
           </el-form-item>
         </el-col>
+        <el-col :span="8">
+          <el-form-item label="责任人" prop="owner">
+            <el-input v-model="formData.owner" maxlength="100" placeholder="手填，如 张三" />
+          </el-form-item>
+        </el-col>
       </el-row>
       <el-row :gutter="16">
-        <el-col :span="12">
+        <el-col :span="8">
           <el-form-item label="类型" prop="type">
             <el-select v-model="formData.type" class="w-full" @change="handleTypeChange">
               <el-option
@@ -30,7 +67,7 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="8">
           <el-form-item label="分类" prop="category">
             <el-select
               v-model="formData.category"
@@ -47,12 +84,21 @@
             </el-select>
           </el-form-item>
         </el-col>
+        <el-col :span="8">
+          <el-form-item label="记录日志" prop="logEnabled">
+            <el-switch v-model="formData.logEnabled" :active-value="1" :inactive-value="0" />
+            <span class="ml-8px text-12px text-[var(--el-text-color-secondary)]">
+              默认关闭，防止高频接口写日志影响性能；需要追溯时手动开启
+            </span>
+          </el-form-item>
+        </el-col>
       </el-row>
 
       <!-- 动作类型：SQL 类型必选。
            程序无法可靠判断多条 SQL 组合起来算什么动作，所以交给用户自己选 -->
       <el-form-item v-if="formData.type === 1" label="动作类型" prop="sqlStatementType">
-        <div class="w-full">
+        <!-- 提示语与单选同行，节省纵向空间 -->
+        <div class="w-full flex items-center flex-wrap gap-y-2px">
           <el-radio-group v-model="formData.sqlStatementType" @change="handleStatementTypeChange">
             <el-radio
               v-for="item in statementTypeOptions"
@@ -61,13 +107,13 @@
               :label="item.value"
             >
               {{ item.label }}
-              <span class="text-gray-400">（{{ item.value }}）</span>
+              <span class="text-[var(--el-text-color-secondary)]">（{{ item.value }}）</span>
             </el-radio>
           </el-radio-group>
-          <div class="mt-2px text-12px text-gray-500">
-            一个接口可以写多条 SQL，程序难以准确判断整体属于什么动作，请按实际意图选择。
+          <span class="ml-8px text-12px text-[var(--el-text-color-secondary)]">
+            一个接口可写多条 SQL，请按实际意图选择动作类型。
             <span v-if="!isSelectAction">非查询动作只返回影响行数，且不能开启分页。</span>
-          </div>
+          </span>
         </div>
       </el-form-item>
 
@@ -81,8 +127,13 @@
         </el-alert>
       </el-form-item>
 
-      <!-- SQL 类型显示数据源选择 -->
-      <el-form-item v-if="formData.type === 1" label="数据源" prop="dataSourceConfigId">
+      <!-- 数据源选择暂不开放：当前固定主数据源（dataSourceConfigId 默认 0），
+           后续扩展多数据源时把 dataSourceVisible 置 true 即可恢复 -->
+      <el-form-item
+        v-if="dataSourceVisible && formData.type === 1"
+        label="数据源"
+        prop="dataSourceConfigId"
+      >
         <el-select v-model="formData.dataSourceConfigId" class="w-full" placeholder="选择数据源">
           <el-option
             v-for="item in dataSourceOptions"
@@ -91,7 +142,7 @@
             :value="item.id"
           />
         </el-select>
-        <div class="mt-2px text-12px text-gray-500">
+        <div class="mt-2px text-12px text-[var(--el-text-color-secondary)]">
           默认使用主数据源，如需连接其他数据库请在「数据源配置」中添加后选择
         </div>
       </el-form-item>
@@ -106,46 +157,59 @@
           v-model:countSql="formData.countSql"
           :dataSourceId="formData.dataSourceConfigId"
           :statementType="formData.sqlStatementType"
+          :readonly="previewMode"
         />
-        <StaticConfig v-else-if="formData.type === 2" v-model="formData.config" />
+        <StaticConfig
+          v-else-if="formData.type === 2"
+          v-model="formData.config"
+          :readonly="previewMode"
+        />
         <HttpConfigEnhanced
           v-else
           v-model="formData.config"
           v-model:allowInternalUrl="formData.allowInternalUrl"
+          :readonly="previewMode"
         />
       </el-form-item>
 
       <el-form-item label="入参定义">
-        <ParamTable v-model="formData.params" />
+        <ParamTable v-model="formData.params" :readonly="previewMode" />
       </el-form-item>
 
       <el-form-item label="后处理脚本">
-        <ScriptConfig v-model="formData.script" />
+        <ScriptConfig v-model="formData.script" :readonly="previewMode" />
       </el-form-item>
 
       <el-form-item label="备注" prop="remark">
-        <el-input v-model="formData.remark" placeholder="选填" />
+        <el-input
+          v-model="formData.remark"
+          type="textarea"
+          :rows="3"
+          maxlength="500"
+          show-word-limit
+          placeholder="选填"
+        />
       </el-form-item>
       <el-form-item v-if="formType === 'update'" label="变更说明" prop="changeSummary">
         <el-input v-model="formData.changeSummary" placeholder="记入版本历史，便于日后追溯" />
       </el-form-item>
-    </el-form>
 
-    <template #footer>
-      <!-- 只有选了写动作才需要确认。后端也会校验，这里让用户提前知晓 -->
-      <el-checkbox
-        v-if="formData.type === 1 && !isSelectAction"
-        v-model="formData.riskConfirmed"
-        class="mr-15px"
-      >
-        我知晓此接口会
-        <b class="text-red-500">{{ currentActionLabel }}</b>
-        数据
-      </el-checkbox>
-      <el-button type="primary" :disabled="formLoading" @click="submitForm">确 定</el-button>
-      <el-button @click="dialogVisible = false">取 消</el-button>
-    </template>
-  </Dialog>
+      <!-- 底部操作条：表单很长，滚到末尾也能直接保存 -->
+      <el-form-item v-if="!previewMode" label=" ">
+        <el-checkbox
+          v-if="formData.type === 1 && !isSelectAction"
+          v-model="formData.riskConfirmed"
+          class="mr-15px"
+        >
+          我知晓此接口会
+          <b class="text-[var(--el-color-danger)]">{{ currentActionLabel }}</b>
+          数据
+        </el-checkbox>
+        <el-button type="primary" :loading="formLoading" @click="submitForm">保 存</el-button>
+        <el-button @click="handleCancel">取 消</el-button>
+      </el-form-item>
+    </el-form>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
@@ -153,30 +217,41 @@ import * as DataInterfaceApi from '@/api/infra/dataInterface'
 import * as DataSourceConfigApi from '@/api/infra/dataSourceConfig'
 import SqlConfig from './components/SqlConfig.vue'
 import StaticConfig from './components/StaticConfig.vue'
-import HttpConfig from './components/HttpConfig.vue'
 import HttpConfigEnhanced from './components/HttpConfigEnhanced.vue'
 import ScriptConfig from './components/ScriptConfig.vue'
 import ParamTable from './components/ParamTable.vue'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 
-/** 数据接口配置表单 */
+/** 数据接口配置表单（页内视图） */
 defineOptions({ name: 'DataInterfaceForm' })
 
 const message = useMessage()
 const { t } = useI18n()
 
-const dialogVisible = ref(false)
-const dialogTitle = ref('')
 const formLoading = ref(false)
 const formType = ref('')
 const formRef = ref()
 const typeOptions = ref<DataInterfaceApi.OptionVO[]>([])
 const statementTypeOptions = ref<DataInterfaceApi.OptionVO[]>([])
 const dataSourceOptions = ref<DataSourceConfigApi.DataSourceConfigVO[]>([])
+/** 数据源下拉暂不展示：固定走主数据源，后续扩展多数据源时置 true */
+const dataSourceVisible = false
 /** SQL 探测结果，用于提示动作类型是否选对 */
 const sqlDetect = ref<DataInterfaceApi.SqlDetectVO | null>(null)
 
+/** 只读预览态：版本预览用 —— 禁用整张表单、隐藏保存，只展示快照内容 */
+const previewMode = ref(false)
+const previewMeta = ref<{ version?: number; interfaceName?: string }>({})
+
 const formData = ref<DataInterfaceApi.DataInterfaceSaveReqVO>(emptyForm())
+
+const formTitle = computed(() => (formType.value === 'create' ? '新建数据接口' : '配置数据接口'))
+
+const previewTitle = computed(() => {
+  const v = previewMeta.value.version
+  const name = previewMeta.value.interfaceName
+  return `版本预览${v != null ? ` · v${v}` : ''}${name ? `（${name}）` : ''}`
+})
 
 const formRules = reactive({
   name: [{ required: true, message: '接口名称不能为空', trigger: 'blur' }],
@@ -247,6 +322,7 @@ function emptyForm(): DataInterfaceApi.DataInterfaceSaveReqVO {
   return {
     name: '',
     code: '',
+    owner: '',
     category: '',
     type: 1,
     status: 0,
@@ -262,13 +338,16 @@ function emptyForm(): DataInterfaceApi.DataInterfaceSaveReqVO {
     hasPage: 0,
     countSql: '',
     baseUrl: '',
-    allowInternalUrl: 0
+    allowInternalUrl: 0,
+    // 默认关闭日志：防止高频接口写日志拖慢性能，需要追溯时手动开启
+    logEnabled: 0
   }
 }
 
+const emit = defineEmits(['success', 'cancel'])
+
 const open = async (type: string, id?: number) => {
-  dialogVisible.value = true
-  dialogTitle.value = type === 'create' ? '新建数据接口' : '配置数据接口'
+  previewMode.value = false
   formType.value = type
   formData.value = emptyForm()
   formRef.value?.resetFields()
@@ -294,6 +373,8 @@ const open = async (type: string, id?: number) => {
         params: parseParams(data.params),
         // 历史数据可能没有动作类型，兜底成查询，让用户显式确认一次
         sqlStatementType: data.sqlStatementType || 'SELECT',
+        // 历史数据没有日志开关字段，兜底为开启
+        logEnabled: data.logEnabled ?? 0,
         changeSummary: '',
         riskConfirmed: false
       }
@@ -304,9 +385,60 @@ const open = async (type: string, id?: number) => {
     }
   }
 }
-defineExpose({ open })
 
-const emit = defineEmits(['success'])
+/**
+ * 版本预览：用与新建/配置一样的表单，只读展示某个历史版本的快照
+ *
+ * 不拉当前配置、不做差异对比 —— 只把快照按表单样式还原，方便逐版本翻看比对。
+ * 快照解析失败时不白屏，报错并退回版本列表。
+ */
+const openPreview = async (payload: {
+  snapshot: string
+  version?: number
+  interfaceName?: string
+}) => {
+  formType.value = 'preview'
+  previewMode.value = true
+  previewMeta.value = { version: payload.version, interfaceName: payload.interfaceName }
+  formData.value = emptyForm()
+  formRef.value?.resetFields()
+  sqlDetect.value = null
+
+  // 选项与数据源下拉仍要加载，否则类型/动作类型/数据源显示的是编号而非名称
+  if (typeOptions.value.length === 0) {
+    typeOptions.value = await DataInterfaceApi.getTypeOptions()
+  }
+  if (statementTypeOptions.value.length === 0) {
+    statementTypeOptions.value = await DataInterfaceApi.getStatementTypeOptions()
+  }
+  if (dataSourceOptions.value.length === 0) {
+    dataSourceOptions.value = await DataSourceConfigApi.getDataSourceConfigList()
+  }
+
+  let snap: any
+  try {
+    snap = JSON.parse(payload.snapshot)
+  } catch {
+    message.error('版本快照解析失败')
+    emit('cancel')
+    return
+  }
+  formData.value = {
+    ...emptyForm(),
+    ...snap,
+    // 快照里 params 可能是数组，也可能是 JSON 字符串，两种都兜住
+    params: Array.isArray(snap.params) ? snap.params : parseParams(snap.params),
+    sqlStatementType: snap.sqlStatementType || 'SELECT',
+    logEnabled: snap.logEnabled ?? 0,
+    riskConfirmed: false
+  }
+}
+
+defineExpose({ open, openPreview })
+
+const handleCancel = () => {
+  emit('cancel')
+}
 
 /** 入参定义在后端以 JSON 字符串存储，解析失败时退回空数组而不是崩掉表单 */
 const parseParams = (raw?: string): DataInterfaceApi.ParamDefinitionVO[] => {
@@ -352,6 +484,11 @@ const handleStatementTypeChange = () => {
  * 解析失败不提示 —— 用户正在编辑，SQL 写一半是常态，弹一堆红字很吵。
  */
 const runDetect = async () => {
+  // 只读预览不需要探测：不发请求，也不显示「动作类型与 SQL 不一致」的提示
+  if (previewMode.value) {
+    sqlDetect.value = null
+    return
+  }
   if (formData.value.type !== 1 || !formData.value.config?.trim()) {
     sqlDetect.value = null
     return
@@ -400,10 +537,17 @@ const submitForm = async () => {
       await DataInterfaceApi.updateDataInterface(formData.value)
       message.success(t('common.updateSuccess'))
     }
-    dialogVisible.value = false
     emit('success')
   } finally {
     formLoading.value = false
   }
 }
 </script>
+
+<style lang="scss" scoped>
+.di-form-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+</style>

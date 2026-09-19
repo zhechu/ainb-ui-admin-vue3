@@ -1,4 +1,6 @@
 <template>
+  <!-- 列表视图：新建/预览/版本/日志都是内容较多的页内视图，切换时整页替换 -->
+  <template v-if="viewMode === 'list'">
   <ContentWrap>
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true">
       <el-form-item label="接口名称" prop="name">
@@ -67,6 +69,7 @@
       <el-table-column label="编号" align="center" prop="id" width="70" />
       <el-table-column label="接口名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="接口编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
+      <el-table-column label="责任人" prop="owner" align="center" width="100" :show-overflow-tooltip="true" />
       <el-table-column label="分类" prop="category" align="center" width="100" />
       <el-table-column label="类型" align="center" width="110">
         <template #default="{ row }">
@@ -83,7 +86,7 @@
           <el-tag v-else-if="row.sqlStatementTypeName" type="success" size="small">
             {{ row.sqlStatementTypeName }}
           </el-tag>
-          <span v-else class="text-gray-400">-</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
       <el-table-column label="版本" align="center" prop="version" width="70" />
@@ -104,7 +107,7 @@
         :formatter="dateFormatter"
       />
       <el-table-column label="更新者" align="center" prop="updater" width="100" />
-      <el-table-column label="操作" align="center" width="230" fixed="right">
+      <el-table-column label="操作" align="center" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openForm('update', row.id)" v-hasPermi="['infra:data-interface:update']">
             配置
@@ -114,6 +117,9 @@
           </el-button>
           <el-button link type="primary" @click="openVersion(row)" v-hasPermi="['infra:data-interface:query']">
             版本
+          </el-button>
+          <el-button link type="primary" @click="openLog(row)" v-hasPermi="['infra:data-interface:query']">
+            日志
           </el-button>
           <el-button link type="danger" @click="handleDelete(row)" v-hasPermi="['infra:data-interface:delete']">
             删除
@@ -128,11 +134,30 @@
       @pagination="getList"
     />
   </ContentWrap>
+  </template>
 
-  <DataInterfaceForm ref="formRef" @success="getList" />
-  <PreviewPanel ref="previewRef" />
-  <VersionList ref="versionRef" @success="getList" />
-  <LogList ref="logRef" />
+  <!-- 页内视图：配置表单 / 预览 / 版本历史 / 调用日志 -->
+  <DataInterfaceForm
+    v-else-if="viewMode === 'form'"
+    ref="formRef"
+    @success="handlePanelDone"
+    @cancel="handlePanelBack"
+  />
+  <PreviewPanel v-else-if="viewMode === 'preview'" ref="previewRef" @back="handlePanelBack" />
+  <VersionList
+    v-else-if="viewMode === 'version'"
+    ref="versionRef"
+    @success="handlePanelDone"
+    @preview="handleVersionPreview"
+    @back="handlePanelBack"
+  />
+  <!-- 版本预览：复用配置表单的只读态，与新建/配置长得一样，便于逐版本翻看 -->
+  <DataInterfaceForm
+    v-else-if="viewMode === 'versionPreview'"
+    ref="versionPreviewRef"
+    @cancel="handleVersionPreviewBack"
+  />
+  <LogList v-else-if="viewMode === 'log'" ref="logRef" @back="handlePanelBack" />
 </template>
 
 <script lang="ts" setup>
@@ -149,6 +174,12 @@ defineOptions({ name: 'InfraDataInterface' })
 
 const message = useMessage()
 const { t } = useI18n()
+
+/**
+ * 页内视图切换：list=列表，其余为整页替换的子视图。
+ * 表单/预览/版本/日志内容都较多，弹窗放不下，参考数据建模页的做法
+ */
+const viewMode = ref<'list' | 'form' | 'preview' | 'version' | 'versionPreview' | 'log'>('list')
 
 const loading = ref(true)
 const list = ref<DataInterfaceApi.DataInterfaceVO[]>([])
@@ -190,28 +221,76 @@ const resetQuery = () => {
   handleQuery()
 }
 
-/** 打开配置表单 */
+/**
+ * 打开各页内视图
+ *
+ * 面板是 v-else-if 条件渲染的，切完 viewMode 要等 nextTick
+ * 让组件挂载后才能拿到 ref 调 open()
+ */
 const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+const openForm = async (type: string, id?: number) => {
+  viewMode.value = 'form'
+  await nextTick()
+  formRef.value?.open(type, id)
 }
 
-/** 打开预览 */
 const previewRef = ref()
-const openPreview = (row: DataInterfaceApi.DataInterfaceVO) => {
-  previewRef.value.open(row)
+const openPreview = async (row: DataInterfaceApi.DataInterfaceVO) => {
+  viewMode.value = 'preview'
+  await nextTick()
+  previewRef.value?.open(row)
 }
 
-/** 打开版本历史 */
 const versionRef = ref()
-const openVersion = (row: DataInterfaceApi.DataInterfaceVO) => {
-  versionRef.value.open(row)
+/** 记住当前正在看版本的接口，版本预览返回时据此复原版本列表 */
+const versionRow = ref<DataInterfaceApi.DataInterfaceVO>()
+const openVersion = async (row: DataInterfaceApi.DataInterfaceVO) => {
+  versionRow.value = row
+  viewMode.value = 'version'
+  await nextTick()
+  versionRef.value?.open(row)
 }
 
-/** 打开调用日志 */
+/** 版本预览：进入只读表单态，用与新建/配置一样的页面展示该版本快照 */
+const versionPreviewRef = ref()
+const handleVersionPreview = async (verRow: DataInterfaceApi.DataInterfaceVersionVO) => {
+  viewMode.value = 'versionPreview'
+  await nextTick()
+  versionPreviewRef.value?.openPreview({
+    snapshot: verRow.snapshot,
+    version: verRow.version,
+    interfaceName: versionRow.value?.name
+  })
+}
+
+/** 版本预览返回：回到版本列表（而非主列表），便于连续翻看多个版本 */
+const handleVersionPreviewBack = async () => {
+  if (!versionRow.value) {
+    viewMode.value = 'list'
+    return
+  }
+  viewMode.value = 'version'
+  await nextTick()
+  versionRef.value?.open(versionRow.value)
+}
+
+/** row 为空时是工具栏入口：查看全部接口的日志 */
 const logRef = ref()
-const openLog = (interfaceId?: number) => {
-  logRef.value.open(interfaceId)
+const openLog = async (row?: DataInterfaceApi.DataInterfaceVO) => {
+  viewMode.value = 'log'
+  await nextTick()
+  logRef.value?.open(row?.id, row?.name)
+}
+
+/** 子视图保存/回滚成功：回列表并刷新 */
+const handlePanelDone = () => {
+  viewMode.value = 'list'
+  getList()
+}
+
+/** 子视图返回：只回列表，不强制刷新 */
+const handlePanelBack = () => {
+  viewMode.value = 'list'
 }
 
 /** 启用/停用 */
