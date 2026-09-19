@@ -105,10 +105,11 @@
       <el-form-item label="到期时间">
         <el-date-picker
           v-model="formData.expireTime"
+          :default-time="defaultExpireTime"
           type="datetime"
           class="w-full"
           clearable
-          placeholder="不填表示永不过期"
+          placeholder="不填=永不过期；清空可取消到期时间"
           value-format="YYYY-MM-DD HH:mm:ss"
         />
       </el-form-item>
@@ -133,10 +134,14 @@
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO, GrantSaveReqVO, RuleVO } from '@/api/system/grant'
 import { handleTree } from '@/utils/tree'
+import dayjs from 'dayjs'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
 
 const message = useMessage()
+
+/** 只选日期不选时间时，默认到当天 23:59:59 —— 「有效期到某天」的直觉是含当天全天 */
+const defaultExpireTime = new Date(2000, 0, 1, 23, 59, 59)
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -184,7 +189,8 @@ const open = async (type: 'create' | 'update', subjectRefId: number, row?: Grant
         effect: row.effect,
         ruleId: row.ruleId,
         fieldMode: row.fieldMode,
-        expireTime: row.expireTime
+        // 后端返回毫秒数，date-picker 带 value-format 时只认格式化字符串，直接塞数字会回显空白
+        expireTime: row.expireTime ? dayjs(row.expireTime).format('YYYY-MM-DD HH:mm:ss') : undefined
       }
     }
     await loadStatic()
@@ -301,6 +307,13 @@ const emit = defineEmits<{ success: [] }>()
 const submitForm = async () => {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  // 到期时间填了过去的时间 = 保存即「已过期」，几乎一定是手误，先问一句
+  if (formData.value.expireTime && dayjs(formData.value.expireTime).isBefore(dayjs())) {
+    const ok = await message
+      .confirm('到期时间早于当前时间，保存后该授权会立即处于「已过期」状态。是否继续？')
+      .catch(() => false)
+    if (!ok) return
+  }
   formLoading.value = true
   try {
     if (formData.value.id) {

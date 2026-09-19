@@ -26,6 +26,20 @@ export type DataModelColumnVO = {
   oldColumnName?: string
 }
 
+/** 数据模型索引 */
+export type DataModelIndexVO = {
+  indexName: string
+  /** NORMAL 普通 / UNIQUE 唯一 */
+  indexType: string
+  columnNames: string[]
+}
+
+/** 模型结构：字段 + 索引 */
+export type DataModelStructureVO = {
+  columns: DataModelColumnVO[]
+  indexes: DataModelIndexVO[]
+}
+
 /** 数据模型保存请求 */
 export type DataModelSaveReqVO = {
   id?: number
@@ -35,6 +49,7 @@ export type DataModelSaveReqVO = {
   modelName: string
   remark?: string
   columns: DataModelColumnVO[]
+  indexes?: DataModelIndexVO[]
   /** 是否已知晓风险。删除字段等有损操作需要显式确认 */
   riskConfirmed?: boolean
 }
@@ -109,6 +124,16 @@ export const getDataModelPage = (params: any) => {
 /** 获得模型字段列表，实时读取真实表结构 */
 export const getDataModelColumns = (id: number) => {
   return request.get({ url: `/infra/data-model/list-columns?id=${id}` })
+}
+
+/** 获得模型完整结构：字段 + 索引，实时读取真实表结构 */
+export const getDataModelStructure = (id: number): Promise<DataModelStructureVO> => {
+  return request.get({ url: `/infra/data-model/structure?id=${id}` })
+}
+
+/** 获得系统内置字段列表，新建模型时只读展示 */
+export const getSystemColumns = (): Promise<DataModelColumnVO[]> => {
+  return request.get({ url: '/infra/data-model/list-system-column' })
 }
 
 /** 预览待执行的 DDL，不实际执行 */

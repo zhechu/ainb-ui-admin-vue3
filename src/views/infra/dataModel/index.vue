@@ -1,4 +1,6 @@
 <template>
+  <!-- 列表视图 -->
+  <template v-if="viewMode === 'list'">
   <ContentWrap>
     <!-- 搜索工作栏 -->
     <el-form
@@ -45,9 +47,6 @@
         >
           <Icon icon="ep:download" class="mr-5px" /> 导入已有表
         </el-button>
-        <el-button plain @click="openLog"
-          ><Icon icon="ep:document" class="mr-5px" /> DDL 日志</el-button
-        >
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -105,7 +104,7 @@
         width="165"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="180" fixed="right">
+      <el-table-column label="操作" align="center" width="250" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -125,12 +124,29 @@
           </el-button>
           <el-button
             link
-            type="danger"
-            @click="handleDelete(scope.row)"
-            v-hasPermi="['infra:data-model:delete']"
+            type="primary"
+            @click="openLog(scope.row)"
+            v-hasPermi="['infra:data-model:query']"
           >
-            删除
+            DDL日志
           </el-button>
+          <el-tooltip
+            :disabled="!isFrameworkTable(scope.row.tableName)"
+            content="系统内置表，禁止通过数据建模删除"
+            placement="top"
+          >
+            <span>
+              <el-button
+                link
+                type="danger"
+                :disabled="isFrameworkTable(scope.row.tableName)"
+                @click="handleDelete(scope.row)"
+                v-hasPermi="['infra:data-model:delete']"
+              >
+                删除
+              </el-button>
+            </span>
+          </el-tooltip>
         </template>
       </el-table-column>
     </el-table>
@@ -141,12 +157,14 @@
       @pagination="getList"
     />
   </ContentWrap>
+  </template>
 
-  <!-- 弹窗：模型设计（表结构编辑） -->
-  <DataModelForm ref="formRef" @success="getList" />
+  <!-- 页内视图：模型设计 / 新建（内容较多，不用弹窗） -->
+  <DataModelForm v-else ref="formRef" @success="handleFormDone" @cancel="handleFormDone" />
+
   <!-- 弹窗：导入已有表 -->
   <DataModelImportForm ref="importFormRef" @success="getList" />
-  <!-- 弹窗：DDL 日志 -->
+  <!-- 弹窗：DDL 日志（按模型查看） -->
   <DataModelLogList ref="logRef" />
 </template>
 
@@ -164,6 +182,20 @@ defineOptions({ name: 'InfraDataModel' })
 const message = useMessage()
 const { t } = useI18n()
 const { push } = useRouter() // 路由跳转
+
+/**
+ * 系统内置表前缀，需与后端 SqlSafeGuard.FRAMEWORK_TABLE_PREFIXES 保持一致。
+ * 前端仅用于「禁用删除按钮 + 提示」，后端 deleteDataModel 仍会二次拦截，双保险。
+ */
+const FRAMEWORK_TABLE_PREFIXES = [
+  'system_', 'sys_', 'infra_', 'bpm_', 'act_', 'flw_',
+  'member_', 'pay_', 'mp_', 'mall_', 'trade_', 'promotion_', 'product_',
+  'crm_', 'erp_', 'hrm_', 'fms_', 'mes_', 'wms_', 'im_', 'iot_', 'ai_', 'report_', 'qrtz_'
+]
+const isFrameworkTable = (tableName?: string) => {
+  const name = (tableName || '').toLowerCase()
+  return FRAMEWORK_TABLE_PREFIXES.some((prefix) => name.startsWith(prefix))
+}
 
 /**
  * 支持 HTML 的确认框
@@ -214,10 +246,22 @@ const resetQuery = () => {
   handleQuery()
 }
 
-/** 打开模型设计弹窗 */
+/** 视图切换：列表 / 页内设计表单 */
+const viewMode = ref<'list' | 'form'>('list')
+
+/** 打开模型设计（页内视图，内容较多不用弹窗） */
 const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+const openForm = async (type: string, id?: number) => {
+  viewMode.value = 'form'
+  // 等表单组件挂载后再灌数据
+  await nextTick()
+  formRef.value?.open(type, id)
+}
+
+/** 表单保存成功或取消：回到列表并刷新 */
+const handleFormDone = () => {
+  viewMode.value = 'list'
+  getList()
 }
 
 /** 打开导入弹窗 */
@@ -231,10 +275,10 @@ const openPreview = (row: DataModelApi.DataModelVO) => {
   push({ name: 'InfraDataModelData', query: { modelId: row.id } })
 }
 
-/** 打开 DDL 日志 */
+/** 打开某个模型的 DDL 日志（按表名过滤） */
 const logRef = ref()
-const openLog = () => {
-  logRef.value.open()
+const openLog = (row: DataModelApi.DataModelVO) => {
+  logRef.value.open(row.tableName)
 }
 
 /** 删除模型

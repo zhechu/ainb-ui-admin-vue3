@@ -28,7 +28,7 @@
       <div class="ml-auto flex items-center" :class="isModelSorting ? 'mr-15px' : 'mr-45px'">
         <template v-if="!isModelSorting">
           <el-button
-            v-if="categoryInfo.modelList.length > 0"
+            v-if="categoryInfo.modelList.length > 0 && hasPermiUpdate"
             link
             type="info"
             class="mr-20px"
@@ -37,11 +37,18 @@
             <Icon icon="fa:sort-amount-desc" class="mr-5px" />
             排序
           </el-button>
-          <el-button v-else link type="info" class="mr-20px" @click.stop="openModelForm('create')">
+          <el-button
+            v-else-if="categoryInfo.modelList.length === 0 && hasPermiCreate"
+            link
+            type="info"
+            class="mr-20px"
+            @click.stop="openModelForm('create')"
+          >
             <Icon icon="fa:plus" class="mr-5px" />
             新建
           </el-button>
           <el-dropdown
+            v-if="hasPermiCategoryUpdate || hasPermiCategoryDelete"
             @command="(command) => handleCategoryCommand(command, categoryInfo)"
             placement="bottom"
           >
@@ -51,8 +58,12 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="handleRename"> 重命名 </el-dropdown-item>
-                <el-dropdown-item command="handleDeleteCategory"> 删除该类 </el-dropdown-item>
+                <el-dropdown-item command="handleRename" v-if="hasPermiCategoryUpdate">
+                  重命名
+                </el-dropdown-item>
+                <el-dropdown-item command="handleDeleteCategory" v-if="hasPermiCategoryDelete">
+                  删除该类
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -360,6 +371,9 @@ const tableCellStyle = computed(() => ({
 }))
 
 /** 权限校验：通过 computed 解决列表的卡顿问题 */
+const hasPermiCreate = computed(() => {
+  return checkPermi(['bpm:model:create'])
+})
 const hasPermiUpdate = computed(() => {
   return checkPermi(['bpm:model:update'])
 })
@@ -382,6 +396,12 @@ const hasPermiMore = computed(() => {
 })
 const hasPermiPdQuery = computed(() => {
   return checkPermi(['bpm:process-definition:query'])
+})
+const hasPermiCategoryUpdate = computed(() => {
+  return checkPermi(['bpm:category:update'])
+})
+const hasPermiCategoryDelete = computed(() => {
+  return checkPermi(['bpm:category:delete'])
 })
 
 /** '更多'操作按钮 */

@@ -27,6 +27,35 @@
           <el-option label="拒绝 DENY" value="DENY" />
         </el-select>
       </el-form-item>
+      <el-form-item label="资源名称" prop="resourceName">
+        <el-input
+          v-model="queryParams.resourceName"
+          class="!w-160px"
+          clearable
+          placeholder="模糊搜索"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="权限标识" prop="resourcePermission">
+        <el-input
+          v-model="queryParams.resourcePermission"
+          class="!w-180px"
+          clearable
+          placeholder="如 system:user"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="到期时间" prop="expireTime">
+        <el-date-picker
+          v-model="queryParams.expireTime"
+          :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
+          class="!w-240px"
+          type="daterange"
+          start-placeholder="到期日起"
+          end-placeholder="到期日止"
+          value-format="YYYY-MM-DD HH:mm:ss"
+        />
+      </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery">
           <Icon class="mr-5px" icon="ep:search" />
@@ -210,7 +239,10 @@ const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
   action: undefined as string | undefined,
-  effect: undefined as string | undefined
+  effect: undefined as string | undefined,
+  resourceName: undefined as string | undefined,
+  resourcePermission: undefined as string | undefined,
+  expireTime: [] as string[]
 })
 
 /** 查询授权列表（走后端分页接口，避免全量拉取卡死页面） */
@@ -228,7 +260,10 @@ const getList = async () => {
       subjectType: 'ROLE',
       subjectRefId: roleId.value,
       action: queryParams.action,
-      effect: queryParams.effect
+      effect: queryParams.effect,
+      resourceName: queryParams.resourceName,
+      resourcePermission: queryParams.resourcePermission,
+      expireTime: queryParams.expireTime?.length ? queryParams.expireTime : undefined
     })
     list.value = data.list
     total.value = data.total
@@ -245,6 +280,9 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryParams.action = undefined
   queryParams.effect = undefined
+  queryParams.resourceName = undefined
+  queryParams.resourcePermission = undefined
+  queryParams.expireTime = []
   handleQuery()
 }
 

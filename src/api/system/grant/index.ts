@@ -129,6 +129,10 @@ export interface GrantPageReqVO extends PageParam {
   resourceId?: number
   action?: string
   effect?: string
+  resourceName?: string
+  resourcePermission?: string
+  /** 到期时间范围 [起, 止]，格式 YYYY-MM-DD HH:mm:ss */
+  expireTime?: string[]
 }
 
 export const getGrantPage = async (params: GrantPageReqVO) => {
