@@ -42,6 +42,11 @@ import Logger from '@/utils/Logger'
 
 import VueDOMPurifyHTML from 'vue-dompurify-html' // 解决v-html 的安全隐患
 
+// 列表「序号」列的 :index 工厂（跨页连续编号）。
+// auto-import 只注入 script 里用到的标识符，模板里的 :index="indexMethod(...)" 编译成 _ctx.indexMethod，
+// 不会被注入；挂到 globalProperties 后模板可直接调用，各页无需 import。
+import { indexMethod } from '@/utils/table'
+
 // wangEditor 插件注册
 import { setupWangEditorPlugin } from '@/views/bpm/model/form/PrintTemplate'
 
@@ -56,6 +61,9 @@ window.addEventListener('vite:preloadError', (event) => {
 // 创建实例
 const setupAll = async () => {
   const app = createApp(App)
+
+  // 模板里直接使用 indexMethod（见文件顶部注释）
+  app.config.globalProperties.indexMethod = indexMethod
 
   await setupI18n(app)
 

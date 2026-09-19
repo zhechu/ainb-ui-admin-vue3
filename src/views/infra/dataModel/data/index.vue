@@ -91,13 +91,22 @@
 
     <!-- 动态列表 -->
     <ContentWrap>
-      <el-table
+      <el-table class="xpy-list-table" stripe
         v-loading="loading"
         :data="list"
         @selection-change="handleRowCheckboxChange"
         @sort-change="handleSortChange"
       >
         <el-table-column type="selection" width="55" />
+        <el-table-column
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod({ pageNo, pageSize })"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
         <el-table-column
           v-for="column in listColumns"
           :key="column.columnName"

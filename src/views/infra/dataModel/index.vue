@@ -60,30 +60,52 @@
         改表前请先点「预览 DDL」确认将要执行的语句。
       </template>
     </el-alert>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" width="80" />
+      <!--
+        列宽分配：文本列（模型名称/表名/表描述/备注）用 min-width 弹性伸展，
+        吃掉操作列、时间列让出来的空间；创建时间、操作给固定宽，
+        避免时间列比模型名称还宽、操作列三个链接按钮却占三百多像素
+      -->
       <el-table-column
         label="模型名称"
         align="center"
         prop="modelName"
+        min-width="150"
         :show-overflow-tooltip="true"
       />
-      <el-table-column label="表名" align="center" prop="tableName" :show-overflow-tooltip="true" />
+      <el-table-column
+        label="表名"
+        align="center"
+        prop="tableName"
+        min-width="150"
+        :show-overflow-tooltip="true"
+      />
       <el-table-column
         label="表描述"
         align="center"
         prop="tableComment"
+        min-width="130"
         :show-overflow-tooltip="true"
       />
-      <el-table-column label="备注" align="center" prop="remark" :show-overflow-tooltip="true" />
+      <el-table-column
+        label="备注"
+        align="center"
+        prop="remark"
+        min-width="100"
+        :show-overflow-tooltip="true"
+      />
       <el-table-column
         label="创建时间"
         align="center"
         prop="createTime"
-        width="180"
+        width="165"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="240" fixed="right">
+      <el-table-column label="操作" align="center" width="180" fixed="right">
         <template #default="scope">
           <el-button
             link

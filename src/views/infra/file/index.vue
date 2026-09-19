@@ -59,8 +59,11 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="文件名" align="center" prop="name" :show-overflow-tooltip="true" />
       <el-table-column label="文件路径" align="center" prop="path" :show-overflow-tooltip="true" />
       <el-table-column label="URL" align="center" prop="url" :show-overflow-tooltip="true" />
@@ -111,7 +114,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" fixed="right" width="160">
         <template #default="scope">
           <el-button link type="primary" @click="copyToClipboard(scope.row.url)">
             复制链接

@@ -43,7 +43,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column align="center" label="编号" prop="id" />
       <el-table-column align="center" label="表单名" prop="name" />
       <el-table-column align="center" label="状态" prop="status">
@@ -58,7 +67,7 @@
         label="创建时间"
         prop="createTime"
       />
-      <el-table-column align="center" label="操作">
+      <el-table-column align="center" label="操作" fixed="right">
         <template #default="scope">
           <el-button
             v-hasPermi="['bpm:form:update']"

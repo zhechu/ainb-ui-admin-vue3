@@ -80,20 +80,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" class="form-design-table" stripe>
-      <!--
-        序号列
-
-        取代原来的「编号」列：那一列显示的是数据库自增主键，对用户没有意义
-        （他既不会拿它去查什么，也不会在别处引用到它），却占着第一列的位置。
-        序号按分页连续编号 —— 第二页第一行是 21 而不是重新从 1 开始，
-        否则「第 37 条那个」在页与页之间对不上。
-      -->
-      <el-table-column align="center" label="序号" width="70">
-        <template #default="scope">
-          {{ (queryParams.pageNo - 1) * queryParams.pageSize + scope.$index + 1 }}
-        </template>
-      </el-table-column>
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        class-name="col-index"
+        label-class-name="col-index"
+        :index="indexMethod(queryParams)"
+      />
       <el-table-column label="表单名称" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column label="表单编码" prop="code" min-width="140" show-overflow-tooltip />
       <el-table-column align="center" label="分类" prop="category" width="110">
@@ -363,47 +359,3 @@ onMounted(() => {
   getList()
 })
 </script>
-
-<style lang="scss" scoped>
-/*
-  行高与分隔
-
-  这张表的单元格基本都是短文本（表单名、编码、表名）与小号标签，
-  没有任何一格会把行撑开，于是整张表挤成一叠细线，扫读时容易串行。
-
-  ⚠️ 选择器为什么要这么写
-
-  ContentWrap 给它包住的**所有**列表页定了一条
-  `.content-wrap[data-v-x] .el-table--default .el-table__cell { padding: 4px }`，
-  权重是 (0,4,0)。写成 `.form-design-table :deep(.el-table__cell)` 只有 (0,3,0)，
-  会被它整条盖掉 —— 这里原先那版 12px 的内边距其实从来没生效过，
-  行高一直是 31px。重复一次类名把权重抬到 (0,5,0)，
-  比 !important 更容易在 DevTools 里看明白是谁盖了谁。
-
-  只改本模块、不动 ContentWrap：那条规则作用于系统里每一个列表页，
-  在这里顺手改掉等于替所有模块做了决定。
-
-  表头压一层浅底色、隔行浅色，是同一件事的另外两半：
-  不然滚动时表头会「混进」第一行，横向扫一行十列时也容易串到上下行去。
-*/
-.form-design-table.form-design-table.el-table--default :deep(.el-table__cell) {
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-.form-design-table :deep(.el-table__header-wrapper th) {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color-light);
-}
-
-.form-design-table :deep(.el-table__row--striped .el-table__cell) {
-  background-color: var(--el-fill-color-lighter);
-}
-
-/* 操作列里几个 link 按钮之间留出间距，避免「设计发布版本更多」连成一串 */
-.form-design-table :deep(.el-button + .el-button),
-.form-design-table :deep(.el-button + .el-dropdown) {
-  margin-left: 12px;
-}
-</style>

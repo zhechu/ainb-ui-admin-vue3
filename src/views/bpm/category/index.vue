@@ -71,7 +71,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" :stripe="true" :show-overflow-tooltip="true">
+    <el-table class="xpy-list-table" v-loading="loading" :data="list" :stripe="true" :show-overflow-tooltip="true">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="分类编号" align="center" prop="id" />
       <el-table-column label="分类名" align="center" prop="name" />
       <el-table-column label="分类标志" align="center" prop="code" />
@@ -89,7 +98,7 @@
         :formatter="dateFormatter"
         width="180px"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" fixed="right">
         <template #default="scope">
           <el-button
             link

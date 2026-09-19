@@ -3,7 +3,8 @@
   <doc-alert title="三方登陆" url="https://doc.iocoder.cn/social-user/" />
   <doc-alert title="Excel 导入导出" url="https://doc.iocoder.cn/excel-import-and-export/" />
 
-  <el-row :gutter="20">
+  <!-- gutter 收紧到 10：默认 20 时左右两卡片之间会有一条贯穿整页的宽灰缝，观感松散 -->
+  <el-row :gutter="10">
     <!-- 左侧部门树 -->
     <el-col :span="4" :xs="24">
       <ContentWrap class="h-1/1">
@@ -109,8 +110,11 @@
         </el-form>
       </ContentWrap>
       <ContentWrap>
-        <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+        <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
           <el-table-column type="selection" width="55" />
+          <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
           <el-table-column v-if="isVisible('id')" label="用户编号" align="center" key="id" prop="id" />
           <el-table-column
             v-if="isVisible('username')"
@@ -154,7 +158,7 @@
             :formatter="dateFormatter"
             width="180"
           />
-          <el-table-column label="操作" align="center" width="160">
+          <el-table-column label="操作" align="center" width="160" fixed="right">
             <template #default="scope">
               <div class="flex items-center justify-center">
                 <el-button

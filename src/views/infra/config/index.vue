@@ -66,15 +66,6 @@
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <el-button
-          type="danger"
-          plain
-          :disabled="checkedIds.length === 0"
-          @click="handleDeleteBatch"
-          v-hasPermi="['infra:config:delete']"
-        >
-          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
-        </el-button>
-        <el-button
           type="success"
           plain
           @click="handleExport"
@@ -83,14 +74,26 @@
         >
           <Icon icon="ep:download" class="mr-5px" /> 导出
         </el-button>
+        <el-button
+          type="danger"
+          plain
+          :disabled="checkedIds.length === 0"
+          @click="handleDeleteBatch"
+          v-hasPermi="['infra:config:delete']"
+        >
+          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="参数主键" align="center" prop="id" />
       <el-table-column label="参数分类" align="center" prop="category" />
       <el-table-column label="参数名称" align="center" prop="name" :show-overflow-tooltip="true" />
@@ -114,7 +117,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" min-width="110" fixed="right">
         <template #default="scope">
           <el-button
             link

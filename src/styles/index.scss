@@ -37,3 +37,56 @@
     border-left-color: var(--el-color-primary);
   }
 }
+
+/* 列表「序号」列：收窄左右内边距，让序号列在更小的固定宽度下依然舒适（表头不换行、三位数不挤） */
+.el-table .col-index .cell {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/*
+  列表页统一观感（以「表单设计」列表为标杆）
+
+  表头压一层浅底 + 加粗：滚动时表头不会「混进」第一行；
+  隔行浅色由 el-table 的 stripe 属性负责（见各页 <el-table class="xpy-list-table" stripe>）；
+  行高放宽到 14px 内边距：短文本表格不会挤成一叠细线、扫读串行；
+  操作列 link 按钮之间留 12px：避免「编辑删除」连成一串。
+
+  样式集中在此一处，各列表页只需给主表挂 xpy-list-table + stripe，无需各自写 scoped 样式。
+*/
+.xpy-list-table.el-table--default .el-table__cell {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/*
+  EP 对固定列表头有多条不透明底色规则：
+  基础 `.el-table__header-wrapper tr th.el-table-fixed-column--*`（0,2,2），
+  以及滚动状态 `.el-table.is-scrolling-right/-none th.el-table-fixed-column--*`（0,3,1）
+  —— 表格不横向溢出(is-scrolling-none)或滚到右缘时，「操作」表头会被盖回白色。
+  这里用 .el-table.xpy-list-table thead tr th 把权重抬到 (0,3,3) 一次性压过全部状态。
+*/
+.el-table.xpy-list-table thead tr th.el-table__cell,
+.el-table.xpy-list-table thead tr th.el-table-fixed-column--left,
+.el-table.xpy-list-table thead tr th.el-table-fixed-column--right {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  background-color: var(--el-fill-color-light);
+}
+
+.xpy-list-table .el-button + .el-button,
+.xpy-list-table .el-button + .el-dropdown {
+  margin-left: 12px;
+}
+
+/*
+  去掉固定列边缘的投影分隔线
+
+  表格横向溢出时 EP 会在左/右固定列内侧画一条 box-shadow 分隔线，
+  贴在「操作」列左边、贯穿每一行，观感像一条多余的白缝（表单设计页不溢出、没有这条线）。
+  固定列本身已有表头底色 + 隔行色与滚动区自然区分，这条投影反而显脏，故统一隐藏。
+*/
+.el-table .el-table-fixed-column--left.is-last-column::before,
+.el-table .el-table-fixed-column--right.is-first-column::before {
+  display: none;
+}

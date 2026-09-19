@@ -92,94 +92,117 @@
     </el-form>
   </ContentWrap>
 
-  <!--
-    左右分栏：左侧角色列表，右侧常驻资源授权面板。
-    配权限时几乎总要在几个角色之间来回对照（「这条 CRM 管理员有没有」），
-    弹窗模式下每对照一次就要关掉再打开一个，还看不到列表
-  -->
-  <el-row :gutter="16" class="grant-split-row">
-    <el-col :span="9" class="h-full">
-      <ContentWrap class="h-full grant-split-pane">
-        <el-table
-          v-loading="loading"
-          :data="list"
-          :max-height="roleTableMaxHeight"
-          highlight-current-row
-          row-key="id"
-          @current-change="handleCurrentRoleChange"
-          @selection-change="handleRowCheckboxChange"
-        >
-          <el-table-column type="selection" width="45" />
-          <el-table-column label="角色" min-width="160">
-            <template #default="scope">
-              <div class="flex items-center gap-6px">
-                <span class="text-14px">{{ scope.row.name }}</span>
-                <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
-              </div>
-              <div class="text-11px text-gray-400">{{ scope.row.code }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column align="center" label="操作" width="110">
-            <template #default="scope">
-              <el-button
-                v-hasPermi="['system:role:update']"
-                link
-                type="primary"
-                @click.stop="openForm('update', scope.row.id)"
-              >
-                编辑
-              </el-button>
-              <el-button
-                v-hasPermi="['system:role:delete']"
-                link
-                type="danger"
-                @click.stop="handleDelete(scope.row.id)"
-              >
-                删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <Pagination
-          v-model:limit="queryParams.pageSize"
-          v-model:page="queryParams.pageNo"
-          :total="total"
-          @pagination="getList"
-        />
-      </ContentWrap>
-    </el-col>
-
-    <el-col :span="15" class="h-full">
-      <ContentWrap class="h-full grant-split-pane">
-        <div v-if="currentRole" class="mb-12px flex items-center gap-8px">
-          <span class="text-16px font-bold">{{ currentRole.name }}</span>
-          <span class="text-12px text-gray-400">{{ currentRole.code }}</span>
-          <span class="ml-auto text-12px text-gray-400">资源授权</span>
-        </div>
-        <GrantAssignPanel
-          v-hasPermi="['system:grant:query']"
-          subject-type="ROLE"
-          :subject-ref-id="currentRole?.id"
-          :name="currentRole?.name"
-        />
-      </ContentWrap>
-    </el-col>
-  </el-row>
+  <ContentWrap>
+    <el-table
+      v-loading="loading"
+      :data="list"
+      class="xpy-list-table"
+      stripe
+      row-key="id"
+      @selection-change="handleRowCheckboxChange"
+    >
+      <el-table-column type="selection" width="45" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        class-name="col-index"
+        label-class-name="col-index"
+        :index="indexMethod(queryParams)"
+      />
+      <el-table-column align="center" label="角色编号" prop="id" width="100" />
+      <el-table-column label="角色名称" prop="name" min-width="140" show-overflow-tooltip />
+      <el-table-column align="center" label="角色类型" prop="type" width="110">
+        <template #default="scope">
+          <dict-tag :type="DICT_TYPE.SYSTEM_ROLE_TYPE" :value="scope.row.type" />
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="角色标识"
+        prop="code"
+        min-width="140"
+        show-overflow-tooltip
+      />
+      <el-table-column align="center" label="显示顺序" prop="sort" width="90" />
+      <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip>
+        <template #default="scope">
+          <span v-if="scope.row.remark">{{ scope.row.remark }}</span>
+          <span v-else class="text-gray-400">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column align="center" label="状态" prop="status" width="100">
+        <template #default="scope">
+          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+        </template>
+      </el-table-column>
+      <el-table-column
+        :formatter="dateFormatter"
+        align="center"
+        label="创建时间"
+        prop="createTime"
+        width="170"
+      />
+      <el-table-column align="center" fixed="right" label="操作" width="240">
+        <template #default="scope">
+          <el-button
+            v-hasPermi="['system:role:update']"
+            link
+            type="primary"
+            @click="openForm('update', scope.row.id)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-hasPermi="['system:permission:assign-user-role']"
+            link
+            type="primary"
+            @click="openMemberPage(scope.row)"
+          >
+            成员
+          </el-button>
+          <el-button
+            v-hasPermi="['system:grant:query']"
+            link
+            type="primary"
+            @click="openGrantPage(scope.row)"
+          >
+            资源授权
+          </el-button>
+          <el-button
+            v-hasPermi="['system:role:delete']"
+            link
+            type="danger"
+            @click="handleDelete(scope.row.id)"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <Pagination
+      v-model:limit="queryParams.pageSize"
+      v-model:page="queryParams.pageNo"
+      :total="total"
+      @pagination="getList"
+    />
+  </ContentWrap>
 
   <!-- 表单弹窗：添加/修改 -->
   <RoleForm ref="formRef" @success="getList" />
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { dateFormatter } from '@/utils/formatTime'
 import download from '@/utils/download'
 import * as RoleApi from '@/api/system/role'
 import RoleForm from './RoleForm.vue'
-import GrantAssignPanel from './components/GrantAssignPanel.vue'
 
 defineOptions({ name: 'SystemRole' })
 
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
+const router = useRouter()
 
 const loading = ref(true) // 列表的加载中
 const total = ref(0) // 列表的总页数
@@ -225,27 +248,14 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 
-/**
- * 左右两栏撑满剩余视口。
- * 原来两个 ContentWrap 高度各自由内容撑开，右侧面板内容多、左侧只有几行角色，
- * 结果页面底部留出一大片空白，而表格反而挤在一个小框里滚
- */
-const roleTableMaxHeight = ref(420)
-const recalcRoleTableHeight = () => {
-  roleTableMaxHeight.value = Math.max(240, window.innerHeight - 330)
+/** 成员配置：页内跳转到独立的成员页（与「资源授权」一致，不弹窗） */
+const openMemberPage = (row: RoleApi.RoleVO) => {
+  router.push({ name: 'SystemRoleMember', query: { roleId: String(row.id) } })
 }
-onMounted(() => {
-  recalcRoleTableHeight()
-  window.addEventListener('resize', recalcRoleTableHeight)
-})
-onUnmounted(() => window.removeEventListener('resize', recalcRoleTableHeight))
 
-/** 左侧选中的角色，右侧面板跟着它走 */
-const currentRole = ref<RoleApi.RoleVO | undefined>()
-const handleCurrentRoleChange = (row?: RoleApi.RoleVO) => {
-  // el-table 在数据刷新时会用 null 触发一次 current-change，
-  // 直接赋值会让右侧面板在每次查询后闪回空态
-  if (row) currentRole.value = row
+/** 资源授权：页内跳转到独立的授权页面（不弹窗） */
+const openGrantPage = (row: RoleApi.RoleVO) => {
+  router.push({ name: 'SystemRoleGrant', query: { roleId: String(row.id) } })
 }
 
 /** 删除按钮操作 */
@@ -256,8 +266,6 @@ const handleDelete = async (id: number) => {
     // 发起删除
     await RoleApi.deleteRole(id)
     message.success(t('common.delSuccess'))
-    // 删掉的正是右侧正在看的那个角色时，把面板清空，否则会停在一个已不存在的角色上
-    if (currentRole.value?.id === id) currentRole.value = undefined
     // 刷新列表
     await getList()
   } catch {}
@@ -275,9 +283,6 @@ const handleDeleteBatch = async () => {
     await message.delConfirm()
     // 发起批量删除
     await RoleApi.deleteRoleList(checkedIds.value)
-    if (currentRole.value && checkedIds.value.includes(currentRole.value.id)) {
-      currentRole.value = undefined
-    }
     checkedIds.value = []
     message.success(t('common.delSuccess'))
     // 刷新列表
@@ -305,25 +310,3 @@ onMounted(() => {
   getList()
 })
 </script>
-
-<style lang="scss" scoped>
-/* 两栏等高：左栏内容再少也和右栏一样高，底部不留空白 */
-.grant-split-row {
-  display: flex;
-  align-items: stretch;
-  min-height: calc(100vh - 250px);
-}
-
-.grant-split-pane {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-
-  :deep(.el-card__body) {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-  }
-}
-</style>

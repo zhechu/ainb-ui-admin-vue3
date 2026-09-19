@@ -40,7 +40,16 @@
   </ContentWrap>
 
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" prop="id" width="75" align="center" />
       <el-table-column label="门户名称" prop="name" min-width="150" show-overflow-tooltip />
       <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />

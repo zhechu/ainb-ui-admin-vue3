@@ -226,14 +226,9 @@ $prefix-cls: #{$namespace}-content-wrap;
     flex: 1 1 auto;
   }
 
-  :deep(.el-table--default .el-table__cell) {
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-
-  :deep(.el-table--default .cell) {
-    line-height: 21px;
-  }
+  // 行高刻意不覆盖：让 --list 表格沿用 Element Plus 默认行高（较宽松），
+  // 与「权限规则」页（自带 :height、不套 --list）保持一致的观感。
+  // 若曾在这里压 4px 紧凑 padding，长表会因每行更矮而显得拥挤，且与规则页不统一。
 
   :deep(.el-pagination) {
     flex: 0 0 auto;

@@ -57,15 +57,6 @@
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <el-button
-          type="danger"
-          plain
-          :disabled="checkedIds.length === 0"
-          @click="handleDeleteBatch"
-          v-hasPermi="['infra:job:delete']"
-        >
-          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
-        </el-button>
-        <el-button
           type="success"
           plain
           @click="handleExport"
@@ -86,14 +77,26 @@
         >
           <Icon icon="ep:refresh" class="mr-5px" /> 同步任务
         </el-button>
+        <el-button
+          type="danger"
+          plain
+          :disabled="checkedIds.length === 0"
+          @click="handleDeleteBatch"
+          v-hasPermi="['infra:job:delete']"
+        >
+          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="任务编号" align="center" prop="id" />
       <el-table-column label="任务名称" align="center" prop="name" />
       <el-table-column label="任务状态" align="center" prop="status">
@@ -104,7 +107,7 @@
       <el-table-column label="处理器的名字" align="center" prop="handlerName" />
       <el-table-column label="处理器的参数" align="center" prop="handlerParam" />
       <el-table-column label="CRON 表达式" align="center" prop="cronExpression" />
-      <el-table-column label="操作" align="center" width="200">
+      <el-table-column label="操作" align="center" min-width="200" fixed="right">
         <template #default="scope">
           <el-button
             type="primary"
@@ -112,7 +115,7 @@
             @click="openForm('update', scope.row.id)"
             v-hasPermi="['infra:job:update']"
           >
-            修改
+            编辑
           </el-button>
           <el-button
             type="primary"

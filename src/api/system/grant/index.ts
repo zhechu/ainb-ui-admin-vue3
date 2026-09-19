@@ -121,6 +121,20 @@ export const getSubjectListByType = async (type: string): Promise<SubjectVO[]> =
 
 // ========== 授权配置（sys_grant）==========
 
+/** 分页查询某个主体的授权（角色资源授权页列表用） */
+export interface GrantPageReqVO extends PageParam {
+  subjectType: string
+  subjectRefId?: number
+  subjectCode?: string
+  resourceId?: number
+  action?: string
+  effect?: string
+}
+
+export const getGrantPage = async (params: GrantPageReqVO) => {
+  return await request.get({ url: '/system/grant/page', params })
+}
+
 /** 查询某个主体的全部授权 */
 export const getGrantListBySubject = async (
   subjectType: string,
@@ -309,4 +323,62 @@ export const getResourceChildren = async (
     url: '/system/resource/list-children',
     params: { parentId, includeFieldLevel }
   })
+}
+
+// ========== 规则模板元数据（后端驱动，杜绝前端硬编码漂移）==========
+
+/** 参数子编辑器种类，与后端 RuleTemplateMetaRegistry.KIND_* 一致 */
+export type ParamKind = 'STATUS_LIST' | 'DEPT_MULTI' | 'SLOT' | 'TEXT' | 'CONDITION_TREE'
+
+/** 模板分组 */
+export type TemplateGroup = 'basic' | 'derived' | 'advanced'
+
+export interface RuleParamSpecVO {
+  key: string
+  kind: ParamKind
+  label: string
+  required: boolean
+  valueType?: 'number' | 'string'
+}
+
+export interface RuleTemplateMetaItemVO {
+  code: string
+  displayName: string
+  group: TemplateGroup
+  businessDescription: string
+  requiredSlots: string[]
+  paramSpecs: RuleParamSpecVO[]
+}
+
+export interface RuleSlotMetaVO {
+  slot: string
+  description: string
+}
+
+export interface RuleOperatorMetaVO {
+  code: string
+  label: string
+  /** 一元操作符（IS_NULL/IS_NOT_NULL），无需值 */
+  unary: boolean
+  /** 多值操作符（IN/NOT_IN），值必须是集合变量 */
+  multiValue: boolean
+}
+
+export interface RuleVariableMetaVO {
+  name: string
+  label: string
+  /** 集合类型变量，仅这些可用于 IN/NOT_IN */
+  collection: boolean
+}
+
+export interface RuleTemplateMetaVO {
+  templates: RuleTemplateMetaItemVO[]
+  slots: RuleSlotMetaVO[]
+  operators: RuleOperatorMetaVO[]
+  variables: RuleVariableMetaVO[]
+}
+
+/** 查询规则模板元数据（模板/槽位/操作符/变量），供规则编辑器动态渲染 */
+export const getRuleTemplateMeta = async (): Promise<RuleTemplateMetaVO> => {
+  return await request.get({ url: '/system/rule/template-meta' })
 }

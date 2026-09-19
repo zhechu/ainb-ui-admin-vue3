@@ -66,7 +66,9 @@ const handleOpenData = async () => {
       message.warning(`表 ${props.table} 还没有对应的数据模型，请先到【数据建模】里导入这张表`)
       return
     }
-    push({ path: '/infra/data-model-data', query: { modelId: matched.id } })
+    // 按路由 name 跳转（而非 path）：业务数据菜单归入「数据管理」目录后 path 会变，
+    // name 取自菜单 component_name（InfraDataModelData），不随归属调整而失效
+    push({ name: 'InfraDataModelData', query: { modelId: matched.id } })
   } finally {
     jumping.value = false
   }

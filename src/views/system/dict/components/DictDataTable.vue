@@ -88,17 +88,27 @@
   <!-- 列表：卡片撑满剩余高度，表格在内部滚动，表头保持固定 -->
   <ContentWrap :body-style="listBodyStyle" class="min-h-0 flex-1 !mb-0">
     <div class="h-full flex flex-col">
-      <el-table
+      <el-table stripe
         v-loading="loading"
         :data="list"
         :default-expand-all="treeEnabled"
         :row-key="treeEnabled ? 'id' : undefined"
         :tree-props="{ children: 'children' }"
-        class="min-h-0 flex-1"
+        class="xpy-list-table min-h-0 flex-1"
         height="100%"
         @selection-change="handleRowCheckboxChange"
       >
         <el-table-column type="selection" width="55" />
+        <el-table-column
+          v-if="!treeEnabled"
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
         <el-table-column label="字典标签" prop="label" show-overflow-tooltip />
         <el-table-column align="center" label="字典键值" prop="value" />
         <el-table-column align="center" label="字典排序" prop="sort" width="90" />

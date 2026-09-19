@@ -87,7 +87,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="日志编号" align="center" prop="id" />
       <el-table-column label="用户编号" align="center" prop="userId" />
       <el-table-column label="用户类型" align="center" prop="userType">
@@ -97,7 +106,7 @@
       </el-table-column>
       <el-table-column label="应用名" align="center" prop="applicationName" width="200" />
       <el-table-column label="请求方法" align="center" prop="requestMethod" width="80" />
-      <el-table-column label="请求地址" align="center" prop="requestUrl" width="180" />
+      <el-table-column label="请求地址" align="center" prop="requestUrl" width="180" :show-overflow-tooltip="true" />
       <el-table-column
         label="异常发生时间"
         align="center"
@@ -105,7 +114,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="异常名" align="center" prop="exceptionName" width="180" />
+      <el-table-column label="异常名" align="center" prop="exceptionName" width="180" :show-overflow-tooltip="true" />
       <el-table-column label="处理状态" align="center" prop="processStatus">
         <template #default="scope">
           <dict-tag
@@ -114,7 +123,7 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="200">
+      <el-table-column label="操作" align="center" width="200" fixed="right">
         <template #default="scope">
           <el-button
             link

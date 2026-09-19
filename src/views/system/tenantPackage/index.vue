@@ -67,8 +67,11 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="套餐编号" align="center" prop="id" width="120" />
       <el-table-column label="套餐名" align="center" prop="name" />
       <el-table-column label="状态" align="center" prop="status" width="100">
@@ -84,7 +87,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" min-width="110" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -92,7 +95,7 @@
             @click="openForm('update', scope.row.id)"
             v-hasPermi="['system:tenant-package:update']"
           >
-            修改
+            编辑
           </el-button>
           <el-button
             link
@@ -162,7 +165,7 @@ const handleQuery = () => {
 /** 重置按钮操作 */
 const resetQuery = () => {
   queryFormRef.value?.resetFields()
-  getList()
+  handleQuery()
 }
 
 /** 添加/修改操作 */

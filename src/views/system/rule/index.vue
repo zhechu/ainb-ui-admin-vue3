@@ -87,7 +87,7 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table
+    <el-table class="xpy-list-table" stripe
       ref="tableRef"
       v-loading="loading"
       :data="list"
@@ -96,7 +96,9 @@
     >
       <!-- 内置规则后端拒删，勾选了会让整批失败，直接禁选 -->
       <el-table-column type="selection" width="55" :selectable="(row) => !row.builtIn" />
-      <el-table-column label="序号" type="index" width="60" align="center" :index="indexMethod" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="规则编号" align="center" prop="id" width="90" />
       <el-table-column label="规则名称" align="center" prop="name" min-width="140" />
       <el-table-column label="来源" align="center" width="90">
@@ -113,13 +115,19 @@
       </el-table-column>
       <el-table-column label="模板" align="center" prop="template" min-width="140">
         <template #default="scope">
-          {{ templateLabel(scope.row.template) }}
+          {{ getTemplateLabel(scope.row.template) }}
         </template>
       </el-table-column>
-      <el-table-column label="参数" align="center" prop="params" min-width="140" show-overflow-tooltip>
+      <el-table-column label="参数" align="center" prop="params" min-width="160">
         <template #default="scope">
-          <span v-if="scope.row.params">{{ scope.row.params }}</span>
-          <span v-else>-</span>
+          <!-- 白话摘要，原始 JSON 收进 tooltip（summarizeParams 解析失败时回退原文） -->
+          <el-tooltip
+            :disabled="!scope.row.params"
+            placement="top"
+            :content="scope.row.params"
+          >
+            <span>{{ paramSummary(scope.row) }}</span>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column
@@ -143,7 +151,12 @@
       />
       <el-table-column label="操作" align="center" width="130" fixed="right">
         <template #default="scope">
+          <!-- 内置规则只读：给「查看」（只读弹窗），不给「编辑」 -->
+          <el-button v-if="scope.row.builtIn" link type="primary" @click="openForm(scope.row)">
+            查看
+          </el-button>
           <el-button
+            v-else
             link
             type="primary"
             @click="openForm(scope.row)"
@@ -183,10 +196,13 @@ import { dateFormatter } from '@/utils/formatTime'
 import * as GrantApi from '@/api/system/grant'
 import type { RuleVO } from '@/api/system/grant'
 import RuleForm from './RuleForm.vue'
+import { useRuleTemplateMeta } from './useRuleTemplateMeta'
+import { summarizeParams } from './components/ruleParams'
 
 defineOptions({ name: 'SystemRule' })
 
 const message = useMessage() // 消息弹窗
+const { meta, load, getTemplateLabel } = useRuleTemplateMeta()
 
 const loading = ref(true) // 列表的加载中
 const total = ref(0) // 列表的总条数
@@ -227,18 +243,8 @@ const queryParams = reactive({
 })
 const queryFormRef = ref() // 搜索的表单
 
-const TEMPLATE_LABELS: Record<string, string> = {
-  BUILT_IN_OWNER_ONLY: '仅自己的数据',
-  BUILT_IN_DEPT_ONLY: '本部门数据',
-  BUILT_IN_DEPT_AND_CHILDREN: '本部门及下级',
-  BUILT_IN_STATUS_IN: '指定状态可见',
-  BUILT_IN_OWNER_OR_DEPT: '自己或本部门',
-  BUILT_IN_BPM_PARTICIPANT: '流程参与者可见',
-  BUILT_IN_RECORD_SHARED: '共享给我的记录',
-  BUILT_IN_FIELD_EQUALS: '指定字段等于',
-  BUILT_IN_CUSTOM_TREE: '自定义条件树'
-}
-const templateLabel = (t: string) => TEMPLATE_LABELS[t] ?? t
+/** 参数列白话摘要（模板元数据驱动，DEPT_IN 也能正确显示「指定部门数据」） */
+const paramSummary = (row: RuleVO) => summarizeParams(row.template, row.params, meta.value)
 
 /** 查询列表 */
 const getList = async () => {
@@ -279,11 +285,6 @@ const handleDelete = async (id: number) => {
   await getList()
 }
 
-/** 序号列：跨页连续编号，第 N 页第 i 条 = pageSize * (pageNo - 1) + i + 1 */
-const indexMethod = (index: number) => {
-  return (queryParams.pageNo - 1) * queryParams.pageSize + index + 1
-}
-
 /** 批量删除按钮操作 */
 const checkedIds = ref<number[]>([])
 const handleRowCheckboxChange = (rows: RuleVO[]) => {
@@ -305,6 +306,8 @@ const handleDeleteBatch = async () => {
 /** 初始化 **/
 onMounted(async () => {
   window.addEventListener('resize', recalcHeight)
+  // 元数据用于模板名/参数摘要，失败不阻断列表（摘要会回退原文）
+  load().catch(() => {})
   await getList()
   await nextTick()
   recalcHeight()

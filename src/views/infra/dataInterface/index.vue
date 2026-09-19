@@ -60,7 +60,10 @@
         并禁止 DDL 与对系统内置表的写操作；但<b>含写操作的接口仍会真实修改数据</b>，请谨慎配置。
       </template>
     </el-alert>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" width="70" />
       <el-table-column label="接口名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="接口编码" prop="code" :show-overflow-tooltip="true" min-width="140" />

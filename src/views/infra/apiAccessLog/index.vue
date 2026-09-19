@@ -90,8 +90,11 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
-      <el-table-column label="日志编号" align="center" prop="id" width="100" fix="right" />
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
+      <el-table-column label="日志编号" align="center" prop="id" width="100" />
       <el-table-column label="用户编号" align="center" prop="userId" />
       <el-table-column label="用户类型" align="center" prop="userType">
         <template #default="scope">

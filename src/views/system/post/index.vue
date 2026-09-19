@@ -71,8 +71,11 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="岗位编号" align="center" prop="id" />
       <el-table-column label="岗位名称" align="center" prop="name" />
       <el-table-column label="岗位编码" align="center" prop="code" />
@@ -90,7 +93,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" min-width="110" fixed="right">
         <template #default="scope">
           <el-button
             link

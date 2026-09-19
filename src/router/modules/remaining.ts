@@ -121,7 +121,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '表单预览',
-          activeMenu: '/infra/form-design'
+          // 表单设计菜单已归入「在线开发」目录，列表页完整路径由 /infra/form-design/list 变为 /infra/online/list
+          activeMenu: '/infra/online/list'
         }
       }
     ]
@@ -143,7 +144,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '门户设计器',
-          activeMenu: '/infra/portal'
+          // 门户设计菜单已归入「在线开发」目录，完整路径由 /infra/portal 变为 /infra/online/portal
+          activeMenu: '/infra/online/portal'
         }
       }
     ]
@@ -172,6 +174,43 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           icon: '',
           activeMenu: '/system/dict'
+        }
+      }
+    ]
+  },
+  {
+    path: '/system/role',
+    component: Layout,
+    name: 'SystemRoleGrantL',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'grant',
+        component: () => import('@/views/system/role/grant/index.vue'),
+        name: 'SystemRoleGrant',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          icon: 'ep:key',
+          title: '资源授权',
+          // 角色管理菜单挂在「系统管理 → 组织权限」目录下，实际访问路径带 org-permission 段
+          activeMenu: '/system/org-permission/role'
+        }
+      },
+      {
+        path: 'member',
+        component: () => import('@/views/system/role/member/index.vue'),
+        name: 'SystemRoleMember',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          icon: 'ep:user',
+          title: '成员配置',
+          activeMenu: '/system/org-permission/role'
         }
       }
     ]
