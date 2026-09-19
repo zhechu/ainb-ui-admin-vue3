@@ -5,8 +5,17 @@
 
     <el-form :inline="true" :model="query" class="mb-16px">
       <el-form-item label="权限标识">
-        <el-input v-model="query.permission" placeholder="如 system:user:query" class="!w-280px"
-                  clearable @keyup.enter="runDiag" />
+        <!--
+          可搜索下拉 + allow-create：权限串有 600+ 个且格式严格（system:user:query），
+          让人纯手打的话打错一个字符就诊断出「无此资源」，而那和「确实没权限」
+          在结果页上长得一模一样，非常容易误判。
+          保留 allow-create 是因为诊断本来就可能要查一个还没建资源行的权限串
+        -->
+        <el-select v-model="query.permission" class="!w-300px" clearable filterable allow-create
+                   default-first-option :loading="optionsLoading"
+                   placeholder="搜索或输入，如 system:user:query" @keyup.enter="runDiag">
+          <el-option v-for="p in permissionOptions" :key="p.value" :label="p.label" :value="p.value" />
+        </el-select>
       </el-form-item>
       <el-form-item label="动作">
         <el-select v-model="query.action" class="!w-120px">
@@ -19,8 +28,13 @@
           <el-option label="* 全部" value="*" />
         </el-select>
       </el-form-item>
-      <el-form-item label="用户ID">
-        <el-input-number v-model="query.userId" :min="1" placeholder="不填=当前用户" class="!w-150px" />
+      <el-form-item label="用户">
+        <!-- 原来要手填 userId —— 没人记得住用户编号，得先去用户管理翻一遍再回来 -->
+        <el-select v-model="query.userId" class="!w-220px" clearable filterable
+                   :loading="optionsLoading" placeholder="不选=当前用户">
+          <el-option v-for="u in userOptions" :key="u.id"
+                     :label="`${u.nickname || u.username}（${u.username}）`" :value="u.id" />
+        </el-select>
       </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="loading" @click="runDiag">
@@ -125,11 +139,26 @@
       </div>
     </template>
   </ContentWrap>
+
+  <!-- 未诊断时的引导：把下方空白用起来，同时说明这个页面能回答什么问题 -->
+  <ContentWrap v-if="!result && !loading">
+    <el-empty :image-size="90">
+      <template #description>
+        <div class="text-13px text-gray-500">选择权限标识与用户后点「诊断」</div>
+        <div class="mt-8px text-12px text-gray-400 leading-relaxed">
+          它回答的是「这个人为什么有 / 没有这个权限」：<br />
+          会列出主体闭包（角色 / 岗位 / 部门的继承链）、资源祖先链，<br />
+          以及每一层命中的授权与最终判定依据
+        </div>
+      </template>
+    </el-empty>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import * as GrantApi from '@/api/system/grant'
+import * as UserApi from '@/api/system/user'
 import type { PermissionDiagVO } from '@/api/system/grant'
 import { formatDate } from '@/utils/formatTime'
 
@@ -139,6 +168,41 @@ const message = useMessage()
 const loading = ref(false)
 const result = ref<PermissionDiagVO>()
 const query = reactive({ permission: '', action: 'VIEW', userId: undefined as number | undefined })
+
+// -------- 下拉选项 --------
+
+const optionsLoading = ref(false)
+const permissionOptions = ref<{ label: string; value: string }[]>([])
+const userOptions = ref<any[]>([])
+
+const loadOptions = async () => {
+  optionsLoading.value = true
+  try {
+    const [resources, users] = await Promise.all([
+      GrantApi.getResourceList().catch(() => []),
+      UserApi.getSimpleUserList().catch(() => [])
+    ])
+    // 只取有权限标识的，去重后按串排序 —— 目录层没有权限串，诊断不了
+    const seen = new Set<string>()
+    permissionOptions.value = (resources as any[])
+      .filter((r) => r.permission && !seen.has(r.permission) && seen.add(r.permission))
+      .map((r) => ({ label: `${r.permission}（${r.name}）`, value: r.permission }))
+      .sort((a, b) => a.value.localeCompare(b.value))
+    userOptions.value = users as any[]
+  } finally {
+    optionsLoading.value = false
+  }
+}
+onMounted(loadOptions)
+
+/** 结果区高度跟着视口走，避免内容少时底部一大片空白、内容多时又挤在小框里滚 */
+const diagMaxHeight = ref(420)
+const recalcDiagHeight = () => (diagMaxHeight.value = Math.max(260, window.innerHeight - 420))
+onMounted(() => {
+  recalcDiagHeight()
+  window.addEventListener('resize', recalcDiagHeight)
+})
+onUnmounted(() => window.removeEventListener('resize', recalcDiagHeight))
 
 const runDiag = async () => {
   if (!query.permission.trim()) {
@@ -159,3 +223,28 @@ const rowClass = ({ row }: { row: PermissionDiagVO['allGrants'][number] }) => {
   return ''
 }
 </script>
+
+<style lang="scss" scoped>
+/*
+  ⚠️ 诊断页不做「撑满视口」：它未诊断时本来就没有内容，
+  强行拉高只会得到一个巨大的空框，比留白更难看。
+  那片空间用空态引导填充（见模板里的 el-empty）
+*/
+/*
+  底部空白的根因不是表格高度，而是外层 ContentWrap 的高度由内容撑开：
+  内容少时卡片就矮，卡片下方到视口底部之间那一片就空着。
+  让最后一个卡片 flex 撑满剩余空间，表格再在卡片内部自适应
+*/
+:deep(.el-card):last-of-type {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 260px);
+
+  .el-card__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+}
+</style>

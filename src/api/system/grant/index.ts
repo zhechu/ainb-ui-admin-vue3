@@ -57,6 +57,17 @@ export interface RuleVO {
   params?: string
   description?: string
   status: number
+  /** 是否系统内置：内置规则不允许删除，只能停用 */
+  builtIn?: boolean
+  createTime?: Date
+}
+
+export interface RulePageReqVO extends PageParam {
+  name?: string
+  template?: string
+  status?: number
+  builtIn?: boolean
+  createTime?: string[]
 }
 
 export interface SubjectVO {
@@ -70,9 +81,23 @@ export interface SubjectVO {
 
 // ========== 权限资源 ==========
 
-/** 查询全部启用的资源列表（前端自行组装树） */
-export const getResourceList = async (type?: string): Promise<ResourceVO[]> => {
-  return await request.get({ url: '/system/resource/list', params: type ? { type } : {} })
+/**
+ * 查询全部启用的资源列表（前端自行组装树）
+ *
+ * @param type 资源类型，传了则只查该类型
+ * @param includeFieldLevel 是否包含 COLUMN/FIELD 级资源。后端默认 false ——
+ *        字段资源按表单数量线性增长，默认放进树里会把真正要配的 ACTION 淹没掉。
+ *        但不传的后果是【授权页里根本找不到字段资源，字段权限配不出来】，
+ *        所以要有一个显式开关让人能打开
+ */
+export const getResourceList = async (
+  type?: string,
+  includeFieldLevel = false
+): Promise<ResourceVO[]> => {
+  const params: Record<string, any> = {}
+  if (type) params.type = type
+  if (includeFieldLevel) params.includeFieldLevel = true
+  return await request.get({ url: '/system/resource/list', params })
 }
 
 /** 查询单个资源 */
@@ -130,6 +155,11 @@ export const deleteGrant = async (id: number): Promise<boolean> => {
 
 // ========== 行过滤规则（S8b 补全）==========
 
+/** 分页查询规则（规则管理页） */
+export const getRulePage = async (params: RulePageReqVO) => {
+  return await request.get({ url: '/system/rule/page', params })
+}
+
 /** 查询全部规则（含停用） */
 export const getRuleList = async (): Promise<RuleVO[]> => {
   return await request.get({ url: '/system/rule/list' })
@@ -159,6 +189,11 @@ export const updateRule = async (data: RuleVO): Promise<boolean> => {
 /** 删除规则（内置规则 BUILT_IN_ 前缀不能删） */
 export const deleteRule = async (id: number): Promise<boolean> => {
   return await request.delete({ url: '/system/rule/delete', params: { id } })
+}
+
+/** 批量删除规则（内置规则、被授权引用的规则不能删） */
+export const deleteRuleList = async (ids: number[]): Promise<boolean> => {
+  return await request.delete({ url: '/system/rule/delete-list', params: { ids: ids.join(',') } })
 }
 
 // ========== 语义槽位映射（S8b）==========
@@ -228,5 +263,50 @@ export const diagPermission = async (
   return await request.get({
     url: '/system/permission-diag/check',
     params: { permission, action, userId }
+  })
+}
+
+/**
+ * 查询【当前登录用户】对某数据集的字段模式
+ *
+ * 返回形如 { mobile: 'HIDDEN', sex: 'READONLY' }。没配过的字段不会出现在结果里，
+ * 调用方按「不存在 = 不受限」处理
+ *
+ * @param datasetPermission 数据集权限标识，如 system:user
+ * @param column true=列表列(:col:)，false=详情字段(:fld:)
+ */
+export const getMyFieldModes = async (
+  datasetPermission: string,
+  column = false
+): Promise<Record<string, string>> => {
+  return await request.get({
+    url: '/system/grant/my-field-modes',
+    params: { datasetPermission, column }
+  })
+}
+
+/** 新增权限资源 */
+export const createResource = async (data: any): Promise<number> => {
+  return await request.post({ url: '/system/resource/create', data })
+}
+
+/** 修改权限资源。菜单派生的资源仅可改 sort/status，后端会校验 */
+export const updateResource = async (data: any): Promise<boolean> => {
+  return await request.put({ url: '/system/resource/update', data })
+}
+
+/** 删除权限资源。有子资源 / 有授权引用 / 菜单派生的，后端会拒绝 */
+export const deleteResource = async (id: number): Promise<boolean> => {
+  return await request.delete({ url: '/system/resource/delete', params: { id } })
+}
+
+/** 按父节点查子资源（树表懒加载）。根节点传 0 */
+export const getResourceChildren = async (
+  parentId: number,
+  includeFieldLevel = false
+): Promise<ResourceVO[]> => {
+  return await request.get({
+    url: '/system/resource/list-children',
+    params: { parentId, includeFieldLevel }
   })
 }

@@ -97,13 +97,13 @@ test.describe('权限重构 · 浏览器验收', () => {
   // ── 路径 3：规则管理页 ────────────────────────────────────────
   test('规则管理页可访问，列表有种子规则', async ({ page }) => {
     await login(page)
-    const listResp = page.waitForResponse((r) => r.url().includes('/system/rule/list'))
+    const listResp = page.waitForResponse((r) => r.url().includes('/system/rule/page'))
     await page.goto('/system/rule')
     await hidePopupMenu(page)
 
     expect((await listResp).ok()).toBeTruthy()
     // 页面真的渲染出来了（不是 404 或空白路由）
-    await expect(page.locator('button:has-text("新增规则")')).toBeVisible()
+    await expect(page.locator('button:has-text("新增")').first()).toBeVisible()
     await expect(page.locator('.el-table__body tbody tr').first()).toBeVisible()
   })
 

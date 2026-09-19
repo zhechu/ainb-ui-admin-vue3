@@ -111,28 +111,31 @@
       <ContentWrap>
         <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
           <el-table-column type="selection" width="55" />
-          <el-table-column label="用户编号" align="center" key="id" prop="id" />
+          <el-table-column v-if="isVisible('id')" label="用户编号" align="center" key="id" prop="id" />
           <el-table-column
+            v-if="isVisible('username')"
             label="用户名称"
             align="center"
             prop="username"
             :show-overflow-tooltip="true"
           />
           <el-table-column
+            v-if="isVisible('nickname')"
             label="用户昵称"
             align="center"
             prop="nickname"
             :show-overflow-tooltip="true"
           />
           <el-table-column
+            v-if="isVisible('deptName')"
             label="部门"
             align="center"
             key="deptName"
             prop="deptName"
             :show-overflow-tooltip="true"
           />
-          <el-table-column label="手机号码" align="center" prop="mobile" width="120" />
-          <el-table-column label="状态" key="status">
+          <el-table-column v-if="isVisible('mobile')" label="手机号码" align="center" prop="mobile" width="120" />
+          <el-table-column v-if="isVisible('status')" label="状态" key="status">
             <template #default="scope">
               <el-switch
                 v-model="scope.row.status"
@@ -144,6 +147,7 @@
             </template>
           </el-table-column>
           <el-table-column
+            v-if="isVisible('createTime')"
             label="创建时间"
             align="center"
             prop="createTime"
@@ -217,6 +221,7 @@
   <UserAssignRoleForm ref="assignRoleFormRef" @success="getList" />
 </template>
 <script lang="ts" setup>
+import { useFieldPermission } from '@/hooks/web/useFieldPermission'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { checkPermi } from '@/utils/permission'
 import { dateFormatter } from '@/utils/formatTime'
@@ -229,6 +234,16 @@ import UserAssignRoleForm from './UserAssignRoleForm.vue'
 import DeptTreeSelect from '@/views/system/dept/components/DeptTreeSelect.vue'
 
 defineOptions({ name: 'SystemUser' })
+
+/**
+ * 字段级权限：后端 @PermissionFieldCrop 只把 HIDDEN 字段【置空】，
+ * 不隐藏列（VO 是强类型的，删不掉属性）。所以列的显隐必须前端来做，
+ * 否则表现是「配了隐藏，那一列还在，只是变成空白」
+ */
+// ⚠️ 第二个参数 true = 按【列级】(:col:) 判定。
+// 这是列表页，管的是「这一列显不显示」；详情页才用字段级(:fld:)。
+// 传错的后果是读了另一套资源，配置永远不生效且不报错
+const { isVisible } = useFieldPermission('system:user', true)
 
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
