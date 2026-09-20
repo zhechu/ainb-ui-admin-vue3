@@ -1,5 +1,10 @@
 <template>
-  <PortalRuntime v-if="portalRuntime" class="home-portal-runtime" :portal="portalRuntime" flush />
+  <PortalLinkFrame
+    v-if="portalRuntime?.type === 1"
+    class="home-portal-runtime"
+    :portal="portalRuntime"
+  />
+  <PortalRuntime v-else-if="portalRuntime" class="home-portal-runtime" :portal="portalRuntime" flush />
   <div v-else>
     <el-card shadow="never">
       <el-skeleton :loading="loading" animated>
@@ -194,8 +199,10 @@ import { EChartsOption } from 'echarts'
 import { formatTime } from '@/utils'
 import * as PortalApi from '@/api/infra/portal'
 import PortalRuntime from '@/components/Portal/Runtime/PortalRuntime.vue'
+import PortalLinkFrame from '@/components/Portal/Runtime/PortalLinkFrame.vue'
 
 import { useUserStore } from '@/store/modules/user'
+import { useAppStore } from '@/store/modules/app'
 // import { useWatermark } from '@/hooks/web/useWatermark'
 import type { WorkplaceTotal, Project, Notice, Shortcut } from './types'
 import { pieOptions, barOptions } from './echarts-data'
@@ -207,6 +214,7 @@ defineOptions({ name: 'Index' })
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
+const appStore = useAppStore()
 const portalRuntime = ref<PortalApi.PortalRuntimeVO | null>(null)
 // const { setWatermark } = useWatermark()
 const loading = ref(true)
@@ -415,11 +423,26 @@ const handleShortcutClick = (url: string) => {
 
 const loadPortal = async () => {
   try {
+    // 优先加载用户在「项目配置」面板选择的门户，失效（下线/不可见）时回退默认门户
+    const preferred = appStore.homePortalCode
+    if (preferred) {
+      const portal = await PortalApi.getRuntimePortal(preferred)
+      if (portal) {
+        portalRuntime.value = portal
+        return
+      }
+    }
     portalRuntime.value = await PortalApi.getHomePortal()
   } catch {
     portalRuntime.value = null
   }
 }
+
+// 配置面板里切换门户后即时刷新；偏好配置异步加载晚于首页挂载时也由它兜底
+watch(
+  () => appStore.homePortalCode,
+  () => loadPortal()
+)
 
 const initHome = async () => {
   await loadPortal()

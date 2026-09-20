@@ -38,6 +38,8 @@ export interface UserThemeConfig {
   currentSize: ElementPlusSize
   theme: ThemeTypes
   fixedMenu: boolean
+  /** 首页门户编码，空串表示跟随系统默认门户 */
+  homePortalCode: string
 }
 
 interface AppState extends UserThemeConfig {
@@ -78,7 +80,8 @@ const PREFERENCE_KEYS = [
   'isDark',
   'currentSize',
   'theme',
-  'fixedMenu'
+  'fixedMenu',
+  'homePortalCode'
 ] as const
 
 /** 主题色字段顺序，用于快照序列化保持稳定 */
@@ -137,7 +140,8 @@ const createDefaultThemeConfig = (): UserThemeConfig => ({
   isDark: false,
   currentSize: 'default',
   theme: { ...DEFAULT_THEME },
-  fixedMenu: false
+  fixedMenu: false,
+  homePortalCode: ''
 })
 
 // region 持久化管线状态
@@ -431,6 +435,9 @@ export const useAppStore = defineStore('app', {
     setFixedMenu(fixedMenu: boolean) {
       this.fixedMenu = fixedMenu
     },
+    setHomePortalCode(homePortalCode: string) {
+      this.homePortalCode = homePortalCode || ''
+    },
     setPageLoading(pageLoading: boolean) {
       this.pageLoading = pageLoading
     },
@@ -562,7 +569,8 @@ export const useAppStore = defineStore('app', {
         isDark: this.isDark,
         currentSize: this.currentSize,
         theme: { ...this.theme },
-        fixedMenu: this.fixedMenu
+        fixedMenu: this.fixedMenu,
+        homePortalCode: this.homePortalCode
       }
     },
 
@@ -594,6 +602,8 @@ export const useAppStore = defineStore('app', {
         ? config.currentSize
         : defaults.currentSize
       this.theme = { ...defaults.theme, ...(config.theme || {}) }
+      this.homePortalCode =
+        typeof config.homePortalCode === 'string' ? config.homePortalCode : defaults.homePortalCode
       this.themeConfigLoaded = true
 
       this.setIsDark(this.isDark)

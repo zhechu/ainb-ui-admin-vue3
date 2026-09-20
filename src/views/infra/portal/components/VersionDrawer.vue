@@ -27,8 +27,9 @@
       />
       <el-table-column label="发布人" prop="creator" width="100" align="center" />
       <el-table-column label="时间" prop="createTime" width="165" :formatter="dateFormatter" />
-      <el-table-column label="操作" width="85" fixed="right" align="center">
+      <el-table-column label="操作" width="130" fixed="right" align="center">
         <template #default="{ row }">
+          <el-button link type="primary" @click="handlePreview(row)">预览</el-button>
           <el-button
             v-hasPermi="['infra:portal:rollback']"
             link
@@ -40,6 +41,27 @@
       </el-table-column>
       <template #empty><el-empty description="暂无发布版本" /></template>
     </el-table>
+
+    <Dialog
+      v-model="previewVisible"
+      :title="`版本预览 - ${portalName} v${previewRow?.version ?? ''}`"
+      width="92%"
+      top="4vh"
+      body-class="portal-version-preview__body"
+    >
+      <div class="preview-container">
+        <PortalRuntime v-if="previewRuntime" :portal="previewRuntime" />
+      </div>
+      <template #footer>
+        <el-button
+          v-hasPermi="['infra:portal:rollback']"
+          type="primary"
+          @click="handleRollback(previewRow!)"
+          >回滚到此版本</el-button
+        >
+        <el-button @click="previewVisible = false">关闭</el-button>
+      </template>
+    </Dialog>
   </el-drawer>
 </template>
 
@@ -47,6 +69,7 @@
 import { ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import * as PortalApi from '@/api/infra/portal'
+import PortalRuntime from '@/components/Portal/Runtime/PortalRuntime.vue'
 
 defineOptions({ name: 'InfraPortalVersionDrawer' })
 
@@ -85,13 +108,33 @@ const prettyContent = (content: string) => {
   }
 }
 
+const previewVisible = ref(false)
+const previewRow = ref<PortalApi.PortalVersionVO>()
+const previewRuntime = ref<PortalApi.PortalRuntimeVO>()
+const handlePreview = (row: PortalApi.PortalVersionVO) => {
+  // 版本列表已带 content 快照，直接组装运行时数据渲染，无需再请求
+  previewRow.value = row
+  previewRuntime.value = {
+    id: portalId.value!,
+    name: portalName.value,
+    code: '',
+    version: row.version,
+    content: row.content,
+    schemaVersion: row.schemaVersion
+  }
+  previewVisible.value = true
+}
+
 const handleRollback = async (row: PortalApi.PortalVersionVO) => {
   try {
-    await ElMessageBox.confirm(`确认回滚到版本 v${row.version} 吗？`, '回滚确认', {
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      `确认回滚到版本 v${row.version} 吗？回滚只覆盖当前草稿，需重新发布才会生效。`,
+      '回滚确认',
+      { type: 'warning' }
+    )
     await PortalApi.rollbackPortal(portalId.value!, row.version)
     message.success('回滚成功')
+    previewVisible.value = false
     emit('success')
   } catch {
     return
@@ -113,5 +156,18 @@ const handleRollback = async (row: PortalApi.PortalVersionVO) => {
   white-space: pre-wrap;
   background: var(--portal-surface-soft);
   border-radius: 4px;
+}
+
+.preview-container {
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+}
+
+.preview-container :deep(.portal-runtime) {
+  min-height: 500px;
+}
+
+:global(.com-dialog .portal-version-preview__body) {
+  padding: 0 !important;
 }
 </style>

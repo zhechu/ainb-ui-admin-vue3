@@ -9,6 +9,7 @@ import InterfaceDisplay from './components/InterfaceDisplay.vue'
 import LayoutRadioPicker from './components/LayoutRadioPicker.vue'
 import { isHeaderNavLayout } from '@/utils/layout'
 import { useSetting } from './useSetting'
+import { getRuntimePortalList, type PortalRuntimeVO } from '@/api/infra/portal'
 
 defineOptions({ name: 'Setting' })
 
@@ -16,6 +17,28 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const layout = computed(() => appStore.getLayout)
 const { drawerVisible } = useSetting()
+
+// 首页门户选择：抽屉首次打开时懒加载当前用户可见的已发布门户。
+// 无门户访问权限（infra:portal:run）时接口返回空列表，整个区块隐藏。
+const portalList = ref<PortalRuntimeVO[]>([])
+const portalLoaded = ref(false)
+const portalSectionVisible = computed(() => portalList.value.length > 0)
+const homePortalCode = computed({
+  get: () => appStore.homePortalCode || '',
+  set: (code: string) => appStore.setHomePortalCode(code)
+})
+const loadPortals = async () => {
+  if (portalLoaded.value) return
+  portalLoaded.value = true
+  try {
+    portalList.value = (await getRuntimePortalList()) || []
+  } catch {
+    portalList.value = []
+  }
+}
+watch(drawerVisible, (visible) => {
+  if (visible) loadPortals()
+})
 
 // 三个颜色选择器都只是把用户的选择转交给 store，派生色（菜单选中态、头部文字色等）
 // 统一在 store 的 action 里推导。
@@ -136,6 +159,29 @@ const clear = async () => {
     </template>
 
     <div class="text-center">
+      <!-- 首页门户 -->
+      <template v-if="portalSectionVisible">
+        <ElDivider>{{ t('setting.homePortal') }}</ElDivider>
+        <el-select
+          v-model="homePortalCode"
+          class="w-full"
+          popper-class="setting-home-portal-popper"
+        >
+          <el-option :label="t('setting.homePortalDefault')" value="" />
+          <el-option
+            v-for="portal in portalList"
+            :key="portal.code"
+            :label="portal.name"
+            :value="portal.code"
+          >
+            <span>{{ portal.name }}</span>
+            <el-tag v-if="portal.type === 1" size="small" class="ml-8px">
+              {{ t('setting.homePortalLinkTag') }}
+            </el-tag>
+          </el-option>
+        </el-select>
+      </template>
+
       <!-- 主题 -->
       <ElDivider>{{ t('setting.theme') }}</ElDivider>
       <ThemeSwitch />
@@ -212,3 +258,10 @@ const clear = async () => {
     </div>
   </ElDrawer>
 </template>
+
+<style lang="scss">
+/* 本抽屉遮罩 z-index=4000，下拉浮层默认仅 2000 出头，会被抽屉盖住点不到 */
+.setting-home-portal-popper {
+  z-index: 4500 !important;
+}
+</style>

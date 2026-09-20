@@ -78,6 +78,9 @@ export default {
   },
   setting: {
     projectSetting: 'Project setting',
+    homePortal: 'Home portal',
+    homePortalDefault: 'Default portal',
+    homePortalLinkTag: 'Link',
     theme: 'Theme',
     layout: 'Layout',
     systemTheme: 'System theme',

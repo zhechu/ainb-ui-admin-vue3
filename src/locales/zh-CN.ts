@@ -78,6 +78,9 @@ export default {
   },
   setting: {
     projectSetting: '项目配置',
+    homePortal: '首页门户',
+    homePortalDefault: '默认门户',
+    homePortalLinkTag: '链接',
     theme: '主题',
     layout: '布局',
     systemTheme: '系统主题',

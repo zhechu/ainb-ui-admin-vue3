@@ -33,7 +33,7 @@
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" />重置</el-button>
         <el-button v-hasPermi="['infra:portal:create']" type="primary" plain @click="handleCreate"
-          ><Icon icon="ep:plus" class="mr-5px" />新建门户</el-button
+          ><Icon icon="ep:plus" class="mr-5px" />新增</el-button
         >
       </el-form-item>
     </el-form>
@@ -53,6 +53,14 @@
       <el-table-column label="编号" prop="id" width="75" align="center" />
       <el-table-column label="门户名称" prop="name" min-width="150" show-overflow-tooltip />
       <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />
+      <el-table-column label="类型" width="90" align="center">
+        <template #default="{ row }">
+          <el-tag :type="isLinkPortal(row) ? 'warning' : 'primary'" size="small">
+            {{ isLinkPortal(row) ? '自定义链接' : '在线设计' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="排序" prop="sort" width="70" align="center" />
       <el-table-column label="状态" prop="status" width="125" align="center">
         <template #default="{ row }"
           ><el-tag :type="statusType(row.status)" size="small">{{
@@ -90,6 +98,7 @@
       <el-table-column label="操作" width="390" fixed="right" align="center">
         <template #default="{ row }">
           <el-button
+            v-if="!isLinkPortal(row)"
             v-hasPermi="['infra:portal:update']"
             link
             type="primary"
@@ -108,9 +117,13 @@
             link
             type="success"
             @click="handlePublish(row)"
-            >{{ row.publishedVersion ? '重新发布' : '发布' }}</el-button
+            >发布</el-button
           >
-          <el-button v-hasPermi="['infra:portal:query']" link @click="handleVersions(row)"
+          <el-button
+            v-if="!isLinkPortal(row)"
+            v-hasPermi="['infra:portal:query']"
+            link
+            @click="handleVersions(row)"
             >版本</el-button
           >
           <el-dropdown @command="(command: string) => handleCommand(command, row)"
@@ -118,10 +131,13 @@
               >更多<Icon icon="ep:arrow-down" class="ml-2px" /></el-button
             ><template #dropdown
               ><el-dropdown-menu
-                ><el-dropdown-item v-hasPermi="['infra:portal:preview']" command="preview"
+                ><el-dropdown-item
+                  v-if="!isLinkPortal(row)"
+                  v-hasPermi="['infra:portal:preview']"
+                  command="preview"
                   >预览</el-dropdown-item
                 ><el-dropdown-item
-                  v-if="row.publishedVersion"
+                  v-if="isPublished(row)"
                   v-hasPermi="['infra:portal:publish']"
                   command="unpublish"
                   >下线</el-dropdown-item
@@ -193,6 +209,9 @@ const statusLabel = (status: number) =>
 const statusType = (status: number) =>
   status === 1 ? 'success' : status === 2 ? 'warning' : 'info'
 
+const isLinkPortal = (row: PortalApi.PortalVO) => row.type === 1
+const isPublished = (row: PortalApi.PortalVO) => row.status !== 0
+
 const getList = async () => {
   loading.value = true
   try {
@@ -244,15 +263,28 @@ const toSaveReq = (row: PortalApi.PortalVO): PortalApi.PortalSaveReqVO => ({
   name: row.name,
   code: row.code,
   description: row.description,
+  type: row.type,
+  linkType: row.linkType,
+  linkUrl: row.linkUrl,
+  sort: row.sort,
   content: row.content,
   isDefault: row.isDefault,
-  enabled: row.enabled
+  enabled: row.enabled,
+  visibleScope: row.visibleScope,
+  visibleIds: row.visibleIds
 })
 
 const handlePublish = async (row: PortalApi.PortalVO) => {
   try {
-    const result = await message.prompt('请输入发布说明（可选）', '发布门户')
-    await PortalApi.publishPortal({ id: row.id, publishRemark: result.value })
+    let publishRemark: string | undefined
+    if (isLinkPortal(row)) {
+      // 链接门户没有内容快照，不产生版本，无需填写发布说明
+      await message.confirm(`确认发布门户“${row.name}”吗？`)
+    } else {
+      const result = await message.prompt('请输入发布说明（可选）', '发布门户')
+      publishRemark = result.value
+    }
+    await PortalApi.publishPortal({ id: row.id, publishRemark })
     message.success('发布成功')
     await getList()
   } catch {
