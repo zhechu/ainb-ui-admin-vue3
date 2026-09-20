@@ -8,7 +8,7 @@
 
 /** 系统主题色（主色） */
 export const SYSTEM_COLOR_PRESETS = [
-  '#1890ff', // 经典蓝（JNPF 默认）
+  '#1890ff', // 经典蓝（默认）
   '#2f54eb', // 极客蓝
   '#13c2c2', // 青
   '#0e7c6b', // 墨绿
@@ -32,7 +32,7 @@ export const HEADER_COLOR_PRESETS = [
 
 /** 侧栏背景色 */
 export const MENU_COLOR_PRESETS = [
-  '#ffffff', // 浅色侧栏（JNPF 默认）
+  '#ffffff', // 浅色侧栏（默认）
   '#1d2129', // 中性深灰
   '#212121',
   '#001529',
