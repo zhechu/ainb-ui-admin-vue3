@@ -21,6 +21,8 @@ export const CACHE_KEY = {
   THEME_CONFIG_PREFIX: 'themeConfig:',
   // 已写入本地、但还没确认落库的偏好快照，用于刷新/关页后恢复
   THEME_CONFIG_DIRTY_PREFIX: 'themeConfigDirty:',
+  // 设备级「最近一次生效的主题」，不区分用户，供登录页等无登录态场景预读，避免主题跳变
+  THEME_CONFIG_LAST: 'themeConfig:last',
   // 菜单折叠属于设备级状态，不参与跨设备同步的用户偏好
   SIDEBAR_COLLAPSE: 'sidebarCollapse',
   DICT_CACHE: 'dictCache',

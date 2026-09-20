@@ -17,7 +17,7 @@ const appStore = useAppStore()
 
 const isDark = computed({
   get: () => appStore.getIsDark,
-  set: (value: boolean) => appStore.setIsDark(value)
+  set: (value: boolean) => appStore.setIsDark(value, true)
 })
 
 // 设置switch的背景颜色

@@ -116,7 +116,9 @@ export default {
     uniqueOpened: '菜单手风琴',
     tagsViewIcon: '标签页图标',
     reExperienced: '请重新退出登录体验',
-    fixedMenu: '固定菜单'
+    fixedMenu: '固定菜单',
+    darkMode: '暗黑模式',
+    customColor: '自选颜色'
   },
   size: {
     default: '默认',

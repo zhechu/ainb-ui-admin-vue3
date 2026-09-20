@@ -103,21 +103,34 @@ const THEME_KEYS = [
 ] as const
 
 const DEFAULT_THEME: Required<ThemeTypes> = {
-  elColorPrimary: '#3473ff',
-  leftMenuBorderColor: '#202a36',
-  leftMenuBgColor: '#202a36',
-  leftMenuBgLightColor: '#263442',
-  leftMenuBgActiveColor: 'rgb(52 115 255 / 18%)',
-  leftMenuCollapseBgActiveColor: 'rgb(52 115 255 / 24%)',
-  leftMenuTextColor: '#b7c3d0',
-  leftMenuTextActiveColor: '#ffffff',
-  logoTitleTextColor: '#ffffff',
-  logoBorderColor: '#202a36',
+  elColorPrimary: '#1890ff',
+  leftMenuBorderColor: '#eee',
+  leftMenuBgColor: '#ffffff',
+  leftMenuBgLightColor: '#f5f7fa',
+  leftMenuBgActiveColor: 'RGBA(24,144,255,0.1)',
+  leftMenuCollapseBgActiveColor: 'RGBA(24,144,255,0.1)',
+  leftMenuTextColor: '#333333',
+  leftMenuTextActiveColor: 'var(--el-color-primary)',
+  logoTitleTextColor: 'inherit',
+  logoBorderColor: '#eee',
   topHeaderBgColor: '#ffffff',
   topHeaderTextColor: '#344054',
   topHeaderHoverColor: '#f2f5f9',
   topToolBorderColor: '#e9edf2'
 }
+
+/**
+ * 侧栏 / 头部的「模式默认底色」。这些值同时是判定「用户是否自定义过」的依据：
+ * 只有当前底色落在这批默认值里时，明暗切换才会自动换成对应模式的默认配色；
+ * 用户用取色器选过的自定义色不在名单内，切换明暗时原样保留。
+ * 名单里保留了历史深色默认（#202a36 / #151515），让老配置切到浅色时也能落到新默认。
+ */
+const LIGHT_MENU_BASE = '#ffffff'
+const DARK_MENU_BASE = '#1d2129'
+const LIGHT_HEADER_BASE = '#ffffff'
+const DARK_HEADER_BASE = '#171a21'
+const DEFAULT_MENU_BASES = ['#ffffff', '#1d2129', '#202a36']
+const DEFAULT_HEADER_BASES = ['#ffffff', '#171a21', '#151515']
 
 const createDefaultThemeConfig = (): UserThemeConfig => ({
   breadcrumb: true,
@@ -148,6 +161,12 @@ const createDefaultThemeConfig = (): UserThemeConfig => ({
 const PERSIST_DEBOUNCE = 600
 /** 连续改动时防抖会被不断推迟，用 maxWait 兜底，保证最多 2s 一定落一次库 */
 const PERSIST_MAX_WAIT = 2000
+/**
+ * dirty 快照的保鲜期。dirty 只在「PUT 失败、改动没落库」时残留，用来下次恢复；
+ * 但若长期失败，一份过旧的本地副本不该永远遮蔽服务端（尤其换设备/换浏览器时）。
+ * 超过该时长视为过期，直接以服务端为准。
+ */
+const DIRTY_TTL = 24 * 60 * 60 * 1000
 
 let stopPreferenceWatch: (() => void) | undefined
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
@@ -156,6 +175,8 @@ let beforeUnloadHandler: (() => void) | undefined
 let persistUserId: number | undefined
 let lastPersistedSnapshot = ''
 let persistChain: Promise<void> = Promise.resolve()
+/** 保存失败只提示一次，避免连续改动时刷屏；成功后复位 */
+let persistWarned = false
 
 const clearPersistTimers = () => {
   if (debounceTimer) {
@@ -456,7 +477,7 @@ export const useAppStore = defineStore('app', {
     setTitle(title: string) {
       this.title = title
     },
-    setIsDark(isDark: boolean) {
+    setIsDark(isDark: boolean, fromUser = false) {
       this.isDark = isDark
       if (this.isDark) {
         document.documentElement.classList.add('dark')
@@ -466,6 +487,11 @@ export const useAppStore = defineStore('app', {
         document.documentElement.classList.remove('dark')
       }
       this.setPrimaryLight()
+      // 仅用户主动切换明暗时联动侧栏/头部默认配色；初始化加载走 setIsDark(isDark, false)，
+      // 不在那里联动，否则每次登录都会重写一遍主题并触发落库。
+      if (fromUser) {
+        this.applyModeChrome()
+      }
     },
     setCurrentSize(currentSize: ElementPlusSize) {
       this.currentSize = currentSize
@@ -511,6 +537,22 @@ export const useAppStore = defineStore('app', {
       setCssVar('--el-color-primary', color)
       this.setTheme({ elColorPrimary: color })
       this.setMenuThemeColor(this.theme.leftMenuBgColor || DEFAULT_THEME.leftMenuBgColor)
+    },
+
+    /**
+     * 明暗切换时联动侧栏 / 头部配色：仅在用户没有自定义过（当前底色是模式默认之一）时，
+     * 换成目标模式的默认底色；自定义色原样保留。派生逻辑复用 setMenuThemeColor /
+     * setHeaderThemeColor，保证与取色器选同一底色时结果完全一致。
+     */
+    applyModeChrome() {
+      const menuBase = (this.theme.leftMenuBgColor || '').toLowerCase()
+      if (!menuBase || DEFAULT_MENU_BASES.includes(menuBase)) {
+        this.setMenuThemeColor(this.isDark ? DARK_MENU_BASE : LIGHT_MENU_BASE)
+      }
+      const headerBase = (this.theme.topHeaderBgColor || '').toLowerCase()
+      if (!headerBase || DEFAULT_HEADER_BASES.includes(headerBase)) {
+        this.setHeaderThemeColor(this.isDark ? DARK_HEADER_BASE : LIGHT_HEADER_BASE)
+      }
     },
 
     /** 设置头部背景色，文字/悬停/边框色由背景明暗推导 */
@@ -629,14 +671,25 @@ export const useAppStore = defineStore('app', {
       }
 
       // 数据库是配置的唯一来源；两种情况下改用本地值：
-      // 1. dirty 标记存在，说明上次会话有改动没确认落库（例如改完设置立刻刷新），它比服务端更新
+      // 1. dirty 标记存在且未过期，说明上次会话有改动没确认落库（例如改完设置立刻刷新），它比服务端更新
       // 2. 接口不可用，降级到上次成功保存的缓存，避免直接掉回默认配置
+      const dirtyKeyAt = `${dirtyKey}:at`
       const dirtyConfig = wsCache.get(dirtyKey)
+      const dirtyAt = wsCache.get(dirtyKeyAt)
+      const dirtyFresh =
+        !!dirtyConfig && (typeof dirtyAt !== 'number' || Date.now() - dirtyAt < DIRTY_TTL)
+      if (dirtyConfig && !dirtyFresh) {
+        // 过期的 dirty 不再遮蔽服务端配置，清掉避免反复误用
+        wsCache.delete(dirtyKey)
+        wsCache.delete(dirtyKeyAt)
+      }
       const fallbackConfig = requestSucceeded ? remoteConfig : wsCache.get(cacheKey)
-      this.applyThemeConfig(parseThemeConfig(dirtyConfig || fallbackConfig) || {})
+      this.applyThemeConfig(parseThemeConfig((dirtyFresh ? dirtyConfig : undefined) || fallbackConfig) || {})
 
       const snapshot = serializePreference(this.getThemeConfigSnapshot())
       wsCache.set(cacheKey, snapshot)
+      // 设备级「最近一次生效主题」：登录成功后即刷新，用户下次退出到登录页时可预读，避免主题跳变
+      wsCache.set(CACHE_KEY.THEME_CONFIG_LAST, snapshot)
       this.initThemePersistence(userId)
 
       // 无记录、字段缺失、历史格式或存在未落库的改动，统一回写成规范化快照
@@ -644,6 +697,7 @@ export const useAppStore = defineStore('app', {
         await this.persistCurrentThemeConfig(true)
       } else {
         wsCache.delete(dirtyKey)
+        wsCache.delete(`${dirtyKey}:at`)
       }
     },
 
@@ -708,6 +762,9 @@ export const useAppStore = defineStore('app', {
       const dirtyKey = `${CACHE_KEY.THEME_CONFIG_DIRTY_PREFIX}${userId}`
       wsCache.set(cacheKey, snapshot)
       wsCache.set(dirtyKey, snapshot)
+      wsCache.set(`${dirtyKey}:at`, Date.now())
+      // 设备级快照，供登录页等无登录态场景预读
+      wsCache.set(CACHE_KEY.THEME_CONFIG_LAST, snapshot)
 
       persistChain = persistChain
         .catch(() => undefined)
@@ -718,17 +775,45 @@ export const useAppStore = defineStore('app', {
           try {
             await updateUserThemeConfig(snapshot)
             lastPersistedSnapshot = snapshot
+            persistWarned = false
             // 请求期间又有新改动时保留 dirty 标记，交给下一次落库确认
             if (serializePreference(this.getThemeConfigSnapshot()) === snapshot) {
               wsCache.delete(dirtyKey)
+              wsCache.delete(`${dirtyKey}:at`)
             }
           } catch (error) {
             if (import.meta.env.DEV) {
               console.warn('[Theme] 保存用户主题配置失败', error)
             }
+            // 保存失败必须让用户知道，否则就是「改了但没生效且无提示」
+            if (!persistWarned) {
+              persistWarned = true
+              ElMessage.warning('主题偏好保存失败，将在下次修改时重试')
+            }
           }
         })
       await persistChain
+    },
+
+    /**
+     * 无登录态（登录页）时预读设备级「上次主题」，让登录页与登录后观感一致、避免跳变。
+     * 不置 themeConfigLoaded，登录后 loadUserThemeConfig 仍会以服务端为准重新应用。
+     * @returns 是否命中本地缓存
+     */
+    applyGuestTheme(): boolean {
+      const cached = parseThemeConfig(wsCache.get(CACHE_KEY.THEME_CONFIG_LAST))
+      if (!cached) {
+        return false
+      }
+      if (typeof cached.isDark === 'boolean') {
+        this.isDark = cached.isDark
+      }
+      if (cached.theme && typeof cached.theme === 'object') {
+        this.theme = { ...this.theme, ...cached.theme }
+      }
+      this.setIsDark(this.isDark)
+      this.setCssVarTheme()
+      return true
     },
 
     async resetUserThemeConfig() {

@@ -116,7 +116,9 @@ export default {
     uniqueOpened: 'Unique opened',
     tagsViewIcon: 'Tags view icon',
     reExperienced: 'Please exit the login experience again',
-    fixedMenu: 'Fixed menu'
+    fixedMenu: 'Fixed menu',
+    darkMode: 'Dark mode',
+    customColor: 'Custom color'
   },
   size: {
     default: 'Default',

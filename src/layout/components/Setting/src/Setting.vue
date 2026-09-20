@@ -10,6 +10,7 @@ import LayoutRadioPicker from './components/LayoutRadioPicker.vue'
 import { isHeaderNavLayout } from '@/utils/layout'
 import { useSetting } from './useSetting'
 import { getRuntimePortalList, type PortalRuntimeVO } from '@/api/infra/portal'
+import { SYSTEM_COLOR_PRESETS, HEADER_COLOR_PRESETS, MENU_COLOR_PRESETS } from './presets'
 
 defineOptions({ name: 'Setting' })
 
@@ -158,10 +159,10 @@ const clear = async () => {
       <span class="text-16px font-700">{{ t('setting.projectSetting') }}</span>
     </template>
 
-    <div class="text-center">
+    <div class="setting-body">
       <!-- 首页门户 -->
-      <template v-if="portalSectionVisible">
-        <ElDivider>{{ t('setting.homePortal') }}</ElDivider>
+      <section v-if="portalSectionVisible" class="setting-section">
+        <div class="setting-section-title">{{ t('setting.homePortal') }}</div>
         <el-select
           v-model="homePortalCode"
           class="w-full"
@@ -180,82 +181,58 @@ const clear = async () => {
             </el-tag>
           </el-option>
         </el-select>
-      </template>
+      </section>
 
-      <!-- 主题 -->
-      <ElDivider>{{ t('setting.theme') }}</ElDivider>
-      <ThemeSwitch />
+      <!-- 主题（明暗） -->
+      <section class="setting-section">
+        <div class="setting-section-title">{{ t('setting.theme') }}</div>
+        <div class="setting-row">
+          <span class="setting-row-label">{{ t('setting.darkMode') }}</span>
+          <ThemeSwitch />
+        </div>
+      </section>
 
       <!-- 布局 -->
-      <ElDivider>{{ t('setting.layout') }}</ElDivider>
-      <LayoutRadioPicker />
+      <section class="setting-section">
+        <div class="setting-section-title">{{ t('setting.layout') }}</div>
+        <LayoutRadioPicker />
+      </section>
 
       <!-- 系统主题 -->
-      <ElDivider>{{ t('setting.systemTheme') }}</ElDivider>
-      <ColorRadioPicker
-        v-model="systemTheme"
-        :schema="[
-          '#409eff',
-          '#009688',
-          '#536dfe',
-          '#ff5c93',
-          '#ee4f12',
-          '#0096c7',
-          '#9c27b0',
-          '#ff9800'
-        ]"
-      />
+      <section class="setting-section">
+        <div class="setting-section-title">{{ t('setting.systemTheme') }}</div>
+        <ColorRadioPicker v-model="systemTheme" :schema="SYSTEM_COLOR_PRESETS" />
+      </section>
 
       <!-- 头部主题 -->
-      <ElDivider>{{ t('setting.headerTheme') }}</ElDivider>
-      <ColorRadioPicker
-        v-model="headerTheme"
-        :schema="[
-          '#fff',
-          '#151515',
-          '#5172dc',
-          '#e74c3c',
-          '#24292e',
-          '#394664',
-          '#009688',
-          '#383f45'
-        ]"
-      />
+      <section class="setting-section">
+        <div class="setting-section-title">{{ t('setting.headerTheme') }}</div>
+        <ColorRadioPicker v-model="headerTheme" :schema="HEADER_COLOR_PRESETS" />
+      </section>
 
       <!-- 菜单主题 -->
-      <template v-if="!isHeaderNavLayout(layout)">
-        <ElDivider>{{ t('setting.menuTheme') }}</ElDivider>
-        <ColorRadioPicker
-          v-model="menuTheme"
-          :schema="[
-            '#fff',
-            '#001529',
-            '#212121',
-            '#273352',
-            '#191b24',
-            '#383f45',
-            '#001628',
-            '#344058'
-          ]"
-        />
-      </template>
+      <section v-if="!isHeaderNavLayout(layout)" class="setting-section">
+        <div class="setting-section-title">{{ t('setting.menuTheme') }}</div>
+        <ColorRadioPicker v-model="menuTheme" :schema="MENU_COLOR_PRESETS" />
+      </section>
+
+      <!-- 界面显示 -->
+      <section class="setting-section">
+        <div class="setting-section-title">{{ t('setting.interfaceDisplay') }}</div>
+        <InterfaceDisplay />
+      </section>
     </div>
 
-    <!-- 界面显示 -->
-    <ElDivider>{{ t('setting.interfaceDisplay') }}</ElDivider>
-    <InterfaceDisplay />
-
-    <ElDivider />
-    <div>
-      <el-button class="w-full" type="primary" @click="copyConfig">
-        {{ t('setting.copy') }}
-      </el-button>
-    </div>
-    <div class="mt-5px">
-      <el-button class="w-full" type="danger" @click="clear">
-        {{ t('setting.clearAndReset') }}
-      </el-button>
-    </div>
+    <template #footer>
+      <div class="flex gap-8px">
+        <el-button class="flex-1" @click="copyConfig">
+          {{ t('setting.copy') }}
+        </el-button>
+        <el-button class="flex-1" type="danger" @click="clear">
+          {{ t('setting.clearAndReset') }}
+        </el-button>
+      </div>
+    </template>
   </ElDrawer>
 </template>
 
@@ -263,5 +240,40 @@ const clear = async () => {
 /* 本抽屉遮罩 z-index=4000，下拉浮层默认仅 2000 出头，会被抽屉盖住点不到 */
 .setting-home-portal-popper {
   z-index: 4500 !important;
+}
+
+/* 取色器浮层同理，需高于抽屉遮罩 */
+.setting-color-popper {
+  z-index: 4500 !important;
+}
+
+/*
+  面板排版：左对齐 + 紧凑分节，替代原先居中大留白的 ElDivider 堆叠。
+  分节标题用小号次要色文字，控件紧跟其下，纵向间距收紧。
+*/
+.setting-body {
+  text-align: left;
+}
+
+.setting-section {
+  margin-bottom: 18px;
+}
+
+.setting-section-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.setting-row-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
 }
 </style>

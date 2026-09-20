@@ -5,7 +5,7 @@
   >
     <div class="relative mx-auto h-full flex">
       <el-scrollbar
-        :class="`${prefixCls}__left flex-1 bg-gray-500 bg-opacity-20 relative p-30px lt-xl:hidden`"
+        :class="`${prefixCls}__left flex-1 relative p-30px lt-xl:hidden`"
         view-class="h-full"
         wrap-class="overflow-x-hidden"
       >
@@ -110,7 +110,8 @@ $prefix-cls: #{$namespace}-login;
       z-index: -1;
       width: 100%;
       height: 100%;
-      background-image: url('@/assets/svgs/login-bg.svg');
+      /* JNPF 品牌渐变（与 logo 同色系），替代原先的纯深蓝底 */
+      background-image: linear-gradient(160deg, #2b6bf5 0%, #19b9c9 100%);
       background-position: center;
       background-repeat: no-repeat;
       content: '';

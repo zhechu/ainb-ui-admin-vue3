@@ -1,27 +1,28 @@
 :root {
-  --login-bg-color: #293146;
+  --login-bg-color: #171a21;
 
   --left-menu-max-width: 216px;
 
   --left-menu-min-width: 64px;
 
-  --left-menu-bg-color: #202a36;
+  /* 浅色侧栏（JNPF 风格默认）；实际值由 app store 的 setCssVarTheme 写入，这里只是首屏 JS 执行前的兜底 */
+  --left-menu-bg-color: #ffffff;
 
-  --left-menu-bg-light-color: #263442;
+  --left-menu-bg-light-color: #f5f7fa;
 
-  --left-menu-bg-active-color: rgb(52 115 255 / 18%);
+  --left-menu-bg-active-color: rgb(24 144 255 / 10%);
 
-  --left-menu-text-color: #bfcbd9;
+  --left-menu-text-color: #333333;
 
-  --left-menu-text-active-color: #fff;
+  --left-menu-text-active-color: var(--el-color-primary);
 
-  --left-menu-collapse-bg-active-color: rgb(52 115 255 / 24%);
+  --left-menu-collapse-bg-active-color: rgb(24 144 255 / 10%);
   /* left menu end */
 
   /* logo start */
   --logo-height: 56px;
 
-  --logo-title-text-color: #fff;
+  --logo-title-text-color: #1f2937;
   /* logo end */
 
   /* header start */
@@ -48,7 +49,7 @@
 
   --app-content-padding: 12px;
 
-  --app-content-bg-color: #f4f6f8;
+  --app-content-bg-color: #f1f4f8;
 
   /*
    * 页脚已下线（原本只用来展示一行版权），保留变量置 0 是因为流程详情、
@@ -57,10 +58,34 @@
   --app-footer-height: 0px;
 
   --transition-time-02: 0.2s;
+
+  /* JNPF 风格圆角：控件 4px（EP 默认），卡片 8px 让内容块更圆润 */
+  --el-border-radius-base: 4px;
+
+  --el-card-border-radius: 8px;
 }
 
 .dark {
   --app-content-bg-color: var(--el-bg-color);
+
+  /* 深色模式下侧栏 / 头部回落到中性深灰；用户自定义色由 JS 内联变量覆盖此处 */
+  --left-menu-bg-color: #1d2129;
+
+  --left-menu-bg-light-color: #2c3038;
+
+  --left-menu-bg-active-color: rgb(24 144 255 / 18%);
+
+  --left-menu-collapse-bg-active-color: rgb(24 144 255 / 24%);
+
+  --left-menu-text-color: #bfcbd9;
+
+  --left-menu-text-active-color: #fff;
+
+  --logo-title-text-color: #fff;
+
+  --top-header-bg-color: #171a21;
+
+  --top-header-text-color: #fff;
 }
 
 .portal-theme {
