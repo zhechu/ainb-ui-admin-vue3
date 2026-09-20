@@ -492,7 +492,7 @@
             </el-select>
             <el-alert v-if="nodeFormCode" type="warning" :closable="false" class="mb-16px">
               本节点使用独立表单，下方字段权限针对该表单的字段。
-              该表单绑定的业务表需具备 process_instance_id 列（不要求 status 列）。
+              该表单绑定的业务表需具备 process_instance_id 列（不要求 process_status 列）。
             </el-alert>
           </template>
           <el-alert

@@ -47,11 +47,11 @@
       </el-form-item>
     </el-form>
 
-    <!-- 流程表提示：审批类业务表需要 process_instance_id 与 status，可用下方「快速添加」一键补齐 -->
+    <!-- 流程表提示：审批类业务表需要 process_instance_id 与 process_status，可用下方「快速添加」一键补齐 -->
     <el-alert type="warning" show-icon :closable="true" class="mb-10px">
       <template #title>
         若该表用于<b>流程审批</b>，需额外增加 <b>process_instance_id</b>（流程实例编号）与
-        <b>status</b>（流程状态）两个字段。
+        <b>process_status</b>（流程状态）两个字段。
         可用下方字段列表的「快速添加」一键补齐流程字段或常用字段。
       </template>
     </el-alert>
@@ -68,7 +68,7 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="__process__">
-                <Icon icon="ep:share" class="mr-5px" /> 流程字段（process_instance_id + status）
+                <Icon icon="ep:share" class="mr-5px" /> 流程字段（process_instance_id + process_status）
               </el-dropdown-item>
               <el-dropdown-item disabled divided>常用字段</el-dropdown-item>
               <el-dropdown-item
@@ -575,11 +575,11 @@ const presetColumn = (
 
 /**
  * 流程字段预设：参考内置 test_leave 表。
- * status 在真实表里是 tinyint，本模块的受控类型集没有 tinyint，用 INT 承载即可。
+ * process_status 在真实表里是 tinyint，本模块的受控类型集没有 tinyint，用 INT 承载即可。
  */
 const PROCESS_FIELD_PRESETS: ColumnRow[] = [
   presetColumn('process_instance_id', '流程实例编号', 'STRING', 64),
-  presetColumn('status', '流程状态', 'INT')
+  presetColumn('process_status', '流程状态', 'INT')
 ]
 
 /** 常用字段预设：低代码建表的高频字段，点一个加一个 */

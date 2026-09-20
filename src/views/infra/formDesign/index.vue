@@ -341,10 +341,18 @@ const handleCopy = async (row: FormDesignApi.FormDesignVO) => {
 
 const handleDelete = async (row: FormDesignApi.FormDesignVO) => {
   try {
-    // 已发布的表单会连带回收菜单与按钮权限，提示得更明确些
+    // 已关联菜单的表单后端会拒绝删除（菜单只能由「下线」流程回收），
+    // 这里直接拦下并指路，而不是让用户白点一次再吃接口报错
+    if (row.menuId) {
+      message.alertWarning(
+        `表单「${row.name}」已发布并关联菜单，不能直接删除。` +
+          `请先在「更多」中执行「下线」回收菜单与按钮权限，再删除表单`
+      )
+      return
+    }
     if (row.status !== 0) {
       await message.confirm(
-        `表单「${row.name}」已发布，删除会同时回收它生成的菜单与按钮权限，确认删除吗？`
+        `表单「${row.name}」已发布（未关联菜单），删除会同时清除它的版本历史，确认删除吗？`
       )
     } else {
       await message.delConfirm()
