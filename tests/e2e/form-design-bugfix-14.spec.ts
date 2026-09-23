@@ -68,7 +68,7 @@ async function openRuntime(page: Page, code: string) {
 async function openListDesign(page: Page, designId: number) {
   // ⚠️ apiLogin 只拿到接口用的 token，浏览器这边还是未登录状态 —— 少了这一步会跳登录页
   await login(page)
-  await page.goto(`/infra/form-design/editor?id=${designId}`)
+  await page.goto(`/infra/online/editor?id=${designId}`)
   await expect(page.locator('.step-list-design')).toBeAttached({ timeout: 60_000 })
   await page.locator('span', { hasText: /^列表设计$/ }).first().click()
   await expect(page.locator('.step-list-design')).toBeVisible({ timeout: 30_000 })
@@ -278,7 +278,7 @@ test.describe('表单设计器 · 列表设计面板', () => {
 test.describe('表单设计 · 管理列表页', () => {
   test('③ 列表行距不再挤成一叠细线', async ({ page }) => {
     await login(page)
-    await page.goto('/infra/form-design/list')
+    await page.goto('/infra/online/list')
     const table = page.locator('.form-design-table')
     await expect(table).toBeVisible({ timeout: 60_000 })
     await expect(table.locator('tbody tr').first()).toBeVisible({ timeout: 30_000 })

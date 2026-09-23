@@ -314,7 +314,7 @@ test.describe('表单设计器性能采集', () => {
 
     try {
       // ==================== 场景一：打开一张 N 控件的表单 ====================
-      await page.goto(`/infra/form-design/editor?id=${formId}`)
+      await page.goto(`/infra/online/editor?id=${formId}`)
       const renderStart = Date.now()
       await page.getByText('表单设计', { exact: true }).last().click()
       await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 120_000 })

@@ -237,7 +237,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
@@ -260,7 +260,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
@@ -290,7 +290,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       const addButton = page.getByRole('button', { name: /新增规则/ })
@@ -338,7 +338,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
@@ -361,7 +361,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('tab', { name: '跨字段校验' }).click()
 
@@ -414,7 +414,7 @@ test.describe('联动规则编辑器', () => {
     ]
     const { id } = await createFormWithRules(request, token, rules)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       // 折叠态就该显示规则名与触发时机
@@ -445,7 +445,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('button', { name: /新增规则/ }).click()
 
@@ -489,7 +489,7 @@ test.describe('联动规则编辑器', () => {
     ]
     const { id } = await createFormWithRules(request, token, rules)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       const ruleName = page.locator('.rule-name').filter({ hasText: '待删除的规则' })
@@ -514,7 +514,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
@@ -553,7 +553,7 @@ test.describe('联动规则编辑器', () => {
     ]
     const { id } = await createFormWithRules(request, token, rules)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
 
       // 两个失效引用都要被点名，否则用户不知道该改哪一处
@@ -570,7 +570,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 
@@ -595,7 +595,7 @@ test.describe('联动规则编辑器', () => {
     const token = await login(page)
     const { id } = await createFormWithRules(request, token, [])
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('tab', { name: '扩展方式' }).click()
 

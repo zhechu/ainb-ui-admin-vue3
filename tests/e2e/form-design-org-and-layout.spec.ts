@@ -222,7 +222,7 @@ test.describe('列表设计 · 配置表格的高度', () => {
 
     const open = async (height: number) => {
       await page.setViewportSize({ width: 1600, height })
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await expect(page.locator('.step-list-design')).toBeAttached({ timeout: 60_000 })
       await page.locator('span', { hasText: /^列表设计$/ }).first().click()
       await expect(page.locator('.step-list-design .config-table:visible').first()).toBeVisible({

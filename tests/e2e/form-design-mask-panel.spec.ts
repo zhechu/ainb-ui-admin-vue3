@@ -69,7 +69,7 @@ test.describe('属性面板 · 数据脱敏', () => {
     const token = await login(page)
     const id = await createForm(request, token)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await page.getByText('表单设计', { exact: true }).last().click()
       await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 

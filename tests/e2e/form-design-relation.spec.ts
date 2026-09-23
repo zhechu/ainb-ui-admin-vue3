@@ -95,7 +95,7 @@ const relationRule = (field: string, targetCode: string, mappings: any[] = []) =
 test.describe('ApiSelect 已删除（方案 §3.4）', () => {
   test('⚠️ 设计器左侧面板里不再有「接口选择器」', async ({ page, request }) => {
     const token = await login(page)
-    await page.goto(`/infra/form-design/editor?id=${await firstFormId(request, token)}`)
+    await page.goto(`/infra/online/editor?id=${await firstFormId(request, token)}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 
@@ -107,7 +107,7 @@ test.describe('ApiSelect 已删除（方案 §3.4）', () => {
 
   test('替代品「远程选择器」在面板里，且能拖入', async ({ page, request }) => {
     const token = await login(page)
-    await page.goto(`/infra/form-design/editor?id=${await firstFormId(request, token)}`)
+    await page.goto(`/infra/online/editor?id=${await firstFormId(request, token)}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 
@@ -143,7 +143,7 @@ test.describe('ApiSelect 已删除（方案 §3.4）', () => {
 test.describe('关联表单控件', () => {
   test('左侧面板里有「关联表单」，属性面板有带出字段配置', async ({ page, request }) => {
     const token = await login(page)
-    await page.goto(`/infra/form-design/editor?id=${await firstFormId(request, token)}`)
+    await page.goto(`/infra/online/editor?id=${await firstFormId(request, token)}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 

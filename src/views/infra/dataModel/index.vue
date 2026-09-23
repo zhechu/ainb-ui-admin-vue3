@@ -184,17 +184,18 @@ const { t } = useI18n()
 const { push } = useRouter() // 路由跳转
 
 /**
- * 系统内置表前缀，需与后端 SqlSafeGuard.FRAMEWORK_TABLE_PREFIXES 保持一致。
+ * 系统内置表前缀，页面初始化时从后端拉取（`/infra/data-model/list-system-table-prefix`）。
+ *
+ * 此前这里硬编码了一份，与后端 SqlSafeGuard 的名单两处维护 —— 后端新增 qrtz_/flw_ 时
+ * 前端漏跟就会出现「按钮能点、点了报错」。现在唯一来源是后端的 SystemTablePolicy。
+ *
  * 前端仅用于「禁用删除按钮 + 提示」，后端 deleteDataModel 仍会二次拦截，双保险。
+ * 拉取失败时按空数组处理：不误禁按钮，真正的拦截交给后端。
  */
-const FRAMEWORK_TABLE_PREFIXES = [
-  'system_', 'sys_', 'infra_', 'bpm_', 'act_', 'flw_',
-  'member_', 'pay_', 'mp_', 'mall_', 'trade_', 'promotion_', 'product_',
-  'crm_', 'erp_', 'hrm_', 'fms_', 'mes_', 'wms_', 'im_', 'iot_', 'ai_', 'report_', 'qrtz_'
-]
+const frameworkTablePrefixes = ref<string[]>([])
 const isFrameworkTable = (tableName?: string) => {
   const name = (tableName || '').toLowerCase()
-  return FRAMEWORK_TABLE_PREFIXES.some((prefix) => name.startsWith(prefix))
+  return frameworkTablePrefixes.value.some((prefix) => name.startsWith(prefix))
 }
 
 /**
@@ -315,7 +316,16 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
 
   try {
     await DataModelApi.deleteDataModel(row.id, dropTable, false)
-    message.success(t('common.delSuccess'))
+    // 只删登记时把「表还在」说清楚。不说的话它就成了一张孤儿表：
+    // 列表上再也看不到，下次建同名表才会撞上，而那时已经很难想起它是怎么来的
+    if (dropTable) {
+      message.success(t('common.delSuccess'))
+    } else {
+      message.success(
+        `模型登记已删除。数据库中的表 ${row.tableName} 仍然保留 —— ` +
+          `需要再次使用时，用「导入已有表」把它登记回来即可，不要新建同名表`
+      )
+    }
     await getList()
   } catch (error: any) {
     // 后端在表中有数据时会要求二次确认风险，这里承接该提示
@@ -329,7 +339,13 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 前缀名单拉取失败不应拖垮列表页 —— 失败时按空数组走，拦截交给后端
+  try {
+    frameworkTablePrefixes.value = await DataModelApi.getSystemTablePrefixes()
+  } catch {
+    frameworkTablePrefixes.value = []
+  }
   getList()
 })
 </script>

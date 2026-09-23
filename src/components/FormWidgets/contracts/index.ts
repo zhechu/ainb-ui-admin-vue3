@@ -78,6 +78,30 @@ export interface WidgetContract {
   maskable: boolean
   /** 字段级权限预留占位，本阶段不参与任何逻辑 */
   permissionKey: string | null
+  /** 控件自身的配置项（契约 v2 新增）。只收录「配错了会静默失效」的那些 */
+  props?: WidgetPropSpec[]
+}
+
+/**
+ * 单个配置项的说明（契约 v2 新增）
+ *
+ * 它描述的是「这个控件怎么配才能用起来」——`DictSelect` 该填哪个字典、
+ * `RelationForm` 该绑哪张表单。这类配置**写错键名不会报错**，
+ * 实测踩到过示例表单把 `SystemValue` 的 `source` 写成 `valueType`，
+ * 界面上安静地回落成默认值，没有任何提示。
+ */
+export interface WidgetPropSpec {
+  /** 键名，即 rule.props 里的 key。写错不报错，只是安静地不生效 */
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'any'
+  /** 不填则该控件无法正常工作 */
+  required: boolean
+  desc: string
+  /** 受控取值。非空表示只能从这里面选 */
+  allowedValues?: string[]
+  /** 需要引用别处编码时，说明去哪儿取 */
+  source?: string
+  example?: string
 }
 
 /** 跨前后端的结构性事实 */
@@ -132,7 +156,10 @@ const widgets: WidgetContract[] = (raw.widgets as any[]).map((w) => ({
     sortable: w.caps?.sortable ?? false
   },
   maskable: w.maskable ?? false,
-  permissionKey: w.permissionKey ?? null
+  permissionKey: w.permissionKey ?? null,
+  // 🔴 这个 map 是逐字段写的，新增契约字段必须在这里补一行，否则会被静默丢掉 ——
+  //    类型声明里有、运行时却拿不到，一致性测试就是这么抓到的
+  props: w.props
 }))
 
 const widgetByType = new Map<string, WidgetContract>(widgets.map((w) => [w.type, w]))
@@ -325,3 +352,20 @@ export const resolveJdbcTypeFamily = (jdbcTypeName?: string): JdbcTypeFamily | u
   }
   return undefined
 }
+
+// ==================== 控件配置项（契约 v2） ====================
+
+/**
+ * 取某个控件的配置项说明
+ *
+ * 契约里没有 props 的控件返回空数组 —— 那表示它没有「配错了会静默失效」的配置项，
+ * 不表示它完全不可配（纯样式属性刻意不收录，契约越长模型越容易忽略关键约束）。
+ */
+export const listWidgetProps = (type?: string): WidgetPropSpec[] =>
+  getWidgetContract(type)?.props ?? []
+
+/** 取某个控件的必填配置项键名 */
+export const listRequiredWidgetProps = (type?: string): string[] =>
+  listWidgetProps(type)
+    .filter((item) => item.required)
+    .map((item) => item.name)

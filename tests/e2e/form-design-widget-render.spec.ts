@@ -365,7 +365,7 @@ test.describe('表单设计器 · 头部按钮', () => {
 
       await page.setViewportSize({ width, height: 900 })
       await login(page)
-      await page.goto(`/infra/form-design/editor?id=${gallery.id}`)
+      await page.goto(`/infra/online/editor?id=${gallery.id}`)
       await page.waitForSelector('.form-design-editor-page', { timeout: 60_000 })
 
       // 切到第三步：按钮最多的那一步
@@ -471,7 +471,7 @@ test.describe('设计器产出的规则类型与控件契约一致', () => {
     scratchId = ((await created.json()) as { data: number }).data
 
     await login(page)
-    await page.goto(`/infra/form-design/editor?id=${scratchId}`)
+    await page.goto(`/infra/online/editor?id=${scratchId}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 60_000 })
 

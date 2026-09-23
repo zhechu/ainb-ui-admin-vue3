@@ -77,7 +77,7 @@ async function deleteForm(request: APIRequestContext, token: string, id: number)
 
 /** 打开设计器并切到「数据绑定」这一步 */
 async function openBindingStep(page: Page, id: number) {
-  await page.goto(`/infra/form-design/editor?id=${id}`)
+  await page.goto(`/infra/online/editor?id=${id}`)
   await page.getByText('数据绑定', { exact: true }).last().click()
   await expect(page.locator('.table-field').first()).toBeVisible({ timeout: 30_000 })
 }

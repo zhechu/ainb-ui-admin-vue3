@@ -614,31 +614,9 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           activeMenu: '/ai/knowledge'
         }
-      },
-      {
-        path: 'console/workflow/create',
-        component: () => import('@/views/ai/workflow/form/index.vue'),
-        name: 'AiWorkflowCreate',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          title: '设计 AI 工作流',
-          activeMenu: '/ai/console/workflow'
-        }
-      },
-      {
-        path: 'console/workflow/:type/:id',
-        component: () => import('@/views/ai/workflow/form/index.vue'),
-        name: 'AiWorkflowUpdate',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          title: '设计 AI 工作流',
-          activeMenu: '/ai/console/workflow'
-        }
       }
+      // ai/workflow 路由已摘除：ai_workflow 表尚未建立，功能仍是半成品，从菜单到路由统一隐藏。
+      // 源码保留，待功能完整后重新开放。
     ]
   },
   {

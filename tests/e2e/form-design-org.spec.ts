@@ -49,7 +49,7 @@ async function firstFormId(request: APIRequestContext, token: string): Promise<n
 }
 
 async function openDesigner(page: Page, id: number) {
-  await page.goto(`/infra/form-design/editor?id=${id}`)
+  await page.goto(`/infra/online/editor?id=${id}`)
   await page.getByText('表单设计', { exact: true }).last().click()
   await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 }

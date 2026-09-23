@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { login, gotoWithAuth } from './helpers/auth'
 
 /**
  * AI 助手管理员配置页的端到端验证（方案 §12）
@@ -12,44 +13,37 @@ import { test, expect } from '@playwright/test'
  * ⚠️ 用例会真的关一次助手再开回来，跑的时候别同时在用助手。
  */
 
-const ADMIN = { username: 'admin', password: 'admin123' }
-
-async function login(page) {
-  await page.goto('/')
-  if (page.url().includes('/login')) {
-    await page.fill('input[placeholder*="账号"], input[placeholder*="用户名"]', ADMIN.username)
-    await page.fill('input[type="password"]', ADMIN.password)
-    await page.getByRole('button', { name: /登录|登 录/ }).click()
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30000 })
-  }
-}
+// 登录与跳转走共用辅助，理由见 helpers/auth.ts
 
 test.describe('AI 助手管理员配置', () => {
   test.setTimeout(120_000)
 
   test('三块内容都渲染得出来，工具清单是只读的', async ({ page }) => {
     await login(page)
-    await page.goto('/agent/config')
+    await gotoWithAuth(page, '/agent/config')
 
     await expect(page.getByText('总开关')).toBeVisible({ timeout: 20000 })
     await expect(page.getByText('用量配额')).toBeVisible()
     await expect(page.getByText('已注册的工具')).toBeVisible()
 
-    // 工具清单要有内容，且必须包含那个最危险的工具
-    await expect(page.getByText('datamodel_create')).toBeVisible()
+    // 工具清单要有内容，且必须包含那个最危险的工具。
+    // ⚠️ 必须精确匹配工具名，不能用 getByText('datamodel_create') 笼统找 ——
+    //    别的工具的【描述】里会提到它（datamodel_preview_ddl 就写了
+    //    「要真正执行请调用 datamodel_create」），笼统匹配会 strict mode violation
+    const row = page.locator('.el-table__row', {
+      has: page.getByText('datamodel_create', { exact: true })
+    })
+    await expect(row).toHaveCount(1)
     // 它必须被标成「要确认」—— 这是 Plan 铁律在界面上的体现
-    const row = page.locator('.el-table__row', { hasText: 'datamodel_create' })
     await expect(row.getByText('要确认')).toBeVisible()
 
     // 只读：工具表里不该出现任何开关
-    await expect(
-      page.locator('.el-table__row', { hasText: 'datamodel_create' }).locator('.el-switch')
-    ).toHaveCount(0)
+    await expect(row.locator('.el-switch')).toHaveCount(0)
   })
 
   test('🔴 总开关关掉之后，助手真的会拒绝提问', async ({ page, request }) => {
     await login(page)
-    await page.goto('/agent/config')
+    await gotoWithAuth(page, '/agent/config')
     await expect(page.getByText('总开关')).toBeVisible({ timeout: 20000 })
 
     const toggle = page.locator('.el-switch').first()

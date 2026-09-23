@@ -123,7 +123,7 @@ test.afterAll(async ({ request }) => {
 
 /** 打开低代码表单设计器 */
 async function openFormDesigner(page: Page, formId: number) {
-  await page.goto(`/infra/form-design/editor?id=${formId}`)
+  await page.goto(`/infra/online/editor?id=${formId}`)
   await page.getByText('表单设计', { exact: true }).last().click()
   await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 }

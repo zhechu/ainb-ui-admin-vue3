@@ -84,7 +84,7 @@ async function findDesignId(page: Page, token: string, code: string): Promise<nu
  *                    渲染没完就去点控件会点空，表现为属性面板一直是空的
  */
 async function gotoFormDesignStep(page: Page, designId: number, anchorLabel: string) {
-  await page.goto(`/infra/form-design/editor?id=${designId}`)
+  await page.goto(`/infra/online/editor?id=${designId}`)
   await expect(page.getByRole('button', { name: '下一步' })).toBeVisible({ timeout: 30_000 })
   for (let i = 0; i < 2; i++) {
     await page.getByRole('button', { name: '下一步' }).click()

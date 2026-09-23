@@ -112,7 +112,7 @@ async function cleanup(
 
 /** 打开设计器并切到「列表设计」下的某个页签 */
 async function openListTab(page: Page, id: number, tab: string) {
-  await page.goto(`/infra/form-design/editor?id=${id}`)
+  await page.goto(`/infra/online/editor?id=${id}`)
   // 设计器要现编译一大批模块
   await page.getByText('列表设计', { exact: true }).click({ timeout: 60_000 })
   await page.getByRole('tab', { name: tab }).click()

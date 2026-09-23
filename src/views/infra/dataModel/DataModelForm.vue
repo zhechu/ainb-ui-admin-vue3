@@ -42,10 +42,51 @@
           </el-form-item>
         </el-col>
       </el-row>
-      <el-form-item label="备注" prop="remark">
-        <el-input v-model="formData.remark" placeholder="选填" />
-      </el-form-item>
+      <el-row :gutter="20">
+        <el-col :span="8">
+          <el-form-item label="备注" prop="remark">
+            <el-input v-model="formData.remark" placeholder="选填" />
+          </el-form-item>
+        </el-col>
+        <!-- 系统列策略只在新建时可选：它决定建表那一刻注入哪些系统列，建完就不再有意义 -->
+        <el-col v-if="formType === 'create'" :span="8">
+          <el-form-item label="系统列策略">
+            <el-select
+              v-model="formData.systemColumnProfile"
+              class="w-full"
+              @change="handleProfileChange"
+            >
+              <el-option
+                v-for="item in SYSTEM_COLUMN_PROFILES"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              >
+                <span>{{ item.label }}</span>
+                <span class="ml-10px text-gray-400 text-12px">{{ item.tip }}</span>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col v-if="formType === 'create'" :span="8">
+          <div class="profile-tip">{{ currentProfileTip }}</div>
+        </el-col>
+      </el-row>
     </el-form>
+
+    <!-- 选了非默认策略时给出显著提示：丢掉 tenant_id 是有安全含义的，不能悄悄发生 -->
+    <el-alert
+      v-if="formType === 'create' && formData.systemColumnProfile !== 'TENANT'"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="mb-10px"
+    >
+      <template #title>
+        该策略<b>不会注入 tenant_id</b>，这张表的数据将<b>对所有租户可见</b>。
+        请确认这正是你要的 —— 业务表一律应当用「多租户表」。
+      </template>
+    </el-alert>
 
     <!-- 流程表提示：审批类业务表需要 process_instance_id 与 process_status，可用下方「快速添加」一键补齐 -->
     <el-alert type="warning" show-icon :closable="true" class="mb-10px">
@@ -123,10 +164,16 @@
             <el-input
               v-model="row.columnName"
               size="small"
-              placeholder="字段名"
+              placeholder="字段名（字母/数字/下划线）"
               :disabled="row.readonly"
               @input="handleColumnNameInput(row)"
             />
+            <div
+              v-if="row.columnName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.columnName) && !row.readonly"
+              class="text-xs text-red-500 mt-1"
+            >
+              只允许字母、数字、下划线，且以字母或下划线开头
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="描述" min-width="180">
@@ -167,7 +214,7 @@
               v-model="row.length"
               size="small"
               :min="1"
-              :max="65535"
+              :max="16383"
               controls-position="right"
               class="!w-80px"
             />
@@ -181,7 +228,7 @@
               v-model="row.scale"
               size="small"
               :min="0"
-              :max="30"
+              :max="row.length != null ? row.length - 1 : 29"
               controls-position="right"
               class="!w-70px"
             />
@@ -227,6 +274,22 @@
               placeholder="无"
               :disabled="row.readonly || row.primaryKey"
             />
+          </template>
+        </el-table-column>
+        <el-table-column label="字典/关联" width="150">
+          <template #default="{ row }">
+            <!-- 业务语义不落物理表，也不参与结构比对，所以单独一列用弹窗编辑，不挤在主表格里 -->
+            <el-button
+              v-if="!row.readonly"
+              link
+              type="primary"
+              size="small"
+              @click="openMetaDialog(row)"
+            >
+              <span v-if="metaSummary(row)">{{ metaSummary(row) }}</span>
+              <span v-else class="text-gray-400">设置</span>
+            </el-button>
+            <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="60" align="center" fixed="right">
@@ -330,11 +393,39 @@
       </div>
     </template>
   </Dialog>
+
+  <!-- 字典/关联：业务语义，不改物理表结构、不建物理外键 -->
+  <Dialog :title="`业务语义 - ${metaRow?.columnName ?? ''}`" v-model="metaVisible" width="560px">
+    <el-alert type="info" :closable="false" class="mb-15px">
+      <template #title>
+        这里配的是<b>业务语义</b>，不会改动表结构，也不会建物理外键。
+        配好后表单设计等场景可直接读取，不必再填一遍。
+      </template>
+    </el-alert>
+    <el-form label-width="90px">
+      <el-form-item label="字典类型">
+        <el-input v-model="metaForm.dictType" placeholder="如 order_status，对应字典管理里的类型" />
+        <div class="meta-hint">状态、类型这类字段（建议用 TINYINT）配上它</div>
+      </el-form-item>
+      <el-form-item label="关联表">
+        <el-input v-model="metaForm.refTable" placeholder="如 biz_customer" />
+      </el-form-item>
+      <el-form-item label="关联列">
+        <el-input v-model="metaForm.refColumn" placeholder="如 id" />
+        <div class="meta-hint">两项要一起填才有意义；留空表示不关联</div>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="clearMeta">清 空</el-button>
+      <el-button type="primary" @click="saveMeta">确 定</el-button>
+    </template>
+  </Dialog>
 </template>
 
 <script lang="ts" setup>
 import Sortable from 'sortablejs'
 import * as DataModelApi from '@/api/infra/dataModel'
+import { SYSTEM_COLUMN_PROFILES } from '@/api/infra/dataModel'
 
 /** 数据模型设计表单（页内展示，非弹窗） */
 defineOptions({ name: 'DataModelForm' })
@@ -366,6 +457,8 @@ const formData = ref<{
   columns: ColumnRow[]
   indexes: IndexRow[]
   riskConfirmed: boolean
+  /** 系统列策略，仅新建时有意义 */
+  systemColumnProfile: string
 }>(emptyForm())
 const columnTypeList = ref<DataModelApi.DataModelColumnTypeVO[]>([])
 /** 系统内置字段模板（拉取一次，用于只读判定与新建时展示）：首项是主键 id */
@@ -380,12 +473,44 @@ const formRules = reactive({
   tableName: [
     { required: true, message: '表名不能为空', trigger: 'blur' },
     {
-      pattern: /^[A-Za-z_][A-Za-z0-9_]*$/,
-      message: '只允许字母、数字、下划线，且以字母或下划线开头',
+      // ⚠️ 只在【新建】时校验规范，与后端口径一致。
+      // 改表也校验的话，存量表（test_demo_* 无 biz_ 前缀、导入表可能是驼峰）会立刻改不动，
+      // 而它们正在被表单设计器使用。表名本身在改表时是只读的。
+      validator: (_rule: any, value: string, callback: any) => {
+        if (formType.value !== 'create') {
+          callback()
+          return
+        }
+        if (/^biz_[a-z0-9_]*[a-z0-9]$/.test(value ?? '')) {
+          callback()
+        } else {
+          callback(
+            new Error('表名须以 biz_ 开头，且只允许小写字母、数字、下划线（不以下划线结尾）')
+          )
+        }
+      },
       trigger: 'blur'
     }
   ],
-  tableComment: [{ required: true, message: '表描述不能为空', trigger: 'blur' }],
+  tableComment: [
+    { required: true, message: '表描述不能为空', trigger: 'blur' },
+    {
+      // 同上：只在新建时要求，与后端注释质量下限一致（至少 2 字符且含字母或汉字）
+      validator: (_rule: any, value: string, callback: any) => {
+        if (formType.value !== 'create') {
+          callback()
+          return
+        }
+        const trimmed = (value ?? '').trim()
+        if (trimmed.length >= 2 && /[a-zA-Z一-龥]/.test(trimmed)) {
+          callback()
+        } else {
+          callback(new Error('表描述至少 2 个字符，且不能是纯数字或纯标点'))
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
   modelName: [{ required: true, message: '模型名称不能为空', trigger: 'blur' }]
 })
 
@@ -398,7 +523,8 @@ function emptyForm() {
     remark: '',
     columns: [] as ColumnRow[],
     indexes: [] as IndexRow[],
-    riskConfirmed: false
+    riskConfirmed: false,
+    systemColumnProfile: 'TENANT'
   }
 }
 
@@ -444,11 +570,8 @@ const open = async (type: string, id?: number) => {
   if (columnTypeList.value.length === 0) {
     columnTypeList.value = await DataModelApi.getColumnTypeList()
   }
-  // 系统内置字段列表：新建时只读展示，编辑时用于判定哪些行不可改
-  if (systemColumns.value.length === 0) {
-    const sysCols = await DataModelApi.getSystemColumns()
-    systemColumns.value = sysCols.map((col) => ({ ...col, readonly: true }))
-  }
+  // 系统内置字段列表：新建时按所选策略只读展示，编辑时用于判定哪些行不可改
+  await loadSystemColumns(formData.value.systemColumnProfile)
   if (type === 'create') {
     formData.value.columns = []
     // 每次打开都用全新的内置字段副本，避免上一次的主键改选残留
@@ -470,7 +593,9 @@ const open = async (type: string, id?: number) => {
           commentTouched: true
         })),
         indexes: (structure.indexes || []).map((item) => ({ ...item, nameTouched: true })),
-        riskConfirmed: false
+        riskConfirmed: false,
+        // 改表时 profile 无意义（后端也会忽略），占位即可
+        systemColumnProfile: 'TENANT'
       }
     } finally {
       formLoading.value = false
@@ -493,9 +618,46 @@ const handleCancel = () => {
   emit('cancel')
 }
 
+/**
+ * 系统内置字段名的「并集」：用于编辑已有表时判定只读
+ *
+ * 🔴 不能只用当前 profile 那一份。读一张已存在的表时，我们并不知道它当初是按哪个策略建的
+ * （profile 刻意不落库，物理表结构本身就是事实来源）。
+ * 只按 TENANT 那份判定的话，存量 LEGACY 表的 version 列在界面上是可编辑可删的，
+ * 而后端的系统列保护会拒绝删它 —— 又一个「界面让做、保存才报错」。
+ */
+const systemColumnNames = ref<Set<string>>(new Set())
+
+/** 按策略加载系统内置字段；同时把并集补进 systemColumnNames */
+const loadSystemColumns = async (profile: string) => {
+  const cols = await DataModelApi.getSystemColumns(profile)
+  systemColumns.value = cols.map((col) => ({ ...col, readonly: true }))
+  cols.forEach((col) => systemColumnNames.value.add(col.columnName.toLowerCase()))
+  // LEGACY 含 version、TENANT 含 tenant_id，谁也不是谁的超集，取一次并集补齐
+  if (systemColumnNames.value.size < 8) {
+    const others = await DataModelApi.getSystemColumns(profile === 'LEGACY' ? 'TENANT' : 'LEGACY')
+    others.forEach((col) => systemColumnNames.value.add(col.columnName.toLowerCase()))
+  }
+}
+
+/** 切换系统列策略：内置字段要跟着变，否则界面展示的与建出来的表不一致 */
+const handleProfileChange = async (profile: string) => {
+  await loadSystemColumns(profile)
+  builtinColumns.value = systemColumns.value.map((col) => ({ ...col }))
+  // 策略变了可能移除了 tenant_id，清掉引用了已消失列的索引，避免提交时报「索引列不存在」
+  const available = new Set(displayColumns.value.map((c) => c.columnName?.toLowerCase()))
+  formData.value.indexes = formData.value.indexes.filter((idx) =>
+    (idx.columnNames || []).every((n) => available.has((n || '').toLowerCase()))
+  )
+}
+
+const currentProfileTip = computed(
+  () =>
+    SYSTEM_COLUMN_PROFILES.find((p) => p.value === formData.value.systemColumnProfile)?.tip ?? ''
+)
+
 /** 是否为系统内置字段（大小写不敏感） */
-const isSystemColumn = (name: string) =>
-  systemColumns.value.some((col) => col.columnName.toLowerCase() === (name || '').toLowerCase())
+const isSystemColumn = (name: string) => systemColumnNames.value.has((name || '').toLowerCase())
 
 // ==================== 字段编辑 ====================
 
@@ -732,6 +894,48 @@ const initSortable = () => {
 const ddlVisible = ref(false)
 const ddlList = ref<string[]>([])
 
+// ==================== 字典/关联（业务语义） ====================
+
+const metaVisible = ref(false)
+const metaRow = ref<ColumnRow | null>(null)
+const metaForm = ref({ dictType: '', refTable: '', refColumn: '' })
+
+/** 表格里的摘要文案：优先显示字典，其次显示关联 */
+const metaSummary = (row: ColumnRow) => {
+  if (row.dictType) {
+    return `字典：${row.dictType}`
+  }
+  if (row.refTable) {
+    return `关联：${row.refTable}${row.refColumn ? '.' + row.refColumn : ''}`
+  }
+  return ''
+}
+
+const openMetaDialog = (row: ColumnRow) => {
+  metaRow.value = row
+  metaForm.value = {
+    dictType: row.dictType ?? '',
+    refTable: row.refTable ?? '',
+    refColumn: row.refColumn ?? ''
+  }
+  metaVisible.value = true
+}
+
+const saveMeta = () => {
+  if (metaRow.value) {
+    // 空串归一成 undefined：后端按「没配」处理，避免存下一堆空字符串
+    metaRow.value.dictType = metaForm.value.dictType.trim() || undefined
+    metaRow.value.refTable = metaForm.value.refTable.trim() || undefined
+    metaRow.value.refColumn = metaForm.value.refColumn.trim() || undefined
+  }
+  metaVisible.value = false
+}
+
+const clearMeta = () => {
+  metaForm.value = { dictType: '', refTable: '', refColumn: '' }
+  saveMeta()
+}
+
 /** 组装提交给后端的载荷：剥离只读/自动命名等纯前端标记 */
 const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
   // 新建：把内置字段一并提交，后端就不会再自行注入 id 作主键，从而尊重界面上改选的主键；
@@ -747,7 +951,12 @@ const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
     primaryKey: row.primaryKey,
     autoIncrement: row.autoIncrement,
     defaultValue: row.defaultValue,
-    oldColumnName: row.oldColumnName
+    oldColumnName: row.oldColumnName,
+    // 业务语义：不落物理表，后端单独存进 column_meta。
+    // 改表时后端按提交的完整列表重建，所以这里必须原样带上，漏传等于清空
+    dictType: row.dictType,
+    refTable: row.refTable,
+    refColumn: row.refColumn
   }))
   const indexes = formData.value.indexes.map((row) => ({
     indexName: row.indexName,
@@ -763,7 +972,10 @@ const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
     remark: formData.value.remark,
     columns,
     indexes,
-    riskConfirmed: formData.value.riskConfirmed
+    riskConfirmed: formData.value.riskConfirmed,
+    // 只在新建时提交：改表传了后端也会忽略，但传了容易让人误以为能改
+    systemColumnProfile:
+      formType.value === 'create' ? formData.value.systemColumnProfile : undefined
   }
 }
 
@@ -878,6 +1090,20 @@ const submitForm = async () => {
   font-size: 16px;
   font-weight: bold;
   color: var(--el-text-color-primary);
+}
+
+.profile-tip {
+  padding-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.meta-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
 }
 
 .ddl-block {

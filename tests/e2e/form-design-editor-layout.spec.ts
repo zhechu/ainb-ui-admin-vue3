@@ -92,7 +92,7 @@ test.describe('设计器配置行的布局', () => {
     const token = await login(page)
     const id = await createForm(request, token, FIELDS)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await openLogicDialog(page)
       await page.getByRole('button', { name: /新增规则/ }).click({ timeout: 30_000 })
       await page
@@ -124,7 +124,7 @@ test.describe('设计器配置行的布局', () => {
     const token = await login(page)
     const id = await createForm(request, token, FIELDS)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await page.locator('.cursor-pointer').filter({ hasText: '列表设计' }).first().click()
       await page.getByRole('tab', { name: '自定义按钮' }).click()
       await page
@@ -150,7 +150,7 @@ test.describe('设计器配置行的布局', () => {
     const token = await login(page)
     const id = await createForm(request, token, FIELDS)
     try {
-      await page.goto(`/infra/form-design/editor?id=${id}`)
+      await page.goto(`/infra/online/editor?id=${id}`)
       await page.getByText('表单设计', { exact: true }).last().click()
       await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 

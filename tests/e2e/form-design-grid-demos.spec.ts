@@ -569,7 +569,7 @@ async function findDesignId(
 
 /** 打开设计器并切到「列表设计」这一步 */
 async function openListDesign(page: Page, id: number) {
-  await page.goto(`/infra/form-design/editor?id=${id}`)
+  await page.goto(`/infra/online/editor?id=${id}`)
   await page.locator('.cursor-pointer').filter({ hasText: '列表设计' }).first().click()
 }
 

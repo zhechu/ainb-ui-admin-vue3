@@ -132,7 +132,7 @@ async function deleteInterface(request: APIRequestContext, token: string, id: nu
 
 /** 打开设计器并切到「表单设计」这一步 */
 async function openDesigner(page: Page, formId: number) {
-  await page.goto(`/infra/form-design/editor?id=${formId}`)
+  await page.goto(`/infra/online/editor?id=${formId}`)
   await page.getByText('表单设计', { exact: true }).last().click()
   await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 }

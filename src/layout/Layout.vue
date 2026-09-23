@@ -3,6 +3,7 @@ import { computed, defineComponent, unref } from 'vue'
 import { useAppStore } from '@/store/modules/app'
 import { Backtop } from '@/components/Backtop'
 import { Setting } from '@/layout/components/Setting'
+import AgentDock from '@/layout/components/AgentDock/index.vue'
 import { useRenderLayout } from './components/useRenderLayout'
 import { useDesign } from '@/hooks/web/useDesign'
 import { getLayoutRenderMode } from '@/utils/layout'
@@ -70,6 +71,9 @@ export default defineComponent({
         <Backtop></Backtop>
 
         <Setting></Setting>
+
+        {/* 全局悬浮助手入口：助手页上自己不显示，无权限也不显示 */}
+        <AgentDock></AgentDock>
       </section>
     )
   }

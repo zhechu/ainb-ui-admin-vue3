@@ -79,6 +79,15 @@ interface BackendContract {
     columnTypes: string[] | null
     caps: Record<string, boolean | null> | null
     maskable: boolean | null
+    props?: Array<{
+      name: string
+      type: string
+      required: boolean
+      desc: string
+      allowedValues?: string[]
+      source?: string
+      example?: string
+    }> | null
   }>
 }
 
@@ -184,7 +193,44 @@ test.describe('表单控件契约的前后端一致性', () => {
           normalizeBool(backendCaps[cap], false)
         )
       }
+
+      // 🔴 配置项（契约 v2）也必须两侧一致。
+      //    props 是给 LLM 与属性面板看的「这个控件怎么配」，键名写错不会报错、
+      //    只会静默不生效 —— 两份副本在这里漂移，表现就是「AI 按后端契约配，
+      //    前端按自己那份校验」，两边各自都自洽，谁都发现不了
+      expect(frontendWidget.props ?? [], `${where} 的 props 不一致`).toEqual(
+        backendWidget.props ?? []
+      )
     }
+  })
+
+  test('props 自身的约束：必填项、受控取值、引用来源都得说清楚', async ({ page, request }) => {
+    const token = await login(page)
+    const backend = await fetchBackendContract(request, token)
+
+    let total = 0
+    for (const widget of backend.widgets) {
+      for (const spec of widget.props ?? []) {
+        total++
+        const where = `控件 ${widget.type} 的配置项 ${spec.name}`
+        // 键名是整条记录里最要紧的一项：写错不报错，只是安静地不生效
+        expect(spec.name, `${where}：键名不能为空`).toBeTruthy()
+        expect(spec.type, `${where}：缺少类型`).toBeTruthy()
+        expect(
+          spec.desc && spec.desc.length >= 4,
+          `${where}：说明太短。契约是给模型看的，一句「地址」这种说明帮不上忙`
+        ).toBeTruthy()
+        // 受控取值不能是空数组 —— 空数组的语义是「一个合法值都没有」，
+        // 那会让校验把所有配置都判成非法
+        if (spec.allowedValues !== undefined) {
+          expect(spec.allowedValues.length, `${where}：allowedValues 不能是空数组`).toBeGreaterThan(
+            0
+          )
+        }
+      }
+    }
+    // 防止这条测试在 props 全被删光之后变成永远通过的空测试
+    expect(total, '契约里一条 props 都没有，这条测试等于没跑').toBeGreaterThan(50)
   })
 
   test('前端 JSON 副本与后端接口返回的 JDBC 类型族规则一致', async ({ page, request }) => {

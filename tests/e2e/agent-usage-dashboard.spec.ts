@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { login, gotoWithAuth } from './helpers/auth'
 
 /**
  * AI 助手用量看板的端到端验证（P4 / 方案 §8、§14 判据「用量看板可按租户/用户/场景下钻」）
@@ -13,17 +14,8 @@ import { test, expect } from '@playwright/test'
  *（跑过几次助手对话即可）。
  */
 
-const ADMIN = { username: 'admin', password: 'admin123' }
-
-async function login(page) {
-  await page.goto('/')
-  if (page.url().includes('/login')) {
-    await page.fill('input[placeholder*="账号"], input[placeholder*="用户名"]', ADMIN.username)
-    await page.fill('input[type="password"]', ADMIN.password)
-    await page.getByRole('button', { name: /登录|登 录/ }).click()
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30000 })
-  }
-}
+// 登录与跳转走共用辅助：登录之后紧接着的一次 goto 会偶发被路由守卫弹回登录页，
+// 不处理的话失败现象是「页面上什么都没有」，看起来像业务代码坏了。详见 helpers/auth.ts
 
 test.describe('AI 助手用量看板', () => {
   test.setTimeout(120_000)
@@ -44,7 +36,7 @@ test.describe('AI 助手用量看板', () => {
     })
 
     await login(page)
-    await page.goto('/agent/usage')
+    await gotoWithAuth(page, '/agent/usage')
 
     // 1. 默认按场景下钻，表格要有数据。
     //    ⚠️ 必须限定到第一张表：页面下方还有「调用明细」表，
@@ -74,7 +66,7 @@ test.describe('AI 助手用量看板', () => {
 
   test('调用明细区渲染出输入原文', async ({ page }) => {
     await login(page)
-    await page.goto('/agent/usage')
+    await gotoWithAuth(page, '/agent/usage')
     // 超管有 agent:usage:detail，这一段应当可见
     await expect(page.getByText('最近的调用明细')).toBeVisible({ timeout: 20000 })
     await expect(page.getByText('输入原文')).toBeVisible()

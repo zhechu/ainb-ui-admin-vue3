@@ -107,7 +107,7 @@ test.describe('公式控件的设计期', () => {
     )
     const id = ((await listResp.json()) as any).data.list[0].id
 
-    await page.goto(`/infra/form-design/editor?id=${id}`)
+    await page.goto(`/infra/online/editor?id=${id}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
 
@@ -128,7 +128,7 @@ test.describe('公式控件的设计期', () => {
     )
     const id = ((await listResp.json()) as any).data.list[0].id
 
-    await page.goto(`/infra/form-design/editor?id=${id}`)
+    await page.goto(`/infra/online/editor?id=${id}`)
     await page.getByText('表单设计', { exact: true }).last().click()
     await expect(page.locator('._fc-designer')).toBeVisible({ timeout: 30_000 })
     await page.locator('._fc-l-item').filter({ hasText: '计算公式' }).first().click()

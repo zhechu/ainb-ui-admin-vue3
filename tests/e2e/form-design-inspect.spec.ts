@@ -256,7 +256,7 @@ test.describe('设计期体检', () => {
       fixture = await createDraft(request, token, {
         printTemplate: '<p>{no_such_field}</p>'
       })
-      await page.goto(`/infra/form-design/editor?id=${fixture.id}`)
+      await page.goto(`/infra/online/editor?id=${fixture.id}`)
 
       const button = page.getByRole('button', { name: /体\s*检/ })
       await expect(button, '设计器头部应当有体检按钮').toBeVisible({ timeout: 60_000 })

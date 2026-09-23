@@ -118,6 +118,9 @@ test('数据接口体验优化走查', async ({ page }) => {
 
   // ---------- 需求二：搜索高亮 / 计数 / 自动展开 ----------
   await searchInput.fill('user')
+  // ⚠️ 搜索是显式触发的：只填值不会过滤。组件里写明「回车 / 点查询按钮才真正发起搜索：
+  // 215 张表逐字过滤既卡又没必要」。这里必须按回车，否则 activeKeyword 为空、计数不渲染。
+  await searchInput.press('Enter')
   await page.waitForTimeout(600)
   await expect(panel.getByText(/命中\s*\d+\s*表\s*\/\s*\d+\s*字段/)).toBeVisible()
   // 自动展开命中项所在表
@@ -134,6 +137,7 @@ test('数据接口体验优化走查', async ({ page }) => {
 
   // ---------- 需求二：空态 + 清空 ----------
   await searchInput.fill('zzqqxx_not_exist_zz')
+  await searchInput.press('Enter') // 同上：显式触发才会过滤
   await page.waitForTimeout(500)
   await expect(panel.getByText('无匹配的表或字段')).toBeVisible()
   const clearBtn = panel.getByRole('button', { name: '清空搜索' })

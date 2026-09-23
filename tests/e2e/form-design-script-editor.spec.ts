@@ -86,7 +86,7 @@ async function deleteForm(request: APIRequestContext, token: string, id: number)
 
 /** 打开设计器 → 逻辑与扩展 → 扩展方式页签 */
 async function openScriptPanel(page: Page, id: number) {
-  await page.goto(`/infra/form-design/editor?id=${id}`)
+  await page.goto(`/infra/online/editor?id=${id}`)
   await openLogicDialog(page)
   await page.getByRole('tab', { name: '扩展方式' }).click()
   const editor = page.locator('.monaco-editor').first()

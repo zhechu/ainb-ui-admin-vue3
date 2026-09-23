@@ -156,7 +156,7 @@ test('表单构建与设计页面应支持暗黑主题', async ({ page, request 
       expect(designerStyle.height).toBeGreaterThan(0)
     }
 
-    await page.goto('/infra/form-design/editor')
+    await page.goto('/infra/online/editor')
     await page.locator('input[placeholder="请输入表单名称"]').fill('暗色主题检查')
     await page.locator('input[placeholder*="表单编码"]').fill('dark_theme_check')
     await page.locator('.cursor-pointer').filter({ hasText: '表单设计' }).click()
