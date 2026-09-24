@@ -13,7 +13,7 @@ export const useDictSelectRule = () => {
   const rules = cloneDeep(selectRule)
   const dictOptions = ref<{ label: string; value: string }[]>([]) // 字典类型下拉数据
   onMounted(async () => {
-    const data = await DictDataApi.getSimpleDictTypeList()
+    const data = await DictDataApi.cachedGetSimpleDictTypeList()
     if (!data || data.length === 0) {
       return
     }

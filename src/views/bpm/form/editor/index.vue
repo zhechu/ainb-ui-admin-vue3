@@ -1,5 +1,14 @@
 <template>
-  <ContentWrap :body-style="{ padding: '0px' }" class="form-builder-page !mb-0">
+  <!-- v-if 必须门控 ContentWrap 本身而不是里面的 <fc-designer>：fc-designer 在 ContentWrap
+       的插槽里，插槽闭包捕获的是【页面组件渲染那一刻】的 resolveComponent 结果。FcDesigner
+       注册晚于首次渲染时，闭包里是不认识的字符串标签，之后 designerReady 翻转只会触发
+       ElCard 重渲染并复用旧闭包，页面上出现空白的 <fc-designer> 原生标签。门控放在自身
+       模板层级，翻转才会让本组件重渲染、重新 resolve 到已注册的组件。 -->
+  <ContentWrap
+    v-if="designerReady"
+    :body-style="{ padding: '0px' }"
+    class="form-builder-page !mb-0"
+  >
     <!-- 表单设计器 -->
     <div
       class="h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height)-var(--app-content-padding)-var(--app-content-padding)-2px)]"
@@ -46,7 +55,7 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { CommonStatusEnum } from '@/utils/constants'
 import * as FormApi from '@/api/bpm/form'
-import FcDesigner from '@form-create/designer'
+import { ensureFcDesigner, whenDesignerReady } from '@/plugins/formCreate/designer'
 import { encodeConf, encodeFields, setConfAndFields } from '@/utils/formCreate'
 import { useTagsViewStore } from '@/store/modules/tagsView'
 import { useFormCreateDesigner, createDesignerConfig } from '@/components/FormCreate'
@@ -65,6 +74,16 @@ const { delView } = useTagsViewStore() // 视图操作
 const designerConfig = ref(createDesignerConfig('bpmForm'))
 const designer = ref() // 表单设计器
 useFormCreateDesigner(designer) // 表单设计器增强
+
+// FcDesigner 按需加载。见 plugins/formCreate/designer.ts 的注释
+const designerReady = ref(false)
+onBeforeMount(async () => {
+  const instance = getCurrentInstance()
+  if (instance) {
+    await ensureFcDesigner(instance.appContext.app)
+  }
+  designerReady.value = true
+})
 const dialogVisible = ref(false) // 弹窗是否展示
 const formLoading = ref(false) // 表单的加载中：提交的按钮禁用
 const formData = ref({
@@ -124,6 +143,8 @@ onMounted(async () => {
   // 场景二：修改表单
   const data = await FormApi.getForm(id)
   formData.value = data
+  // fc-designer 按需加载，数据可能比设计器 chunk 先到；等它就绪再回显，否则 setConfAndFields 对 null 抛错
+  await whenDesignerReady(designer)
   setConfAndFields(designer, data.conf, data.fields)
 
   if (route.query.type !== 'copy') {

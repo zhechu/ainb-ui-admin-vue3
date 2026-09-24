@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { APIRequestContext, Page } from '@playwright/test'
 
 /**
  * e2e 的登录与带鉴权跳转
@@ -27,12 +27,15 @@ export async function login(page: Page, cred = ADMIN) {
 }
 
 /**
- * 跳到某个页面；被弹回登录页就重登再跳，最多三次
+ * 跳到某个页面；被弹回登录页就重登再跳，最多五次
+ *
+ * 次数给到 5 而不是 3：后端刚重启时首次登录要冷启动（租户缓存、动态路由装配都慢），
+ * 连着几条用例里总有一条会撞上「token 有了但守卫还没认」，3 次偶尔不够。
  *
  * @param path 目标路径
  */
 export async function gotoWithAuth(page: Page, path: string, cred = ADMIN) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     await page.goto(path)
     // 🔴 必须先等页面静默再判断 URL。
     //    弹回登录是 SPA 启动之后由路由守卫在【客户端】做的重定向，
@@ -47,3 +50,32 @@ export async function gotoWithAuth(page: Page, path: string, cred = ADMIN) {
   }
   throw new Error(`跳转到 ${path} 时反复被弹回登录页，登录态没建立起来`)
 }
+
+// ==================== 纯接口侧的登录 ====================
+
+export const API_BASE_URL = process.env.E2E_API_BASE_URL || 'http://127.0.0.1:48080/admin-api'
+export const TENANT_ID = process.env.E2E_TENANT_ID || '1'
+
+/**
+ * 用接口登录拿 token
+ *
+ * 造测试数据（建会话、建表单）走接口比点界面快一个数量级，也不会因为
+ * 界面上的偶发动效而抖。断言仍然只在界面上做 —— 这一层只负责铺前置。
+ */
+export async function apiLogin(request: APIRequestContext, cred = ADMIN): Promise<string> {
+  const response = await request.post(`${API_BASE_URL}/system/auth/login`, {
+    headers: { 'tenant-id': TENANT_ID },
+    data: { username: cred.username, password: cred.password }
+  })
+  if (!response.ok()) throw new Error(`接口登录失败：${response.status()}`)
+  const body = (await response.json()) as { data?: { accessToken?: string } }
+  const token = body.data?.accessToken
+  if (!token) throw new Error('接口登录没返回 accessToken')
+  return token
+}
+
+export const apiHeaders = (token: string) => ({
+  Authorization: `Bearer ${token}`,
+  'tenant-id': TENANT_ID
+})
+

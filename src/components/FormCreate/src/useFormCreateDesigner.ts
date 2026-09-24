@@ -156,7 +156,20 @@ export const useFormCreateDesigner = async (designer: Ref) => {
   // （编辑完一张表单再打开另一张）会让追加项累加一遍，属性面板里出现两个「格式校验」
   onBeforeUnmount(() => resetComponentProps(designer))
 
-  onMounted(async () => {
+  /**
+   * 一次性初始化
+   *
+   * 用 initialized 做幂等：onMounted 与下方 watch 都可能触发，避免重复注册。
+   * 之所以要加 watch —— 改造后 FcDesigner 走按需加载（见 plugins/formCreate/designer.ts），
+   * 使用它的页面把 `<fc-designer>` 挂在 v-if="fcDesignerReady" 后面，本组件挂载时
+   * designer.value 还是 null，onMounted 里的一次性初始化会全部空跑。
+   * watch 在 designer ref 拿到实例后补一次即可。
+   */
+  let initialized = false
+  const initialize = async () => {
+    if (initialized) return
+    if (!designer.value) return
+    initialized = true
     await nextTick()
     // 先清一次再注册：热更新与「同一 ref 重新挂载」两种路径都不会走 onBeforeUnmount，
     // 而重复注册的表现是属性面板里同一项出现多次
@@ -177,5 +190,8 @@ export const useFormCreateDesigner = async (designer: Ref) => {
     buildTitleRule()
     // 标签页容器的「分步校验」
     buildTabsRule()
-  })
+  }
+
+  onMounted(initialize)
+  watch(designer, initialize)
 }

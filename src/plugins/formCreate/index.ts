@@ -59,7 +59,6 @@ import {
   // ElFormItem,
   // ElOption
 } from 'element-plus'
-import FcDesigner from '@form-create/designer'
 import formCreate from '@form-create/element-ui'
 import install from '@form-create/element-ui/auto-import'
 
@@ -182,5 +181,7 @@ export const setupFormCreate = (app: App<Element>) => {
   // 这几个走 Vue 全局注册是不够的，原因见 registerExtraWidgets.ts
   registerExtraWidgets(formCreate)
   app.use(formCreate)
-  app.use(FcDesigner)
+  // FcDesigner（设计器）不在此处注册：只有 3 个页面用得到 `<fc-designer>`，
+  // 却曾让首屏 bundle 里常驻 ~926KB 的 vendored 源码。改为按需加载，见
+  // ./designer.ts 的 ensureFcDesigner，由使用它的页面在挂载前 await 一次
 }

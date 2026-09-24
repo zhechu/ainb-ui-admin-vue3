@@ -31,6 +31,28 @@ export const getSimpleDictTypeList = (): Promise<DictTypeVO[]> => {
   return request.get({ url: '/system/dict-type/simple-list' })
 }
 
+/**
+ * 字典类型精简列表的会话级缓存
+ *
+ * 设计器里多个规则（useDictSelectRule 等）都会拉这份数据；同一个 designer ref 被复用
+ * （编辑完一张表单再打开另一张）时还会再拉一次。字典类型属于低频变更的主数据，
+ * 缓存一个会话周期是可接受的 —— 真的改了字典类型，用户刷新页面即可。
+ *
+ * 用 Promise 而不是数据本身做缓存：并发调用共享同一个 in-flight 请求，
+ * 避免设计器初始化时几处同时打这个接口。
+ */
+let simpleDictTypeListPromise: Promise<DictTypeVO[]> | null = null
+export const cachedGetSimpleDictTypeList = (): Promise<DictTypeVO[]> => {
+  if (!simpleDictTypeListPromise) {
+    simpleDictTypeListPromise = getSimpleDictTypeList().catch((err) => {
+      // 失败要清掉缓存，否则一次网络抖动就让整个会话都拿不到数据
+      simpleDictTypeListPromise = null
+      throw err
+    })
+  }
+  return simpleDictTypeListPromise
+}
+
 // 查询字典分类列表（扁平，前端 handleTree 组装成树）
 export const getDictTypeList = (keyword?: string): Promise<DictTypeVO[]> => {
   return request.get({ url: '/system/dict-type/list', params: { keyword } })

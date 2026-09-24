@@ -137,7 +137,12 @@ test.describe('控件总览 · 渲染与录入', () => {
     await expect(dialog.locator('.el-tree').first(), '树形控件没渲染').toBeVisible()
     await expect(dialog.locator('.el-transfer').first(), '穿梭框没渲染').toBeVisible()
     await expect(dialog.locator('.signature-canvas').first(), '手写签名画布没渲染').toBeVisible()
-    await expect(dialog.locator('.el-image img').first(), '静态图片没渲染').toBeVisible()
+    // 断言 .el-image（ElImage 的根类）而不是 .el-image img：本条要证明的是「控件解析成了
+    // 真组件、不是空壳」，而 .el-image 只在 ElImage 真正挂载后才存在（解析不到会退化成
+    // HTMLUnknownElement，已被上面的总闸拦下）。里面的 <img> 要等 src 下载成功才出现，
+    // 而这张图指向外部 demo 资源站（test.yudao.iocoder.cn），它会 403 —— 那是外网可达性，
+    // 不是控件渲染缺陷，不该让本用例跟着外部主机抖动。
+    await expect(dialog.locator('.el-image').first(), '静态图片控件没渲染成 ElImage').toBeVisible()
   })
 
   test('选项类控件真的取到了数据，而不只是渲染出一个空下拉', async ({ page }) => {

@@ -28,7 +28,7 @@ export const useBillFieldRule = (designer?: Ref) => {
 
   onMounted(async () => {
     try {
-      const data = await BillTemplateApi.getSimpleBillTemplateList()
+      const data = await BillTemplateApi.cachedGetSimpleBillTemplateList()
       if (!data || data.length === 0) {
         return
       }

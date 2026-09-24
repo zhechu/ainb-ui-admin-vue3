@@ -94,6 +94,21 @@
 
       <!-- 主体内容 -->
       <div v-loading="loading" class="mt-50px">
+        <!--
+          步骤懒挂载 + 挂载后常驻
+
+          改造前四个步骤都用 v-show，一进来就同时挂载 StepTableBinding/StepFormDesign/
+          StepListDesign 三个重组件（StepListDesign 单文件 2500+ 行，还静态拉入
+          PrintTemplateEditor/CustomButtonEditor/DetailTabEditor），主线程被占住数百毫秒。
+          改成 v-if 之后，用户不进那一步就永远不下载/不实例化。
+
+          ⚠️ 挂载后不再卸载（v-show 保留）：
+          - 各步骤组件在 onMounted 里做的初始化（loadWritableTables、字典/单据模板请求、
+            sortable 初始化）只应发生一次，反复挂载会重复请求 + 状态漂移。
+          - collectAll() 依赖组件实例的 ref，用户配完第 4 步切回第 3 步保存时，
+            第 4 步的 ref 必须还在才能收回 listConf。
+          - 与 HIDDEN_STEP_KEYS 的原语义等价：那些 key 初始就在 mountedSteps 里。
+        -->
         <!-- 基础设置 -->
         <div v-show="activeStepKey === 'basic'" class="mx-auto w-680px">
           <StepBasicInfo ref="stepBasicRef" v-model="formData" />
@@ -108,22 +123,22 @@
           表单项本身仍限宽在 680px（见 StepTableBinding 内部的 .binding-form），
           只有关联表那一块铺满，避免整页的输入框被拉成一条长线。
         -->
-        <div v-show="activeStepKey === 'binding'" class="mx-auto w-1080px max-w-full">
+        <div v-if="mountedSteps.has('binding')" v-show="activeStepKey === 'binding'" class="mx-auto w-1080px max-w-full">
           <StepTableBinding ref="stepBindingRef" v-model="formData" />
         </div>
 
         <!-- 表单设计。设计器需要铺满宽度，不加 mx-auto 限制 -->
-        <div v-show="activeStepKey === 'form'">
+        <div v-if="mountedSteps.has('form')" v-show="activeStepKey === 'form'">
           <StepFormDesign
             ref="stepFormRef"
             v-model="formData"
             :logic-problems="logicProblems"
-            @open-logic="logicDialogVisible = true"
+            @open-logic="openLogicDialog"
           />
         </div>
 
         <!-- 列表设计。仅表单+列表类型出现 -->
-        <div v-show="activeStepKey === 'list'">
+        <div v-if="mountedSteps.has('list')" v-show="activeStepKey === 'list'">
           <StepListDesign ref="stepListRef" :model-data="formData" :form-fields="designerFields" />
         </div>
       </div>
@@ -136,7 +151,7 @@
       都会静默跳过。所以保存前的拦截不能只靠它 —— 见 validateLogicBeforeSave()。
     -->
     <Dialog v-model="logicDialogVisible" title="逻辑与扩展" width="1080px" max-height="70vh">
-      <StepLogic ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
+      <StepLogic v-if="logicMounted" ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
       <template #footer>
         <el-button type="primary" @click="handleLogicDialogClose">完成</el-button>
       </template>
@@ -185,12 +200,23 @@ import * as FormDesignApi from '@/api/infra/formDesign'
 import StepBasicInfo from './StepBasicInfo.vue'
 import StepTableBinding from './StepTableBinding.vue'
 import StepFormDesign from './StepFormDesign.vue'
-import StepListDesign from './StepListDesign.vue'
-import StepLogic from './StepLogic.vue'
 import { decodeFields } from '@/utils/formCreate'
 import { findInvalidFieldRefs } from '@/components/FormLogic/invalidFieldRefs'
 import { parseFormFields } from '@/components/FormCreate/src/utils'
 import PublishDialog from '../components/PublishDialog.vue'
+
+/**
+ * 重组件走异步分包
+ *
+ * StepListDesign 单文件 2500+ 行，静态拉入 PrintTemplateEditor / CustomButtonEditor /
+ * DetailTabEditor / FormWidgets 的一堆子模块；StepLogic 拉入 LogicRuleEditor /
+ * CrossFieldRuleEditor / FormScriptEditor。用户在很多表单里根本不会进第 4 步，
+ * 也很少打开逻辑弹窗，让它们进首包等于每次打开设计器都白下载一遍。
+ *
+ * 结合模板里的 v-if="mountedSteps.has('list')"，不进那一步就永远不发这个请求。
+ */
+const StepListDesign = defineAsyncComponent(() => import('./StepListDesign.vue'))
+const StepLogic = defineAsyncComponent(() => import('./StepLogic.vue'))
 
 defineOptions({ name: 'InfraFormDesignEditor' })
 
@@ -224,6 +250,26 @@ const ALL_STEPS = [
  * 改成不挂载的话，存量表单只要在设计器里点一次保存，这三份配置就被清空了。
  */
 const HIDDEN_STEP_KEYS: string[] = []
+
+/**
+ * 已挂载的步骤 key 集合
+ *
+ * 首次进入某一步时把 key 加进来，之后即使切走也保留（配合模板上的 v-show）。
+ * 初始值包含第一步与所有 HIDDEN_STEP_KEYS —— 后者不在步骤条上露出，
+ * 但它们的 collect() 仍要在保存时被调用，必须挂载（见上方注释）。
+ */
+const mountedSteps = ref<Set<string>>(
+  new Set([ALL_STEPS[0].key, ...HIDDEN_STEP_KEYS])
+)
+
+/** 逻辑与扩展弹窗的内容是否已挂载（配合 defineAsyncComponent 的 StepLogic） */
+const logicMounted = ref(false)
+
+/** 打开逻辑弹窗：挂载 + 显示。挂载后不再卸载，避免每次打开都重新初始化编辑器 */
+const openLogicDialog = () => {
+  logicMounted.value = true
+  logicDialogVisible.value = true
+}
 
 const loading = ref(false)
 const saveLoading = ref(false)
@@ -401,11 +447,11 @@ const handleStepClick = async (index: number) => {
       return
     }
   }
-  currentStep.value = index
+  goToStep(index)
 }
 
 const handlePrev = () => {
-  if (currentStep.value > 0) currentStep.value--
+  if (currentStep.value > 0) goToStep(currentStep.value - 1)
 }
 
 const handleNext = async () => {
@@ -414,7 +460,21 @@ const handleNext = async () => {
   } catch {
     return
   }
-  if (currentStep.value < visibleSteps.value.length - 1) currentStep.value++
+  if (currentStep.value < visibleSteps.value.length - 1) goToStep(currentStep.value + 1)
+}
+
+/**
+ * 切换步骤并确保目标步骤已挂载
+ *
+ * mountedSteps 用 Set.add 触发 ref 的响应式更新（Set 本身可变，
+ * 但整个 ref 被替换才能触发 v-if 重算 —— 所以这里重建一个 Set）。
+ */
+const goToStep = (index: number) => {
+  const key = visibleSteps.value[index]?.key
+  if (key && !mountedSteps.value.has(key)) {
+    mountedSteps.value = new Set(mountedSteps.value).add(key)
+  }
+  currentStep.value = index
 }
 
 const handleSave = async () => {

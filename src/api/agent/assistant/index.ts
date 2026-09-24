@@ -42,6 +42,12 @@ export interface AgentMessageVO {
   suggestions?: AgentSuggestionVO[]
   status: string
   errorMsg?: string
+  /**
+   * 关联的变更计划编号。有值说明这条助手消息是一张方案卡片，
+   * 需要另调 /agent/plan/get 把步骤取回来重建 —— SSE 里只带 planId 和摘要，
+   * 刷新页面之后这条路径是唯一能把卡片找回来的办法。
+   */
+  planId?: number
   createTime: Date
 }
 
@@ -54,12 +60,31 @@ export interface AgentMessageVO {
  * 所以消费时 switch 一定要留 default 分支。
  */
 export interface AgentChatEventVO {
-  type: 'META' | 'MESSAGE' | 'REASONING' | 'SUGGESTIONS' | 'DONE' | 'ERROR'
+  /**
+   * 🔴 与后端 {@code AgentAssistantService.EventType} 必须一一对应。
+   * PLANNING / PLAN 曾经漏在这里（运行时的 switch 反倒处理了），
+   * 类型看着「合法」，实际少两种 —— 这个联合类型的意义正在于让人看出漏了什么。
+   */
+  type:
+    | 'META'
+    | 'MESSAGE'
+    | 'REASONING'
+    | 'SUGGESTIONS'
+    | 'PLANNING'
+    | 'PLAN'
+    | 'DONE'
+    | 'ERROR'
   content?: string
   conversationId?: number
   messageId?: number
   references?: AgentReferenceVO[]
   suggestions?: AgentSuggestionVO[]
+  /** PLAN 事件：计划编号，步骤要另调 /agent/plan/get 取 */
+  planId?: number
+  /** PLAN 事件：方案摘要 */
+  summary?: string
+  /** PLAN 事件：需要用户留意的提示（如「方案经过 N 轮自动修正」） */
+  warnings?: string[]
   errorMsg?: string
 }
 

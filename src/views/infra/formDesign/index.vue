@@ -365,5 +365,14 @@ const handleDelete = async (row: FormDesignApi.FormDesignVO) => {
 
 onMounted(() => {
   getList()
+  // 空闲时预热编辑器 chunk。用户点「编辑」/「新增」时几乎瞬时打开。
+  // 失败静默吞掉 —— 预热失败不该在控制台留一条刺眼的 unhandled rejection，
+  // 真正点进去时路由自己的动态 import 还会再试一次
+  const preload = () => import('./editor/index.vue').catch(() => {})
+  if ('requestIdleCallback' in window) {
+    ;(window as any).requestIdleCallback(preload, { timeout: 3000 })
+  } else {
+    setTimeout(preload, 1500)
+  }
 })
 </script>

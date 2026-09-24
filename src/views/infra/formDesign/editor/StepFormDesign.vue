@@ -10,7 +10,7 @@
       正确的做法是把它补成发布校验的一条，见 docs 里的说明。
     -->
     <div class="designer-area">
-      <fc-designer ref="designer" :config="designerConfig" class="h-full">
+      <fc-designer v-if="designerReady" ref="designer" :config="designerConfig" class="h-full">
         <template #l-tab-extra-title>字段映射</template>
         <template #l-tab-extra>
           <div class="mapping-area">
@@ -126,6 +126,7 @@
 
 <script lang="ts" setup>
 import { useFormCreateDesigner, createDesignerConfig } from '@/components/FormCreate'
+import { ensureFcDesigner, whenDesignerReady } from '@/plugins/formCreate/designer'
 import { SUB_TABLE_WIDGET_TYPE, isNoStorage } from '@/components/FormWidgets/contracts'
 import { encodeConf, encodeFields, setConfAndFields } from '@/utils/formCreate'
 import { useStepRestore } from './useStepRestore'
@@ -182,6 +183,25 @@ const designerConfig = ref(
 
 const designer = ref()
 useFormCreateDesigner(designer)
+
+/**
+ * FcDesigner 按需加载
+ *
+ * 改造前 FcDesigner 随 main.ts 一起同步注册，vendored 的 form-designer (~926KB)
+ * 进了首屏 bundle。现在只有真正会渲染 `<fc-designer>` 的页面才动态 import 一次，
+ * 全站单例（见 plugins/formCreate/designer.ts）。
+ *
+ * 门控放在模板的 v-if 上：designer 组件注册好之前不挂载 `<fc-designer>`，
+ * 避免 Vue 报「未知自定义元素」。
+ */
+const designerReady = ref(false)
+onBeforeMount(async () => {
+  const instance = getCurrentInstance()
+  if (instance) {
+    await ensureFcDesigner(instance.appContext.app)
+  }
+  designerReady.value = true
+})
 
 const columnList = ref<FormDesignApi.DbColumnVO[]>([])
 
@@ -883,6 +903,10 @@ const AUDIT_COLUMN_PATTERNS: Record<string, string[]> = {
 
 /** 回显已保存的设计产物与映射 */
 const restore = async () => {
+  // ⚠️ 必须先等 fc-designer 渲染出来。FcDesigner 按需加载后本组件用 v-if="designerReady"
+  //    门控它，而回显由数据到达触发（useStepRestore）—— 数据可能比设计器 chunk 先到。
+  //    那时 designer.value 还是 null，setConfAndFields 会抛错且回显不会重试，设计区永远空白。
+  await whenDesignerReady(designer)
   if (modelData.value.formConf && modelData.value.formFields?.length) {
     setConfAndFields(designer, modelData.value.formConf, modelData.value.formFields)
   }

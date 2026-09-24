@@ -1,7 +1,7 @@
 <!-- 等待首个字符时的占位 -->
 <template>
   <div class="flex items-center gap-4px h-22px">
-    <span v-for="i in 3" :key="i" class="dot" :style="{ animationDelay: `${(i - 1) * 0.16}s` }" />
+    <span v-for="i in 3" :key="i" class="dot" :style="{ animationDelay: `${(i - 1) * 0.16}s` }"></span>
   </div>
 </template>
 

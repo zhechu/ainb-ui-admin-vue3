@@ -147,6 +147,23 @@ export const getSimpleBillTemplateList = (): Promise<BillTemplateSimpleVO[]> => 
 }
 
 /**
+ * 单据模板精简列表的会话级缓存
+ *
+ * 与 cachedGetSimpleDictTypeList 同理：设计器每次挂载都会拉一次，
+ * 而模板属于低频变更的主数据，一个会话内共享同一份即可。
+ */
+let simpleBillTemplateListPromise: Promise<BillTemplateSimpleVO[]> | null = null
+export const cachedGetSimpleBillTemplateList = (): Promise<BillTemplateSimpleVO[]> => {
+  if (!simpleBillTemplateListPromise) {
+    simpleBillTemplateListPromise = getSimpleBillTemplateList().catch((err) => {
+      simpleBillTemplateListPromise = null
+      throw err
+    })
+  }
+  return simpleBillTemplateListPromise
+}
+
+/**
  * 试算范例，不消耗流水
  *
  * 前端不自己拼号 —— 补零、起始值换算、位数溢出这些细节一旦两边各写一遍就会漂移，

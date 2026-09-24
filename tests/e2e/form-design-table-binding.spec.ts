@@ -142,8 +142,8 @@ test.describe('数据绑定 · 表名快捷动作', () => {
       const warning = page.locator('.el-message').filter({ hasText: /还没有对应的数据模型/ })
       await expect(warning).toBeVisible({ timeout: 15_000 })
       await expect(warning).toContainText('数据建模')
-      // 没找到就不该跳走
-      expect(page.url()).toContain('form-design/editor')
+      // 没找到就不该跳走（仍停在编辑器；编辑器路由随「在线开发」菜单重组为 /infra/online/editor）
+      expect(page.url()).toContain('/infra/online/editor')
     } finally {
       await deleteForm(request, token, id)
     }

@@ -29,7 +29,10 @@ export const CACHE_KEY = {
   DICT_VERSION: 'dictVersion',
   // 登录表单
   LoginForm: 'loginForm',
-  TenantId: 'tenantId'
+  TenantId: 'tenantId',
+  // AI 助手「最近一次会话」，按用户分片：agentLastConversation:{userId}。
+  // 分片之后换账号登录天然不会串到别人的会话，也就不必往 deleteUserCache 里加清理
+  AGENT_LAST_CONVERSATION_PREFIX: 'agentLastConversation:'
 }
 
 export const useCache = (type: CacheType = 'localStorage') => {

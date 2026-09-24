@@ -1,13 +1,21 @@
 <template>
   <!-- 规划进度条 -->
-  <div v-if="status === 'planning'" class="flex items-center gap-10px py-12px">
+  <!-- data-testid 是给 e2e 用的：要断言的正是「这句进度文字会不会随时间变化」。
+       规划路径曾经把事件全积压到最后 1 秒才一次性发出，界面上这句话就一动不动地
+       挂五分钟，用户看到的就是「输入完没反应」。只靠肉眼看不出来，必须采样比对 -->
+  <div
+    v-if="status === 'planning'"
+    data-testid="assistant-planning"
+    class="flex items-center gap-10px py-12px"
+  >
     <el-icon class="animate-spin text-[var(--el-color-primary)]"><Loading /></el-icon>
-    <span class="text-14px text-[var(--el-text-color-secondary)]">{{ planningText }}</span>
+    <span data-testid="assistant-planning-text" class="text-14px text-[var(--el-text-color-secondary)]">{{ planningText }}</span>
   </div>
 
   <!-- Plan 卡片 -->
   <div
     v-else-if="status === 'pending' || status === 'done'"
+    data-testid="plan-card"
     class="border border-[var(--el-border-color)] border-solid rounded-8px overflow-hidden mt-8px"
   >
     <!-- 卡片头 -->

@@ -28,10 +28,12 @@ import { AgentAssistantApi } from '@/api/agent/assistant'
 import type { AgentConversationVO } from '@/api/agent/assistant'
 import ConversationList from './components/ConversationList.vue'
 import AssistantChat from './components/AssistantChat.vue'
+import { useLastConversation } from './useLastConversation'
 
 defineOptions({ name: 'AgentAssistant' })
 
 const message = useMessage()
+const lastConversation = useLastConversation()
 
 const conversationList = ref<AgentConversationVO[]>([])
 const activeConversationId = ref<number>()
@@ -39,7 +41,9 @@ const chatRef = ref<InstanceType<typeof AssistantChat>>()
 
 /** 加载会话列表 */
 const loadConversations = async () => {
-  const page = await AgentAssistantApi.getConversationPage({ pageNo: 1, pageSize: 50 })
+  // pageSize 100：后端把置顶排在前面，正常用量下够用。
+  // 下面恢复上次会话时要用这份列表校验「它还在不在」，取太少会把老会话误判成已删除
+  const page = await AgentAssistantApi.getConversationPage({ pageNo: 1, pageSize: 100 })
   conversationList.value = page.list
 }
 
@@ -83,5 +87,39 @@ const handleDelete = async (item: AgentConversationVO) => {
   } catch {}
 }
 
-onMounted(loadConversations)
+/**
+ * 记住当前会话，供刷新后与全局悬浮窗接上
+ *
+ * 悬浮窗和这里是同一个助手的两个入口，用户不会因为换了个入口就该 lose 上下文。
+ * 缓存按 userId 分片（见 useLastConversation），换账号不会串。
+ */
+watch(activeConversationId, (id) => {
+  if (!id) {
+    lastConversation.clear()
+    return
+  }
+  const title = conversationList.value.find((item) => item.id === id)?.title
+  lastConversation.save(id, title)
+})
+
+onMounted(async () => {
+  await loadConversations()
+  // 刷新后接上上次的会话。这里不像悬浮窗那样区分「30 分钟内」——
+  // 独立页左边就是完整列表，恢复选中不会让人误以为要问新问题，反而是他期待的
+  const last = lastConversation.read()
+  if (!last) return
+  const stillExists = conversationList.value.some((item) => item.id === last.id)
+  if (!stillExists) {
+    // 会话已在别处删掉（或老到落在前 100 条之外），记忆作废
+    lastConversation.clear()
+    return
+  }
+  activeConversationId.value = last.id
+  try {
+    await chatRef.value?.loadMessages(last.id)
+  } catch {
+    lastConversation.clear()
+    activeConversationId.value = undefined
+  }
+})
 </script>

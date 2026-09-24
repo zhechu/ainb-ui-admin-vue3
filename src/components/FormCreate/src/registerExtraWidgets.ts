@@ -3,6 +3,11 @@ import Link from '@/components/FormCreate/src/components/Link.vue'
 import PasswordInput from '@/components/FormCreate/src/components/PasswordInput.vue'
 import DateRangePicker from '@/components/FormCreate/src/components/DateRangePicker.vue'
 import TimeRangePicker from '@/components/FormCreate/src/components/TimeRangePicker.vue'
+// 内核（vendored form-designer）自带的三个运行时渲染组件。只依赖 vue，体积极小；
+// 设计器预览用的 TableView/TableFormView（拉 DragTool 等）不在这里引
+import FcTitle from '@/lib/form-designer/components/FcTitle.vue'
+import FcTable from '@/lib/form-designer/components/table/Table.vue'
+import TableForm from '@/lib/form-designer/components/tableForm/TableForm.vue'
 
 /**
  * 把「契约里有、form-create 却渲染不出来」的控件类型接上渲染器
@@ -53,7 +58,14 @@ const EXTRA_WIDGETS: Record<string, any> = {
   // 下面三个：契约把它们登记成规则类型，内核只把它们当菜单名
   password: PasswordInput,
   dateRange: DateRangePicker,
-  timeRange: TimeRangePicker
+  timeRange: TimeRangePicker,
+  // 分组标题 / 子表 / 数据表：内核 index.js 顶层的 addComponent(...) 是【模块副作用】——
+  // 以前 main.ts 同步 import FcDesigner 时顺带执行，运行时页面因此「碰巧」有这三个渲染器。
+  // FcDesigner 改为按需加载后副作用不再首屏执行，已发布表单里的这三类控件就渲染成空壳。
+  // 这里显式注册运行时组件，把这份隐式依赖变成显式的（键名与内核 addComponent 的 id 一致）
+  FcTitle,
+  FcTable,
+  TableForm
 }
 
 /**
