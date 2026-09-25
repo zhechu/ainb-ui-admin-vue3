@@ -29,13 +29,29 @@
         />
       </el-form-item>
       <el-form-item label="模型平台" prop="platform">
-        <el-input
+        <el-select
           v-model="queryParams.platform"
-          placeholder="请输入模型平台"
+          placeholder="请选择模型平台"
           clearable
-          @keyup.enter="handleQuery"
           class="!w-240px"
-        />
+        >
+          <el-option
+            v-for="dict in getStrDictOptions(DICT_TYPE.AI_PLATFORM)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="状态" prop="status">
+        <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
+          <el-option
+            v-for="dict in getIntDictOptions(DICT_TYPE.COMMON_STATUS)"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
       </el-form-item>
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
@@ -55,6 +71,15 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table v-loading="loading" :data="list" :stripe="true" :show-overflow-tooltip="true">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="所属平台" align="center" prop="platform" min-width="100">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.AI_PLATFORM" :value="scope.row.platform" />
@@ -118,7 +143,7 @@
 <script setup lang="ts">
 import { ModelApi, ModelVO } from '@/api/ai/model/model'
 import ModelForm from './ModelForm.vue'
-import { DICT_TYPE } from '@/utils/dict'
+import { DICT_TYPE, getIntDictOptions, getStrDictOptions } from '@/utils/dict'
 import { ApiKeyApi, ApiKeyVO } from '@/api/ai/model/apiKey'
 
 /** API 模型列表 */
@@ -135,7 +160,8 @@ const queryParams = reactive({
   pageSize: 20,
   name: undefined,
   model: undefined,
-  platform: undefined
+  platform: undefined,
+  status: undefined
 })
 const queryFormRef = ref() // 搜索的表单
 const apiKeyList = ref([] as ApiKeyVO[]) // API 密钥列表
