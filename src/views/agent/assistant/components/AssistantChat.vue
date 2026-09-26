@@ -74,21 +74,21 @@
               <Icon icon="ep:magic-stick" />
             </el-avatar>
             <div class="flex-1 min-w-0">
-              <!-- Plan 卡片（正在规划 / 待确认 / 执行完毕） -->
-              <PlanCard
-                v-if="item.planCardStatus"
-                :status="item.planCardStatus"
+              <!-- Workflow 草稿卡片（生成中 / 待确认 / 已发布可运行 / 已结束） -->
+              <WorkflowDraftCard
+                v-if="item.cardStatus"
+                :status="item.cardStatus"
                 :planning-text="item.planningText"
-                :summary="item.planSummary"
-                :steps="item.planSteps"
-                :warnings="item.planWarnings"
-                :expire-time="item.planExpireTime"
-                :executing="item.planExecuting"
-                :execute-result="item.planExecuteResult"
-                :plan-status="item.planStatus"
-                @execute="() => handleExecutePlan(item)"
-                @cancel="() => handleCancelPlan(item)"
-                @selection-change="(ids) => handlePlanSelectionChange(item, ids)"
+                :summary="item.summary || item.content"
+                :warnings="item.warnings"
+                :nodes="item.nodes"
+                :def-status="item.defStatus"
+                :running="item.running"
+                :run-progress="item.runProgress"
+                :run-result="item.runResult"
+                :run-error="item.runError"
+                @confirm="() => handleConfirmWorkflow(item)"
+                @cancel="() => handleCancelWorkflow(item)"
               />
 
               <!-- 普通问答气泡 -->
@@ -137,7 +137,7 @@
 
               <!-- 对话后建议：只在最后一条上显示，历史消息的建议已经过期了 -->
               <SuggestionBar
-                v-if="index === messageList.length - 1 && !streaming && !item.planCardStatus"
+                v-if="index === messageList.length - 1 && !streaming && !item.cardStatus"
                 :suggestions="item.suggestions"
                 @select="handleSuggestion"
               />
@@ -205,11 +205,11 @@ import type {
   AgentMessageVO,
   AgentSuggestionVO
 } from '@/api/agent/assistant'
-import { AgentPlanApi } from '@/api/agent/plan'
-import type { AgentPlanExecuteResultVO } from '@/api/agent/plan'
+import { AgentPlannerApi } from '@/api/agent/planner'
+import type { AgentWorkflowDraftVO, WorkflowNodePreview } from '@/api/agent/planner'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
-import PlanCard from './PlanCard.vue'
+import WorkflowDraftCard from './WorkflowDraftCard.vue'
 import MessageReasoning from '@/views/ai/chat/index/components/message/MessageReasoning.vue'
 import MessageKnowledge from '@/views/ai/chat/index/components/message/MessageKnowledge.vue'
 
@@ -218,10 +218,10 @@ import MessageKnowledge from '@/views/ai/chat/index/components/message/MessageKn
  *
  * <h3>为什么要把它从助手页里抽出来</h3>
  * 方案 §12 要求助手有<b>两个入口</b>：独立页面，以及任何页面上都能唤起的全局悬浮窗。
- * 两个入口的对话行为必须完全一样 —— 流式打字机、Plan 卡片、建议、中断，一条都不能差。
+ * 两个入口的对话行为必须完全一样 —— 流式打字机、Workflow 草稿卡、建议、中断，一条都不能差。
  *
  * <p>如果悬浮窗自己再写一份，这些逻辑就会各自漂移。而漂移在这里格外难查：
- * 两边都「能用」，只是某一边的 Plan 卡片不刷新、或者某一边的 SSE 忘了 abort
+ * 两边都「能用」，只是某一边的草稿卡不刷新、或者某一边的 SSE 忘了 abort
  * （fetchEventSource 的 onerror 不 throw 就会<b>自动无限重连</b>，
  * 表现是同一个问题被反复提交、反复计费，界面上什么都看不出来）。
  *
@@ -410,6 +410,23 @@ const handleCopy = async (content: string) => {
 const focus = () => inputRef.value?.focus()
 
 /**
+ * 从 DSL 原文抠出只读节点预览
+ *
+ * DSL 是一整份 WorkflowDefDTO JSON，卡片只需要 nodes[] 的 {id,type,name}。
+ * 解析失败（草稿 dsl 异常）返回空数组，卡片显示「未能解析出节点预览」而不是崩掉。
+ */
+const parseNodes = (dsl?: string): WorkflowNodePreview[] => {
+  if (!dsl) return []
+  try {
+    const nodes = JSON.parse(dsl)?.nodes
+    if (!Array.isArray(nodes)) return []
+    return nodes.map((n: any) => ({ id: n.id, type: n.type, name: n.name }))
+  } catch {
+    return []
+  }
+}
+
+/**
  * 加载某个会话的消息
  *
  * 🔴 loadSeq 竞态守卫：抽屉里连点两个会话时，先发出的请求可能后返回，
@@ -422,29 +439,36 @@ const loadMessages = async (conversationId: number) => {
   innerConversationId.value = conversationId
   const list: AgentMessageVO[] = await AgentAssistantApi.getMessageList(conversationId)
   if (seq !== loadSeq) return
-  // 有 planId 的助手消息需要恢复卡片状态
+  // 有 workflowDefId 的助手消息需要重建草稿卡片
   const rebuilt = await Promise.all(
     list.map(async (item) => {
       const msg: any = { ...item }
       // 🔴 这里曾经写成 (item as any).planId —— 那个 as any 掩盖了一个真缺陷：
-      //    后端 AgentMessageRespVO 压根没有 planId 字段，运行时永远是 undefined，
-      //    于是这个 if 从来没进去过，刷新页面后方案卡片必定退化成一段纯文字。
-      //    现在 planId 已经在 AgentMessageVO 上声明、后端也真的返回了，不需要 as any
-      if (item.role === 'assistant' && item.planId) {
+      //    后端 RespVO 压根没有该字段，运行时永远是 undefined，if 从来没进去过，
+      //    刷新页面后卡片必定退化成一段纯文字。现在 workflowDefId 已在 AgentMessageVO
+      //    上声明、后端也真的返回了，不需要 as any。
+      if (item.role === 'assistant' && item.workflowDefId) {
         try {
-          const plan: any = await AgentPlanApi.getPlan(item.planId)
-          msg.planId = plan.id
-          msg.planCardStatus = 'done'
-          msg.planSummary = plan.summary
-          msg.planSteps = plan.steps
-          msg.planStatus = plan.status
-          msg.planExpireTime = plan.expireTime
-          // 如果状态仍是 PENDING_CONFIRM（会话里程序崩了没执行完），恢复成 pending 可重试
-          if (plan.status === 'PENDING_CONFIRM') {
-            msg.planCardStatus = 'pending'
-          }
+          // 单一装配路径：DSL 正文一律走 workflow-draft GET（直播与刷新共用），不在消息里另存一份
+          const draft: AgentWorkflowDraftVO = await AgentPlannerApi.getWorkflowDraft(
+            item.workflowDefId
+          )
+          msg.workflowDefId = draft.defId
+          msg.workflowCode = draft.code
+          msg.workflowName = draft.name
+          msg.nodes = parseNodes(draft.dsl)
+          // 摘要优先用消息正文（appendDraftMessage 落库时写进了 content），拿不到再退回草稿名
+          msg.summary = item.content || draft.name
+          // 卡片状态按定义状态：DRAFT 待确认 / PUBLISHED 已发布可运行 / DISABLED 已结束
+          msg.cardStatus =
+            draft.status === 'DRAFT'
+              ? 'pending'
+              : draft.status === 'PUBLISHED'
+                ? 'published'
+                : 'done'
+          msg.defStatus = draft.status
         } catch {
-          // 计划加载失败就当普通消息显示
+          // 草稿加载失败就当普通消息显示（warnings 本就不可在刷新后恢复，与旧卡一致）
         }
       }
       return msg
@@ -589,15 +613,17 @@ const handleSend = async (text?: string) => {
           break
         case 'PLANNING':
           // 规划进度：原地替换，不是追加
-          assistantMessage.planCardStatus = 'planning'
+          assistantMessage.cardStatus = 'planning'
           assistantMessage.planningText = data.content || '正在规划…'
           break
-        case 'PLAN':
-          // 产出了计划卡片：加载完整步骤
-          assistantMessage.planSummary = data.summary || ''
-          assistantMessage.planWarnings = data.warnings || []
-          assistantMessage.planId = data.planId
-          loadPlanSteps(assistantMessage, data.planId)
+        case 'WORKFLOW_DRAFT':
+          // 产出了 Workflow 草稿：记下 defId/code/name/摘要/警告，DSL 正文另取
+          assistantMessage.workflowDefId = data.workflowDefId
+          assistantMessage.workflowCode = data.workflowCode
+          assistantMessage.workflowName = data.workflowName
+          assistantMessage.summary = data.summary || ''
+          assistantMessage.warnings = data.warnings || []
+          loadWorkflowDraft(assistantMessage, data.workflowDefId)
           break
         case 'DONE':
           assistantMessage.status = 'SUCCESS'
@@ -632,7 +658,7 @@ const handleSend = async (text?: string) => {
         // text/event-stream，内容协商失败 → 客户端收到一个空 body，curl 退出码还是 0）。
         // 标成 SUCCESS 的话界面就是一个空气泡，用户只能得出「没反应，又坏了」的结论，
         // 而日志里那句真正的错误没人看得见。
-        if (!assistantMessage.content && !assistantMessage.planId) {
+        if (!assistantMessage.content && !assistantMessage.workflowDefId) {
           assistantMessage.status = 'ERROR'
           assistantMessage.errorMsg = 'AI 助手没有返回任何内容，请重试；若反复出现请联系管理员查看服务端日志'
         } else {
@@ -655,102 +681,153 @@ const handleStop = () => {
     // 同理：中断时如果什么都没产出，别留一个看起来「答完了」的空气泡。
     // 后端收到取消后会落一条 CANCELLED 消息，刷新页面就能看到「本次规划已中断」，
     // 界面上也该说清楚这一轮是被停掉的
-    if (!last.content && !last.planId) {
+    if (!last.content && !last.workflowDefId) {
       last.status = 'ERROR'
       last.errorMsg = '已停止生成'
     } else {
       last.status = 'SUCCESS'
     }
   }
-  // 规划进度中途停掉，卡片状态清除（没产出计划的话就没有卡片）
-  if (last && last.planCardStatus === 'planning') {
-    last.planCardStatus = null
+  // 规划进度中途停掉，卡片状态清除（没产出草稿的话就没有卡片）
+  if (last && last.cardStatus === 'planning') {
+    last.cardStatus = null
     last.planningText = ''
   }
 }
 
-// ==================== Plan 卡片相关 ====================
+// ==================== Workflow 草稿卡片相关 ====================
 
 /**
- * 加载完整的 Plan 步骤并切换卡片状态
+ * 加载草稿 DSL 并切换卡片到「待确认」
  *
- * SSE 只带 planId 和摘要。步骤必须另取，理由见 AgentAssistantService.EventType.PLAN 的注释：
- * 刷新页面之后前端照样要靠 /agent/plan/get 重建卡片，那条路径无论如何都得存在。
- * 在流里再塞一份完整步骤等于维护两条组装逻辑，迟早不一致。
+ * SSE 的 WORKFLOW_DRAFT 事件只带 defId/code/name/摘要/警告，<b>不带 DSL 正文</b>。
+ * 节点预览所需的 dsl 无论直播还是刷新都走 workflow-draft GET —— 单一装配路径，
+ * 避免「流里塞一份、刷新查一份」两条组装逻辑漂移（理由见 EventType.WORKFLOW_DRAFT 注释）。
  */
-const loadPlanSteps = async (item: any, planId: number) => {
+const loadWorkflowDraft = async (item: any, defId: number) => {
+  if (!defId) return
   try {
-    const plan: any = await AgentPlanApi.getPlan(planId)
-    item.planCardStatus = 'pending'
-    item.planSteps = plan.steps
-    item.planExpireTime = plan.expireTime
-    item.planStatus = plan.status
+    const draft: AgentWorkflowDraftVO = await AgentPlannerApi.getWorkflowDraft(defId)
+    item.nodes = parseNodes(draft.dsl)
+    item.defStatus = draft.status
+    item.cardStatus = draft.status === 'DRAFT' ? 'pending' : 'published'
     await scrollToBottom()
   } catch (e: any) {
-    item.planCardStatus = null
-    message.error('加载变更计划失败：' + (e?.message ?? '未知错误'))
+    item.cardStatus = null
+    message.error('加载流程草稿失败：' + (e?.message ?? '未知错误'))
   }
 }
 
-/** 勾选变化 → 持久化到后端 */
-const handlePlanSelectionChange = async (item: any, selectedIds: number[]) => {
-  if (!item.planId) return
+/**
+ * 确认并运行：先发布（DRAFT→PUBLISHED，幂等），再跑既有 run-stream
+ *
+ * 刻意不复用 hitl 的挂起/恢复 —— 那套绑定「活的执行 + DB checkpoint 线程」，
+ * 与聊天里一张轻确认卡不匹配。这里走无状态确认：发布是幂等的纯状态跃迁，运行是一次全新执行。
+ */
+const handleConfirmWorkflow = async (item: any) => {
+  if (!item.workflowCode) return
   try {
-    await AgentPlanApi.updateSelected(item.planId, selectedIds)
-  } catch {
-    // 静默失败：下次加载时步骤状态会从库里来，不影响最终执行
-  }
-}
-
-/** 确认执行 */
-const handleExecutePlan = async (item: any) => {
-  if (!item.planId) return
-  item.planExecuting = true
-  try {
-    const result: AgentPlanExecuteResultVO = await AgentPlanApi.execute(item.planId)
-    item.planExecuteResult = result
-    // 刷一次计划拿最新的步骤状态
-    const plan: any = await AgentPlanApi.getPlan(item.planId)
-    item.planSteps = plan.steps
-    item.planStatus = plan.status
-    item.planCardStatus = 'done'
-    if (result.failedCount > 0) {
-      message.warning(`执行完成：${result.successCount} 步成功，${result.failedCount} 步失败`)
-    } else {
-      message.success(`执行完成，全部 ${result.successCount} 步成功`)
-    }
-    emit('conversation-updated')
+    const published = await AgentPlannerApi.publishWorkflow(item.workflowCode)
+    item.defStatus = published.status || 'PUBLISHED'
+    item.cardStatus = 'published'
   } catch (e: any) {
-    message.error('执行失败：' + (e?.message ?? '未知错误'))
-  } finally {
-    item.planExecuting = false
+    message.error('发布失败：' + (e?.message ?? '未知错误'))
+    return
   }
+  await runWorkflow(item)
 }
 
-/** 取消计划 */
-const handleCancelPlan = async (item: any) => {
-  if (!item.planId) return
-  try {
-    await AgentPlanApi.cancel(item.planId)
-    item.planCardStatus = 'done'
-    item.planStatus = 'CANCELLED'
-    item.planExecuteResult = {
-      planId: item.planId,
-      status: 'CANCELLED',
-      successCount: 0,
-      failedCount: 0,
-      skippedCount: 0,
-      steps: []
+/**
+ * 运行已发布的流程，把 WorkflowEvent 流渲染成卡片上的节点进度与终态
+ *
+ * 返回 Promise：fetchEventSource 本身不返回完成时机，这里手动包一层，
+ * 让 handleConfirmWorkflow 能 await 到「运行结束」再收尾。
+ */
+const runWorkflow = (item: any): Promise<void> => {
+  return new Promise<void>((resolve) => {
+    item.running = true
+    item.runProgress = []
+    item.runResult = null
+    item.runError = ''
+    const ctrl = new AbortController()
+    item.runAbort = ctrl
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      item.running = false
+      item.runAbort = null
+      item.cardStatus = 'done'
+      resolve()
     }
-  } catch (e: any) {
-    message.error('取消失败：' + (e?.message ?? '未知错误'))
-  }
+    AgentPlannerApi.runWorkflowStream(
+      item.workflowCode,
+      {},
+      ctrl,
+      (event) => {
+        let payload: any
+        try {
+          payload = JSON.parse(event.data)
+        } catch {
+          return
+        }
+        if (payload.code !== 0) {
+          item.runResult = 'error'
+          item.runError = payload.msg || '运行失败'
+          return
+        }
+        const data = payload.data
+        switch (data.type) {
+          case 'NODE':
+            // NODE 在节点「完成」时到达，带上 nodeId；从预览里回填可读名
+            if (data.nodeId) {
+              const preview = (item.nodes ?? []).find((n: any) => n.id === data.nodeId)
+              item.runProgress = [...item.runProgress, { nodeId: data.nodeId, name: preview?.name }]
+            }
+            break
+          case 'INTERRUPTED':
+            item.runResult = 'interrupted'
+            break
+          case 'DONE':
+            item.runResult = 'success'
+            break
+          case 'ERROR':
+            item.runResult = 'error'
+            item.runError = data.errorMsg || '运行失败'
+            break
+          default:
+            break
+        }
+      },
+      (err) => {
+        // 🔴 必须 throw：onerror 不抛异常 fetchEventSource 就会自动无限重连，反复计费
+        if (!item.runResult) {
+          item.runResult = 'error'
+          item.runError = '连接中断，请重试'
+        }
+        finish()
+        throw err
+      },
+      () => {
+        finish()
+      }
+    )
+  })
+}
+
+/** 取消：本地消除卡片即可。DRAFT 定义留存无害（同旧 plan 留 DRAFT），无停用端点，7b 不新增 */
+const handleCancelWorkflow = (item: any) => {
+  item.cardStatus = 'done'
+  item.defStatus = 'CANCELLED'
+  item.runResult = null
 }
 
 onBeforeUnmount(() => {
   // 组件销毁时掐掉连接与定时器，否则会留下一条跑着的 SSE 和一个空转的 timer。
   // 悬浮窗尤其要紧：它随时可能被关掉，而抽屉关闭就是销毁
   abortController?.abort()
+  // 正在运行的 workflow run-stream 也要掐掉，否则抽屉关了它还在后台跑、还在往已销毁的卡片写状态
+  messageList.value.forEach((m: any) => m?.runAbort?.abort?.())
   typewriter.stop()
 })
 
