@@ -138,6 +138,14 @@ const DSL_PLACEHOLDER = '{\n  "id": "wf_demo",\n  "nodes": [ ... ],\n  "edges": 
  * 🔴 tool 节点用只读工具 data_interface_list（已注册）+ 声明好 outputVar 对应的变量，
  * 这样深层干跑（buildStateGraph）能建图成功、且不产 warning——用户点「校验DSL」直接看到「校验通过」。
  * trigger 用 trigger.chat（与既有已发布定义同构），createDef 落库时 WorkflowTriggerExtractor 能正常投影。
+ *
+ * 🔴 增量12 / slice-3c——「工作流驱动的 Agent」两个约定（接线 DSL 预留的 trigger.chat）：
+ *  ① trigger.chat.config.agentId：填要驱动的 Agent 的<b>编码 code</b>（非数字 id）。发布后，用户在该 Agent 的
+ *     聊天窗口每发一句话，都会把这句话写进 input 变量、跑一遍本流程，而不是走直连大模型。
+ *     <b>留空 = 仅手动运行</b>（不绑定任何 Agent，与既有行为一致）。
+ *  ② output 变量：流程跑完后，聊天回复取 state 里的 `output`（约定键，与固定的输入键 `input` 对称）。
+ *     想让 Agent 在聊天里回什么，就把最终文本写进 `output`（例如再加一个 llm/模板节点，outputVar 指向 output）。
+ *     没写 output 不会报错，聊天里会回落一句「流程已执行完成，但未产出文本回复」的提示。
  */
 const DEFAULT_DSL = JSON.stringify(
   {
@@ -145,10 +153,13 @@ const DEFAULT_DSL = JSON.stringify(
     id: 'wf_demo',
     name: '示例流程',
     description: '请按需修改节点与连线',
-    trigger: { type: 'trigger.chat', config: { inputVar: 'input' } },
+    // agentId 留空=仅手动运行；填某个已发布 Agent 的 code，则该 Agent 的聊天由本流程驱动（见上方注释①）
+    trigger: { type: 'trigger.chat', config: { inputVar: 'input', agentId: '' } },
     variables: [
       { key: 'input', type: 'string', merge: 'replace', required: false },
-      { key: 'listOut', type: 'object', merge: 'replace' }
+      { key: 'listOut', type: 'object', merge: 'replace' },
+      // 聊天回复约定键：把流程最终要回给用户的文本写进 output（见上方注释②）
+      { key: 'output', type: 'string', merge: 'replace' }
     ],
     nodes: [
       {

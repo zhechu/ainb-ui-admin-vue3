@@ -708,6 +708,16 @@ const handleSend = async (text?: string) => {
           assistantMessage.references = data.references || []
           break
         case 'MESSAGE':
+          // 🔴 工作流驱动的 Agent（slice-3c）会先发 PLANNING（节点进度）再发 MESSAGE（最终回复）。
+          //    答案开始吐字时必须撤掉进度卡片：cardStatus 若仍是 'planning'，模板会持续渲染
+          //    WorkflowDraftCard 而把普通答案气泡（assistant-answer）整个挡掉 ——
+          //    表现为「进度停在最后一个节点、答案永远不出现」（浏览器 e2e 实测抓到，单测看不出来）。
+          //    直连 LLM 路径不发 PLANNING、BUILD 路径发的是 WORKFLOW_DRAFT（不发 MESSAGE），
+          //    故只有「PLANNING→MESSAGE」这一条序列需要这次清理，对既有两条路径无影响。
+          if (assistantMessage.cardStatus === 'planning') {
+            assistantMessage.cardStatus = null
+            assistantMessage.planningText = ''
+          }
           typewriter.push(data.content || '')
           break
         case 'REASONING':
