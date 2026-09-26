@@ -8,6 +8,8 @@
      view 让已发布/已停用行也能看人设——编辑只对 DRAFT 开放（后端 updateDef 对非草稿抛 AGENT_DEF_NOT_DRAFT）。
   🔴 增量10（slice-2）：人设与绑定模型已接入对话流——发布后在聊天入口选中该 Agent，
      persona 即成系统提示词、modelId 即固定问答模型（留空则用平台动态默认）。
+  🔴 增量11（slice-3a）：知识库绑定已接入——绑定后该 Agent 聊天时从其专属 KB 检索并注入「参考资料」；
+     留空=不检索（仅凭人设作答）。下拉复用 KnowledgeApi.getSimpleKnowledgeList（只列启用的库）。
 -->
 <template>
   <el-dialog
@@ -73,6 +75,28 @@
           </el-select>
         </div>
       </el-form-item>
+      <el-form-item label="知识库" prop="knowledgeId">
+        <div class="w-full">
+          <div class="text-12px text-[var(--el-text-color-secondary)] mb-6px leading-16px">
+            该 Agent 的专属知识库；绑定后聊天会从中检索并把命中片段作为「参考资料」注入回答。留空=不检索（仅凭人设作答）。
+          </div>
+          <el-select
+            v-model="formData.knowledgeId"
+            :disabled="isView"
+            clearable
+            filterable
+            placeholder="不绑定（无知识库检索）"
+            class="w-full"
+          >
+            <el-option
+              v-for="k in knowledgeList"
+              :key="k.id"
+              :label="k.name"
+              :value="k.id"
+            />
+          </el-select>
+        </div>
+      </el-form-item>
       <el-form-item label="描述" prop="description">
         <el-input
           v-model="formData.description"
@@ -109,6 +133,7 @@
 <script lang="ts" setup>
 import { AgentDefApi, type AgentDefSaveVO, type AgentDefVO } from '@/api/agent/def'
 import { ModelApi, type ModelVO } from '@/api/ai/model/model'
+import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
 
 defineOptions({ name: 'AgentDefFormDialog' })
 
@@ -136,11 +161,23 @@ const loadModels = async () => {
   }
 }
 
+/** 知识库下拉数据源：后端 simple-list 只回启用（ENABLE）的库、只带 id+name、按租户过滤 */
+const knowledgeList = ref<KnowledgeVO[]>([])
+const loadKnowledge = async () => {
+  if (knowledgeList.value.length > 0) return // 一次会话内缓存，避免每次开表单都打一次
+  try {
+    knowledgeList.value = (await KnowledgeApi.getSimpleKnowledgeList()) || []
+  } catch {
+    knowledgeList.value = [] // 拉不到不阻断建 Agent：留空即不绑定知识库
+  }
+}
+
 const emptyForm = (): AgentDefSaveVO => ({
   code: '',
   name: '',
   persona: '',
   modelId: undefined,
+  knowledgeId: undefined,
   description: '',
   remark: ''
 })
@@ -174,6 +211,7 @@ const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
   mode.value = openMode
   visible.value = true
   loadModels()
+  loadKnowledge()
   if (openMode === 'create') {
     formData.value = emptyForm()
     return
@@ -187,6 +225,7 @@ const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
       name: data.name,
       persona: data.persona ?? '',
       modelId: data.modelId ?? undefined,
+      knowledgeId: data.knowledgeId ?? undefined,
       description: data.description ?? '',
       remark: data.remark ?? ''
     }

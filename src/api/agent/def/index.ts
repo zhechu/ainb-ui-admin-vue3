@@ -7,8 +7,9 @@ import request from '@/config/axios'
  * 只有 {@link AgentDefApi.getDef} 才返回完整 persona 原文，供编辑/查看。
  *
  * 🔴 分刀：增量10（slice-2）已把 <b>persona（→系统提示词）</b>与 <b>modelId（→问答模型）</b>接入对话流——
- * 聊天入口选中一个已发布 Agent，它的人设与绑定模型即刻生效。工具集/知识库/绑定工作流因需先建消费方
- * （聊天路径的 agentic 工具循环 / RAG 参数化）顺延 slice-3。
+ * 聊天入口选中一个已发布 Agent，它的人设与绑定模型即刻生效。增量11（slice-3a）再把 <b>knowledgeId
+ * （→专属知识库检索）</b>接入：绑定后聊天从该 KB 检索并注入「参考资料」。工具集/绑定工作流因需先建消费方
+ * （聊天路径的 agentic 工具循环）顺延 slice-3b/3c。
  */
 export interface AgentDefVO {
   id: number
@@ -21,6 +22,11 @@ export interface AgentDefVO {
    * 非空时该 Agent 的每轮问答固定用它（不可用则自动切下一个候选）。
    */
   modelId?: number | null
+  /**
+   * 绑定的知识库编号（ai 模块 ai_knowledge.id）；空=该 Agent 不做知识库检索（仅凭 persona 作答）。
+   * 非空时聊天从该 KB 检索命中片段并注入 prompt（增量11 / slice-3a）。
+   */
+  knowledgeId?: number | null
   description?: string
   remark?: string
   version: number
@@ -48,6 +54,8 @@ export interface AgentDefSaveVO {
   persona: string
   /** 绑定模型编号；空=动态默认。见 {@link AgentDefVO.modelId} */
   modelId?: number | null
+  /** 绑定知识库编号；空=该 Agent 不检索知识库。见 {@link AgentDefVO.knowledgeId} */
+  knowledgeId?: number | null
   description?: string
   remark?: string
 }

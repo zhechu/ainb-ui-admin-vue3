@@ -116,7 +116,7 @@ test.describe('聊天入口按 Agent 路由', () => {
     expect(body.agentDefId ?? null, `默认助手不该带 agentDefId：${JSON.stringify(body)}`).toBeNull()
   })
 
-  test('Agent 定义表单有「模型」下拉（E3：模型绑定入口）', async ({ page }) => {
+  test('Agent 定义表单有「模型」与「知识库」下拉（E3：模型/知识库绑定入口）', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/def')
     await expect(page.getByText('Agent 编码').first()).toBeVisible({ timeout: 20000 })
@@ -128,6 +128,10 @@ test.describe('聊天入口按 Agent 路由', () => {
     const modelItem = dialog.locator('.el-form-item:has-text("模型")').first()
     await expect(modelItem).toBeVisible({ timeout: 10000 })
     await expect(modelItem.locator('.el-select').first()).toBeVisible()
+    // 增量11（slice-3a）：「知识库」字段在（可空，占位「不绑定（无知识库检索）」）——同弹窗内、只验结构，不依赖 KB 数据
+    const knowledgeItem = dialog.locator('.el-form-item:has-text("知识库")').first()
+    await expect(knowledgeItem).toBeVisible({ timeout: 10000 })
+    await expect(knowledgeItem.locator('.el-select').first()).toBeVisible()
     await dialog.getByRole('button', { name: /取消/ }).first().click()
   })
 })
