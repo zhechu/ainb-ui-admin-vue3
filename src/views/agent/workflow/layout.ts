@@ -1,0 +1,168 @@
+import type { Edge, Node } from '@vue-flow/core'
+
+/**
+ * DSL → Vue Flow 只读图的自动布局（增量8 / P4 第一刀）
+ *
+ * 🔴 DSL 是「逻辑图」而非「视觉图」——后端 {@code WorkflowDefDTO} 的 nodes/edges 完全不带坐标。
+ * 所以画布必须前端自动布局。这里用最朴素的「BFS 最长路分层」：以 START 为源，layer(n)=max(layer(前驱))+1，
+ * x=层号*间距、y=层内序号*间距。第一刀只保证小图（planner 产的 1~5 节点）清晰可读；分支多时层内堆叠可接受
+ * （只读预览，非编辑器）。环 / 不可达节点兜底排到末层之后，不崩。复杂布局美化（dagre/elkjs）留后续刀。
+ *
+ * 纯函数、不依赖 Vue 运行时，便于 vitest 单测（见 layout.spec.ts）。
+ */
+
+/** DSL 节点（只取布局用得到的几项，其余 config/recovery 等画布不关心） */
+export interface DslNode {
+  id: string
+  type?: string
+  name?: string
+}
+
+/** DSL 边。conditional 边用 cases（路由键→目标）+ default 展开成多条；普通边用 from→to */
+export interface DslEdge {
+  from: string
+  to: string
+  type?: string
+  /** 条件边的分支：路由键 → 目标节点 id（或 START/END 保留字） */
+  cases?: Record<string, string>
+  /** 条件边的兜底目标（DSL JSON 里键名是 "default"） */
+  default?: string
+}
+
+export interface DslGraph {
+  nodes?: DslNode[]
+  edges?: DslEdge[]
+}
+
+/** 合成端点的内部 id（不会与用户节点 code 撞，DSL 节点 id 是 [a-z0-9_] 风格） */
+const START_ID = '__start__'
+const END_ID = '__end__'
+/** START/END 在 DSL 边里的保留字写法 */
+const START_KEYWORD = 'START'
+const END_KEYWORD = 'END'
+
+const X_GAP = 240
+const Y_GAP = 120
+
+/** 节点类型 → el-tag 颜色。沿用 WorkflowDraftCard 的色映射；认不出的默认 info，不硬猜 */
+export type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
+
+export const nodeTagType = (type?: string): TagType => {
+  if (!type) return 'info'
+  if (type === 'tool') return 'primary'
+  if (type === 'llm') return 'success'
+  if (type.startsWith('condition')) return 'warning'
+  if (type.startsWith('hitl')) return 'danger'
+  return 'info'
+}
+
+/** 把 DSL 边端点（可能是 START/END 保留字）映射成画布内部 id */
+const mapEndpoint = (ref: string): string => {
+  if (ref === START_KEYWORD) return START_ID
+  if (ref === END_KEYWORD) return END_ID
+  return ref
+}
+
+const isConditional = (e: DslEdge): boolean =>
+  (e.type ?? '').toLowerCase() === 'conditional' || (!!e.cases && Object.keys(e.cases).length > 0)
+
+/**
+ * 把一份 DSL 布局成 Vue Flow 的 nodes/edges。
+ *
+ * @param dsl 已 JSON.parse 的 DSL（容错：nodes/edges 缺失时按空数组处理）
+ */
+export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
+  const dslNodes = dsl?.nodes ?? []
+  const dslEdges = dsl?.edges ?? []
+
+  // 1) 视觉节点集合：合成 START/END 两个端点 + 每个 DSL 节点
+  const nodeMeta = new Map<string, { label: string; nodeType: string }>()
+  nodeMeta.set(START_ID, { label: '开始', nodeType: 'start' })
+  nodeMeta.set(END_ID, { label: '结束', nodeType: 'end' })
+  for (const n of dslNodes) {
+    if (!n?.id) continue
+    nodeMeta.set(n.id, { label: n.name || n.id, nodeType: n.type ?? '' })
+  }
+
+  // 2) 视觉边集合：条件边按 cases + default 展开成多条带 label 的边
+  const edges: Edge[] = []
+  let edgeSeq = 0
+  const pushEdge = (source: string, target: string, label?: string) => {
+    // 端点指向不存在的节点时跳过（DSL 结构非法，画布不该因此崩；结构校验是后端编译期的事）
+    if (!nodeMeta.has(source) || !nodeMeta.has(target)) return
+    edges.push({
+      id: `e-${edgeSeq++}`,
+      source,
+      target,
+      label: label || undefined,
+      // 条件分支用虚线 + 箭头，主干用实线，肉眼能区分「路由」与「顺序」
+      type: 'default',
+      animated: false,
+      style: label ? { strokeDasharray: '4 3' } : undefined
+    })
+  }
+
+  for (const e of dslEdges) {
+    if (!e) continue
+    const source = mapEndpoint(e.from)
+    if (isConditional(e)) {
+      const cases = e.cases ?? {}
+      for (const [routeKey, tgt] of Object.entries(cases)) {
+        if (tgt) pushEdge(source, mapEndpoint(tgt), routeKey)
+      }
+      if (e.default) pushEdge(source, mapEndpoint(e.default), 'default')
+    } else {
+      pushEdge(source, mapEndpoint(e.to))
+    }
+  }
+
+  // 3) 分层：以 START 为源做最长路松弛（layer(t) = max(layer(t), layer(s)+1)）。
+  //    迭代上界 = 节点数，环最多再抬高一轮即收敛，不会死循环。
+  const ids = [...nodeMeta.keys()]
+  const layer = new Map<string, number>()
+  ids.forEach((id) => layer.set(id, id === START_ID ? 0 : 0))
+  for (let i = 0; i < ids.length; i++) {
+    let changed = false
+    for (const e of edges) {
+      const ls = layer.get(e.source) ?? 0
+      if ((layer.get(e.target) ?? 0) < ls + 1) {
+        layer.set(e.target, ls + 1)
+        changed = true
+      }
+    }
+    if (!changed) break
+  }
+
+  // 不可达 / 孤立源点（除 START 外没有入边）排到末层之后，避免和主干挤在第 0 列
+  const hasIncoming = new Set<string>(edges.map((e) => e.target))
+  let maxLayer = 0
+  layer.forEach((v) => (maxLayer = Math.max(maxLayer, v)))
+  for (const id of ids) {
+    if (id !== START_ID && !hasIncoming.has(id)) {
+      layer.set(id, maxLayer + 1)
+    }
+  }
+
+  // 4) 定位：同层按出现顺序均分 y
+  const layerBuckets = new Map<number, string[]>()
+  for (const id of ids) {
+    const l = layer.get(id) ?? 0
+    if (!layerBuckets.has(l)) layerBuckets.set(l, [])
+    layerBuckets.get(l)!.push(id)
+  }
+
+  const nodes: Node[] = []
+  for (const [l, bucket] of layerBuckets) {
+    bucket.forEach((id, idx) => {
+      const meta = nodeMeta.get(id)!
+      nodes.push({
+        id,
+        type: 'dsl',
+        position: { x: l * X_GAP, y: idx * Y_GAP },
+        data: { label: meta.label, nodeType: meta.nodeType, tagType: nodeTagType(meta.nodeType) }
+      })
+    })
+  }
+
+  return { nodes, edges }
+}
