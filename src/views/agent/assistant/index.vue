@@ -17,6 +17,7 @@
     <AssistantChat
       ref="chatRef"
       v-model:conversation-id="activeConversationId"
+      :agent-def-id="activeAgentDefId"
       class="flex-1"
       @conversation-updated="loadConversations"
     />
@@ -38,6 +39,14 @@ const lastConversation = useLastConversation()
 const conversationList = ref<AgentConversationVO[]>([])
 const activeConversationId = ref<number>()
 const chatRef = ref<InstanceType<typeof AssistantChat>>()
+
+/**
+ * 当前会话绑定的 Agent 编号，传给对话区锁定选择器（D4/D7）。
+ * 从已加载的会话列表里取——列表本就带 agentDefId，无需额外请求。
+ */
+const activeAgentDefId = computed(
+  () => conversationList.value.find((c) => c.id === activeConversationId.value)?.agentDefId ?? null
+)
 
 /** 加载会话列表 */
 const loadConversations = async () => {

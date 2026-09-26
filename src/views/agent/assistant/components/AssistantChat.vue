@@ -1,5 +1,34 @@
 <template>
   <div class="flex flex-col min-w-0 h-full">
+    <!-- Agent 选择器：增量10（slice-2）——选中一个已发布 Agent，它的人设即成系统提示词、
+         绑定模型即固定问答模型。🔴 会话一旦建立（innerConversationId 有值）就锁定：
+         D4「创建时定、之后以会话为准」，防一轮对话中途换 Agent 导致历史里混两套人设。
+         新建对话（未落库）时可自由选。compact（悬浮球）下收窄但不隐藏，否则悬浮球无法选 Agent。 -->
+    <div
+      class="flex items-center gap-8px border-b border-[var(--el-border-color-lighter)] border-b-solid flex-shrink-0"
+      :class="compact ? 'px-14px py-8px' : 'px-24px py-10px'"
+    >
+      <span class="text-13px text-[var(--el-text-color-secondary)] flex-shrink-0">Agent</span>
+      <el-select
+        v-model="agentSelectorModel"
+        data-testid="agent-picker"
+        :disabled="isAgentLocked"
+        :size="compact ? 'small' : 'default'"
+        :class="compact ? 'w-130px' : 'w-220px'"
+        placeholder="默认平台助手"
+      >
+        <el-option label="默认平台助手" :value="0" />
+        <el-option v-for="a in agentDefList" :key="a.id" :label="a.name" :value="a.id" />
+      </el-select>
+      <el-tooltip
+        v-if="isAgentLocked"
+        content="会话已绑定 Agent，不可中途更换；点「新对话」可重新选择"
+        placement="top"
+      >
+        <Icon icon="ep:lock" class="text-[var(--el-text-color-secondary)] flex-shrink-0" />
+      </el-tooltip>
+    </div>
+
     <!-- 滚动区与「回到底部」按钮同处一个相对定位容器，按钮才能贴着滚动区底部，
          而不是去猜输入区有多高（compact 与非 compact 的输入区高度不一样） -->
     <div class="relative flex-1 min-h-0">
@@ -22,10 +51,10 @@
             class="text-[var(--el-color-primary)]"
           />
           <div class="mt-16px font-medium" :class="compact ? 'text-16px' : 'text-18px'">
-            我是平台助手
+            {{ activeAgentInfo.title }}
           </div>
           <div class="mt-8px text-14px text-[var(--el-text-color-secondary)] text-center px-16px">
-            表单设计、数据建模、权限配置的问题都可以问我，回答会标注手册出处
+            {{ activeAgentInfo.subtitle }}
           </div>
           <!-- 「继续上次对话」：只在悬浮窗（offerResume）里出现。独立页左边就是完整列表，
                再叠一个恢复入口是冗余。用 el-button 而不是 el-tag —— e2e 靠 .el-tag__content
@@ -39,7 +68,7 @@
             <Icon icon="ep:refresh-left" class="mr-4px flex-shrink-0" />
             <span class="truncate">继续上次对话：{{ resumeTarget.title }}</span>
           </el-button>
-          <div class="flex flex-wrap gap-10px mt-24px justify-center max-w-560px">
+          <div class="flex flex-wrap gap-10px mt-24px justify-center max-w-560px" v-if="!effectiveAgentDefId">
             <el-tag
               v-for="(q, i) in GUIDE_QUESTIONS"
               :key="i"
@@ -175,7 +204,7 @@
       />
       <div class="flex justify-between items-center mt-10px">
         <span v-if="!compact" class="text-12px text-[var(--el-text-color-secondary)]">
-          回答依据平台手册，若手册未覆盖会如实说明
+          {{ effectiveAgentDefId ? '回答由所选 Agent 的人设驱动' : '回答依据平台手册，若手册未覆盖会如实说明' }}
         </span>
         <span v-else></span>
         <div>
@@ -205,6 +234,7 @@ import type {
   AgentMessageVO,
   AgentSuggestionVO
 } from '@/api/agent/assistant'
+import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
 import { AgentPlannerApi } from '@/api/agent/planner'
 import type { AgentWorkflowDraftVO, WorkflowNodePreview } from '@/api/agent/planner'
 import SuggestionBar from './SuggestionBar.vue'
@@ -233,6 +263,12 @@ defineOptions({ name: 'AssistantChat' })
 const props = defineProps<{
   /** 当前会话编号。为空表示「新对话」，真发第一句话时后端会自动建 */
   conversationId?: number
+  /**
+   * 当前会话已绑定的 Agent 定义编号（由外层从会话列表的 agentDefId 传入）；空=默认平台助手。
+   * 🔴 只在「既有会话」时有意义：会话一旦落库，选择器以它为准并锁定（D4）。
+   * 本会话内新建的会话不靠它——那条由 pendingNewAgentDefId 兜住（外层列表刷新有延迟）。
+   */
+  agentDefId?: number | null
   /** 紧凑模式：悬浮窗里空间有限，缩小留白、少显示几句说明 */
   compact?: boolean
   /**
@@ -297,6 +333,64 @@ watch(
     innerConversationId.value = val
   }
 )
+
+// ==================== Agent 选择（增量10 slice-2）====================
+
+/** 已发布 Agent 目录：作选择器选项 + id→名字映射（D7：会话 RespVO 只带 id，名字前端映射） */
+const agentDefList = ref<AgentDefVO[]>([])
+const loadAgentDefs = async () => {
+  try {
+    const page = await AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100, status: 'PUBLISHED' })
+    agentDefList.value = page?.list ?? []
+  } catch {
+    agentDefList.value = [] // 拉不到目录不阻断对话：仍可走默认平台助手
+  }
+}
+onMounted(loadAgentDefs)
+
+/** 新对话时用户自由选择的 Agent；null=默认平台助手 */
+const selectedAgentDefId = ref<number | null>(null)
+/**
+ * 本会话内「新建对话」时记住的选择。
+ * 🔴 为什么需要它：新会话的 id 要到 META 事件才拿得到，那一刻外层列表还没刷新、
+ * props.agentDefId 仍是旧值/空。靠它让选择器在「刚发出第一句」后立即锁定到正确的 Agent，
+ * 等外层列表刷新后再由 props.agentDefId 接管（两者一致）。
+ */
+const pendingNewAgentDefId = ref<number | null>(null)
+
+/** 会话一旦落库就锁定选择器（D4：创建时定、之后以会话为准，防中途换人设） */
+const isAgentLocked = computed(() => innerConversationId.value != null)
+
+/** 选择器当前生效值：锁定=会话绑定值（props 优先，其次本会话新建时记住的）；未锁定=用户自由选择值 */
+const effectiveAgentDefId = computed<number | null>(() => {
+  if (isAgentLocked.value) {
+    return props.agentDefId ?? pendingNewAgentDefId.value ?? null
+  }
+  return selectedAgentDefId.value
+})
+
+const agentSelectorModel = computed<number>({
+  // 0 = 默认平台助手的哨兵值（真实 def id 恒为正；el-option 的 value 不接受 null）
+  get: () => effectiveAgentDefId.value ?? 0,
+  set: (val) => {
+    // 锁定时选择器已 disabled，正常改不动；这里再兜一层，绝不让既有会话被换 Agent
+    if (!isAgentLocked.value) selectedAgentDefId.value = val === 0 ? null : val
+  }
+})
+
+/** 空态标题/副标题随选中 Agent 变化（默认助手 vs 自定义 Agent） */
+const activeAgentInfo = computed(() => {
+  const def = effectiveAgentDefId.value
+    ? agentDefList.value.find((a) => a.id === effectiveAgentDefId.value)
+    : undefined
+  if (def) {
+    return { title: def.name, subtitle: def.description || '已选择该 Agent，其人设将驱动本次对话' }
+  }
+  return {
+    title: '我是平台助手',
+    subtitle: '表单设计、数据建模、权限配置的问题都可以问我，回答会标注手册出处'
+  }
+})
 
 /** 中断控制器：用户点「停止」或切换会话时要能真的把连接掐掉 */
 let abortController: AbortController | null = null
@@ -437,6 +531,8 @@ let loadSeq = 0
 const loadMessages = async (conversationId: number) => {
   const seq = ++loadSeq
   innerConversationId.value = conversationId
+  // 载入既有会话：会话绑定以 props.agentDefId 为准，清掉上一次新建对话的临时记忆
+  pendingNewAgentDefId.value = null
   const list: AgentMessageVO[] = await AgentAssistantApi.getMessageList(conversationId)
   if (seq !== loadSeq) return
   // 有 workflowDefId 的助手消息需要重建草稿卡片
@@ -485,6 +581,7 @@ const loadMessages = async (conversationId: number) => {
 const reset = () => {
   if (streaming.value) handleStop()
   innerConversationId.value = undefined
+  pendingNewAgentDefId.value = null // 新对话重新自由选择 Agent（selectedAgentDefId 保留上次选择）
   emit('update:conversationId', undefined)
   messageList.value = []
   autoFollow.value = true
@@ -551,6 +648,13 @@ const handleSend = async (text?: string) => {
   const content = (text ?? inputText.value).trim()
   if (!content || streaming.value) return
 
+  // 🔴 agentDefId 只在「新建会话」这一句被后端采纳并落库绑定（D4）；既有会话带了也被忽略。
+  //    新会话的 id 要到 META 才回来，故先把本次选择记进 pendingNewAgentDefId，
+  //    让选择器在 META 到达、innerConversationId 落定的那一刻立即锁定到正确 Agent。
+  const isNewConversation = innerConversationId.value == null
+  const agentDefIdToSend = isNewConversation ? selectedAgentDefId.value ?? undefined : undefined
+  if (isNewConversation) pendingNewAgentDefId.value = selectedAgentDefId.value
+
   inputText.value = ''
   messageList.value.push({
     role: 'user',
@@ -579,6 +683,7 @@ const handleSend = async (text?: string) => {
   await AgentAssistantApi.sendStream(
     innerConversationId.value,
     content,
+    agentDefIdToSend,
     abortController,
     (event) => {
       let payload: any

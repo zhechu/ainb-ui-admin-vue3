@@ -79,6 +79,7 @@
           v-show="view === 'chat'"
           ref="chatRef"
           v-model:conversation-id="conversationId"
+          :agent-def-id="activeAgentDefId"
           compact
           offer-resume
           class="flex-1 min-h-0"
@@ -159,6 +160,15 @@ const listLoading = ref(false)
 /** 正在恢复上次会话，避免与用户手点会话抢同一份 messageList */
 const restoring = ref(false)
 
+/**
+ * 当前会话绑定的 Agent 编号，传给对话区锁定选择器（D4/D7）。
+ * 🔴 依赖 conversationList 已加载：抽屉的列表原本只在「历史视图」才拉，
+ * 故 handleOpen 里补一次 refreshList，让「恢复上次会话」也能解析出绑定的 Agent。
+ */
+const activeAgentDefId = computed(
+  () => conversationList.value.find((c) => c.id === conversationId.value)?.agentDefId ?? null
+)
+
 const triggerHint = '点击唤起'
 
 /** 手机上 480px 会超出屏宽，抽屉直接铺满 */
@@ -185,6 +195,8 @@ const handleOpen = async () => {
   // 会被误当成「已经有内容」而跳过恢复
   await nextTick()
   await ensureRestored()
+  // 拉一次会话列表：既让历史视图有数据，也让 activeAgentDefId 能解析出恢复会话绑定的 Agent
+  await refreshList()
   chatRef.value?.focus()
 }
 

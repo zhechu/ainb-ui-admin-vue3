@@ -1,13 +1,14 @@
 import request from '@/config/axios'
 
 /**
- * Agent 定义（P5 Agent Builder 第一刀：智能体目录管理）
+ * Agent 定义（P5 Agent Builder：智能体目录 + 对话接线）
  *
  * 🔴 与后端 {@code AgentDefRespVO} 一一对应。分页列表端点会把 persona 置 null（负载考虑），
  * 只有 {@link AgentDefApi.getDef} 才返回完整 persona 原文，供编辑/查看。
  *
- * 🔴 有界：本刀只有目录 CRUD + 发布/停用。人设（persona）尚无运行期消费方——
- * 把它接入对话流（聊天入口按 Agent 路由）与 model/工具/知识/流程绑定是 slice-2。
+ * 🔴 分刀：增量10（slice-2）已把 <b>persona（→系统提示词）</b>与 <b>modelId（→问答模型）</b>接入对话流——
+ * 聊天入口选中一个已发布 Agent，它的人设与绑定模型即刻生效。工具集/知识库/绑定工作流因需先建消费方
+ * （聊天路径的 agentic 工具循环 / RAG 参数化）顺延 slice-3。
  */
 export interface AgentDefVO {
   id: number
@@ -15,6 +16,11 @@ export interface AgentDefVO {
   name: string
   /** 人设=系统提示词原文；仅 get?id 返回，分页为 null */
   persona?: string | null
+  /**
+   * 绑定的问答模型编号（ai 模块 ai_model.id）；空=用平台动态默认模型（带 failover）。
+   * 非空时该 Agent 的每轮问答固定用它（不可用则自动切下一个候选）。
+   */
+  modelId?: number | null
   description?: string
   remark?: string
   version: number
@@ -40,6 +46,8 @@ export interface AgentDefSaveVO {
   code: string
   name: string
   persona: string
+  /** 绑定模型编号；空=动态默认。见 {@link AgentDefVO.modelId} */
+  modelId?: number | null
   description?: string
   remark?: string
 }

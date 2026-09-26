@@ -6,7 +6,8 @@
 
   🔴 三种模式：create（新建，落草稿）/ edit（改草稿，code 只读）/ view（只读查看，全字段禁用）。
      view 让已发布/已停用行也能看人设——编辑只对 DRAFT 开放（后端 updateDef 对非草稿抛 AGENT_DEF_NOT_DRAFT）。
-  🔴 有界：本刀只落库与展示人设，尚无「按此 Agent 对话」的运行期消费方（slice-2 接入聊天入口路由）。
+  🔴 增量10（slice-2）：人设与绑定模型已接入对话流——发布后在聊天入口选中该 Agent，
+     persona 即成系统提示词、modelId 即固定问答模型（留空则用平台动态默认）。
 -->
 <template>
   <el-dialog
@@ -47,6 +48,31 @@
           />
         </div>
       </el-form-item>
+      <el-form-item label="模型" prop="modelId">
+        <div class="w-full">
+          <div class="text-12px text-[var(--el-text-color-secondary)] mb-6px leading-16px">
+            该 Agent 每轮问答固定用哪个模型；留空=用平台动态默认模型（不可用时自动切换下一个）。
+          </div>
+          <el-select
+            v-model="formData.modelId"
+            :disabled="isView"
+            clearable
+            filterable
+            placeholder="默认（动态选择）"
+            class="w-full"
+          >
+            <el-option
+              v-for="m in modelList"
+              :key="m.id"
+              :label="m.name"
+              :value="m.id"
+            >
+              <span>{{ m.name }}</span>
+              <span class="text-12px text-[var(--el-text-color-secondary)] ml-8px">{{ m.model }}</span>
+            </el-option>
+          </el-select>
+        </div>
+      </el-form-item>
       <el-form-item label="描述" prop="description">
         <el-input
           v-model="formData.description"
@@ -82,6 +108,7 @@
 
 <script lang="ts" setup>
 import { AgentDefApi, type AgentDefSaveVO, type AgentDefVO } from '@/api/agent/def'
+import { ModelApi, type ModelVO } from '@/api/ai/model/model'
 
 defineOptions({ name: 'AgentDefFormDialog' })
 
@@ -98,10 +125,22 @@ const isCreate = computed(() => mode.value === 'create')
 const isEdit = computed(() => mode.value === 'edit')
 const isView = computed(() => mode.value === 'view')
 
+/** 问答模型下拉数据源：CHAT 类型（type=1），后端只回「模型启用 + 密钥启用」的，选了就一定能用 */
+const modelList = ref<ModelVO[]>([])
+const loadModels = async () => {
+  if (modelList.value.length > 0) return // 一次会话内缓存，避免每次开表单都打一次
+  try {
+    modelList.value = (await ModelApi.getModelSimpleList(1)) || []
+  } catch {
+    modelList.value = [] // 拉不到不阻断建 Agent：留空即动态默认模型
+  }
+}
+
 const emptyForm = (): AgentDefSaveVO => ({
   code: '',
   name: '',
   persona: '',
+  modelId: undefined,
   description: '',
   remark: ''
 })
@@ -134,6 +173,7 @@ const dialogTitle = computed(() => {
 const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
   mode.value = openMode
   visible.value = true
+  loadModels()
   if (openMode === 'create') {
     formData.value = emptyForm()
     return
@@ -146,6 +186,7 @@ const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
       code: data.code,
       name: data.name,
       persona: data.persona ?? '',
+      modelId: data.modelId ?? undefined,
       description: data.description ?? '',
       remark: data.remark ?? ''
     }

@@ -6,6 +6,12 @@ import { config } from '@/config/axios/config'
 /** 会话 */
 export interface AgentConversationVO {
   id: number
+  /**
+   * 本会话绑定的 Agent 定义编号；空=默认平台助手。
+   * 🔴 创建时定、之后以会话为准：会话一旦绑定，聊天入口的 Agent 选择器锁定为该 Agent，
+   * 刷新/从列表重进都据此恢复人设（后端 AgentConversationRespVO.agentDefId 回传）。
+   */
+  agentDefId?: number | null
   title: string
   scene: string
   pinned: boolean
@@ -103,6 +109,7 @@ export const AgentAssistantApi = {
   sendStream: (
     conversationId: number | undefined,
     content: string,
+    agentDefId: number | undefined,
     ctrl: AbortController,
     onMessage: (event: any) => void,
     onError: (err: any) => void,
@@ -118,7 +125,9 @@ export const AgentAssistantApi = {
       // 切到后台标签页时不要断开：一次问答要十几二十秒，
       // 用户很可能切走去干别的，回来发现对话断了会以为系统不稳定
       openWhenHidden: true,
-      body: JSON.stringify({ conversationId, content }),
+      // agentDefId 仅在<b>新建会话</b>（conversationId 为空）时被后端采纳并落库绑定；
+      // 既有会话以会话自己的 agent_def_id 为准，这里带不带都被忽略（防中途换人设）
+      body: JSON.stringify({ conversationId, content, agentDefId }),
       onmessage: onMessage,
       onerror: onError,
       onclose: onClose,
