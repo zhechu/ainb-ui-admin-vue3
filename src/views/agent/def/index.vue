@@ -1,0 +1,249 @@
+<!--
+  Agent 定义（智能体目录管理）—— P5 Agent Builder 第一刀
+
+  业务人员在此定义/管理一个个可复用的 Agent（当前以「人设 persona」为核心），走与流程编排一致的
+  版本化 + 草稿/发布/停用生命周期：def 列表 / 分页 / 新建 / 编辑 / 查看 / 发布 / 停用 / 删除。
+
+  🔴 有界：本刀只交付「管理目录」。人设尚无运行期消费方——把它接入对话流（聊天入口按 Agent 路由）
+     与 model/工具集/知识库/绑定工作流是 slice-2。故本页没有「调试/对话」入口，只有目录 CRUD。
+
+  权限：读写统一 agent:def:query（照后端 AgentDefController 的 D1 决策，细粒度写权限留后续）。
+  状态无数据字典，用本地 map 渲染 tag（同 views/agent/workflow 的做法）。
+-->
+<template>
+  <!-- 搜索 -->
+  <ContentWrap>
+    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="68px">
+      <el-form-item label="Agent 编码" prop="code">
+        <el-input
+          v-model="queryParams.code"
+          placeholder="请输入 Agent 编码"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-240px"
+        />
+      </el-form-item>
+      <el-form-item label="名称" prop="name">
+        <el-input
+          v-model="queryParams.name"
+          placeholder="请输入名称"
+          clearable
+          @keyup.enter="handleQuery"
+          class="!w-240px"
+        />
+      </el-form-item>
+      <el-form-item label="状态" prop="status">
+        <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
+          <el-option
+            v-for="item in STATUS_OPTIONS"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button @click="handleQuery">
+          <Icon icon="ep:search" class="mr-5px" />
+          搜索
+        </el-button>
+        <el-button @click="resetQuery">
+          <Icon icon="ep:refresh" class="mr-5px" />
+          重置
+        </el-button>
+      </el-form-item>
+    </el-form>
+  </ContentWrap>
+
+  <!-- 列表 -->
+  <ContentWrap>
+    <el-button
+      type="primary"
+      plain
+      class="mb-10px"
+      @click="openForm('create')"
+      v-hasPermi="['agent:def:query']"
+    >
+      <Icon icon="ep:plus" class="mr-5px" /> 新增 Agent
+    </el-button>
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="编号" align="center" prop="id" width="80" />
+      <el-table-column label="Agent 编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
+      <el-table-column label="名称" align="center" prop="name" min-width="140" show-overflow-tooltip />
+      <el-table-column label="版本" align="center" prop="version" width="70" />
+      <el-table-column label="状态" align="center" prop="status" width="100">
+        <template #default="scope">
+          <el-tag :type="statusTagType(scope.row.status)" size="small">
+            {{ statusLabel(scope.row.status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="描述" align="center" prop="description" min-width="180" show-overflow-tooltip />
+      <el-table-column
+        label="创建时间"
+        align="center"
+        prop="createTime"
+        width="180"
+        :formatter="dateFormatter"
+      />
+      <el-table-column label="操作" align="center" min-width="280" fixed="right">
+        <template #default="scope">
+          <el-button
+            link
+            type="primary"
+            @click="openForm('view', scope.row)"
+            v-hasPermi="['agent:def:query']"
+          >
+            查看
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
+            type="primary"
+            @click="openForm('edit', scope.row)"
+            v-hasPermi="['agent:def:query']"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
+            type="success"
+            @click="handlePublish(scope.row)"
+            v-hasPermi="['agent:def:query']"
+          >
+            发布
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'PUBLISHED'"
+            link
+            type="warning"
+            @click="handleDisable(scope.row)"
+            v-hasPermi="['agent:def:query']"
+          >
+            停用
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
+            type="danger"
+            @click="handleDelete(scope.row)"
+            v-hasPermi="['agent:def:query']"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <!-- 分页 -->
+    <Pagination
+      :total="total"
+      v-model:page="queryParams.pageNo"
+      v-model:limit="queryParams.pageSize"
+      @pagination="getList"
+    />
+  </ContentWrap>
+
+  <!-- 新建/编辑/查看表单对话框 -->
+  <AgentDefFormDialog ref="formRef" @success="getList" />
+</template>
+
+<script lang="ts" setup>
+import { dateFormatter } from '@/utils/formatTime'
+import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
+import AgentDefFormDialog from './components/AgentDefFormDialog.vue'
+
+defineOptions({ name: 'AgentDef' })
+
+const message = useMessage()
+
+const loading = ref(true)
+const total = ref(0)
+const list = ref<AgentDefVO[]>([])
+const queryParams = reactive({
+  pageNo: 1,
+  pageSize: 20,
+  code: undefined,
+  name: undefined,
+  status: undefined
+})
+const queryFormRef = ref()
+
+/** 状态本地 map（无数据字典）。与后端 AgentDefStatusEnum 一致 */
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: '草稿' },
+  { value: 'PUBLISHED', label: '已发布' },
+  { value: 'DISABLED', label: '已停用' }
+]
+const statusLabel = (status: string) =>
+  STATUS_OPTIONS.find((s) => s.value === status)?.label ?? status
+const statusTagType = (status: string): 'info' | 'success' | 'warning' => {
+  if (status === 'PUBLISHED') return 'success'
+  if (status === 'DISABLED') return 'warning'
+  return 'info' // DRAFT 及未知
+}
+
+/** 查询列表 */
+const getList = async () => {
+  loading.value = true
+  try {
+    const data = await AgentDefApi.getDefPage(queryParams)
+    list.value = data.list
+    total.value = data.total
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleQuery = () => {
+  queryParams.pageNo = 1
+  getList()
+}
+
+const resetQuery = () => {
+  queryFormRef.value.resetFields()
+  handleQuery()
+}
+
+/** 新建/编辑/查看（编辑仅对 DRAFT 行开放，与后端 updateDef/deleteDef 的草稿守卫一致） */
+const formRef = ref()
+const openForm = (mode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
+  formRef.value.open(mode, row)
+}
+
+/** 发布：DRAFT → PUBLISHED */
+const handlePublish = async (row: AgentDefVO) => {
+  try {
+    await message.confirm(`确认发布 Agent「${row.name || row.code}」(v${row.version})？`)
+    await AgentDefApi.publishDef(row.id)
+    message.success('发布成功')
+    await getList()
+  } catch {}
+}
+
+/** 停用：PUBLISHED → DISABLED */
+const handleDisable = async (row: AgentDefVO) => {
+  try {
+    await message.confirm(`确认停用 Agent「${row.name || row.code}」(v${row.version})？停用后不再被选用。`)
+    await AgentDefApi.disableDef(row.id)
+    message.success('停用成功')
+    await getList()
+  } catch {}
+}
+
+/** 删除：仅 DRAFT 可删（草稿从未被选用，删了不留孤儿；后端 deleteDef 对非草稿抛 AGENT_DEF_NOT_DRAFT） */
+const handleDelete = async (row: AgentDefVO) => {
+  try {
+    await message.delConfirm(
+      `确认删除草稿 Agent「${row.name || row.code}」(v${row.version})？删除后不可恢复。`
+    )
+    await AgentDefApi.deleteDef(row.id)
+    message.success('删除成功')
+    await getList()
+  } catch {}
+}
+
+onMounted(() => {
+  getList()
+})
+</script>
