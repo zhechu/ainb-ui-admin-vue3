@@ -33,6 +33,30 @@ export interface AgentWorkflowDefPageReqVO extends PageParam {
   triggerType?: string
 }
 
+/**
+ * 新建/修改定义的入参，对应后端 {@code AgentWorkflowDefSaveReqVO}。
+ * 🔴 新建时 id 为空、code 必填且可编辑；修改时 id 必填、code 只读（改 code 等于换一条流程，后端不支持）。
+ * 后端 update 仅对 DRAFT 生效，非草稿抛 WORKFLOW_DEF_NOT_DRAFT。
+ */
+export interface AgentWorkflowDefSaveVO {
+  id?: number
+  code: string
+  name: string
+  dsl: string
+  description?: string
+  remark?: string
+}
+
+/** DSL 校验结果，对应后端 {@code AgentWorkflowDefValidateRespVO} */
+export interface AgentWorkflowDefValidateVO {
+  /** 无阻断性 error 即通过；通过才可作为可执行流程发布 */
+  passed: boolean
+  /** 阻断性错误：必须修正 */
+  errors: string[]
+  /** 警告：不阻断，建议调整 */
+  warnings: string[]
+}
+
 /** Workflow 执行实例（执行历史用），对应后端 {@code AgentWorkflowExecutionRespVO} */
 export interface AgentWorkflowExecutionVO {
   id: number
@@ -79,6 +103,26 @@ export const AgentWorkflowApi = {
   /** 定义详情（含完整 dsl，供只读画布） */
   getDef: (id: number): Promise<AgentWorkflowDefVO> =>
     request.get({ url: '/agent/workflow-def/get', params: { id } }),
+
+  /** 新建定义（落 DRAFT 草稿），返回新定义 id */
+  createDef: (data: AgentWorkflowDefSaveVO): Promise<number> =>
+    request.post({ url: '/agent/workflow-def/create', data }),
+
+  /** 修改定义（仅 DRAFT 可改；后端 update 对非草稿抛 WORKFLOW_DEF_NOT_DRAFT） */
+  updateDef: (data: AgentWorkflowDefSaveVO): Promise<boolean> =>
+    request.put({ url: '/agent/workflow-def/update', data }),
+
+  /** 删除定义（仅 DRAFT 可删） */
+  deleteDef: (id: number): Promise<boolean> =>
+    request.delete({ url: '/agent/workflow-def/delete', params: { id } }),
+
+  /**
+   * 校验 DSL（保存/发布前预检，只读不落库）。
+   * 双层校验：基础结构（收集式，一次列全）+ 基础通过后的编译器深层干跑。
+   * 返回结构化 {passed,errors,warnings}，JSON 本身不合法也算一条 error（不抛 HTTP 异常）。
+   */
+  validateDsl: (dsl: string): Promise<AgentWorkflowDefValidateVO> =>
+    request.post({ url: '/agent/workflow-def/validate', data: { dsl } }),
 
   /** 发布：DRAFT → PUBLISHED（按 id 精确发布该版本，幂等）。后端 @RequestParam id，走 params */
   publishDef: (id: number): Promise<number> =>

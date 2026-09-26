@@ -57,6 +57,15 @@
 
   <!-- 列表 -->
   <ContentWrap>
+    <el-button
+      type="primary"
+      plain
+      class="mb-10px"
+      @click="openForm('create')"
+      v-hasPermi="['agent:workflow:query']"
+    >
+      <Icon icon="ep:plus" class="mr-5px" /> 新增流程
+    </el-button>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="80" />
       <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
@@ -82,7 +91,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="240" fixed="right">
+      <el-table-column label="操作" align="center" min-width="320" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -103,6 +112,15 @@
           <el-button
             v-if="scope.row.status === 'DRAFT'"
             link
+            type="primary"
+            @click="openForm('edit', scope.row)"
+            v-hasPermi="['agent:workflow:query']"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
             type="success"
             @click="handlePublish(scope.row)"
             v-hasPermi="['agent:workflow:query']"
@@ -117,6 +135,15 @@
             v-hasPermi="['agent:workflow:query']"
           >
             停用
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
+            type="danger"
+            @click="handleDelete(scope.row)"
+            v-hasPermi="['agent:workflow:query']"
+          >
+            删除
           </el-button>
         </template>
       </el-table-column>
@@ -134,6 +161,8 @@
   <WorkflowCanvasDialog ref="canvasRef" />
   <!-- 执行历史抽屉 -->
   <ExecutionHistoryDrawer ref="historyRef" />
+  <!-- 新建/编辑表单对话框 -->
+  <WorkflowDefFormDialog ref="formRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
@@ -141,6 +170,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
+import WorkflowDefFormDialog from './components/WorkflowDefFormDialog.vue'
 
 defineOptions({ name: 'AgentWorkflow' })
 
@@ -215,6 +245,12 @@ const openHistory = (row: AgentWorkflowDefVO) => {
   historyRef.value.open(row.id, row.name || row.code)
 }
 
+/** 新建/编辑表单（编辑仅对 DRAFT 行开放，与后端 updateDef/deleteDef 的草稿守卫一致） */
+const formRef = ref()
+const openForm = (mode: 'create' | 'edit', row?: AgentWorkflowDefVO) => {
+  formRef.value.open(mode, row)
+}
+
 /** 发布：DRAFT → PUBLISHED */
 const handlePublish = async (row: AgentWorkflowDefVO) => {
   try {
@@ -233,6 +269,18 @@ const handleDisable = async (row: AgentWorkflowDefVO) => {
     )
     await AgentWorkflowApi.disableDef(row.id)
     message.success('停用成功')
+    await getList()
+  } catch {}
+}
+
+/** 删除：仅 DRAFT 可删（草稿从未被执行入口选中，删了不留孤儿；后端 deleteDef 对非草稿抛 WORKFLOW_DEF_NOT_DRAFT） */
+const handleDelete = async (row: AgentWorkflowDefVO) => {
+  try {
+    await message.delConfirm(
+      `确认删除草稿流程「${row.name || row.code}」(v${row.version})？删除后不可恢复。`
+    )
+    await AgentWorkflowApi.deleteDef(row.id)
+    message.success('删除成功')
     await getList()
   } catch {}
 }

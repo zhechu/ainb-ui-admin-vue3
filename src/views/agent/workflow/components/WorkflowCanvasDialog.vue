@@ -8,11 +8,11 @@
   🔴 dsl 可能非法/为空：try/catch + el-alert 显式报错，绝不白屏（R3）。
 -->
 <template>
-  <el-dialog v-model="visible" title="流程画布（只读）" width="900px" append-to-body destroy-on-close>
+  <el-dialog v-model="visible" :title="isPreview ? '流程画布（预览）' : '流程画布（只读）'" width="900px" append-to-body destroy-on-close>
     <el-descriptions v-if="def" :column="2" border size="small" class="mb-12px">
       <el-descriptions-item label="流程编码">{{ def.code }}</el-descriptions-item>
       <el-descriptions-item label="流程名称">{{ def.name }}</el-descriptions-item>
-      <el-descriptions-item label="版本">v{{ def.version }}</el-descriptions-item>
+      <el-descriptions-item label="版本">{{ def.version ? 'v' + def.version : '未保存' }}</el-descriptions-item>
       <el-descriptions-item label="状态">
         <el-tag :type="statusTagType(def.status)" size="small">{{ statusLabel(def.status) }}</el-tag>
       </el-descriptions-item>
@@ -26,7 +26,7 @@
     <div v-else v-loading="loading" class="canvas-wrap h-500px border border-solid border-[var(--el-border-color)] rounded-6px overflow-hidden">
       <VueFlow
         v-if="flowNodes.length"
-        :key="def?.id ?? 'empty'"
+        :key="renderKey"
         :nodes="flowNodes"
         :edges="flowEdges"
         :nodes-draggable="false"
@@ -77,6 +77,10 @@ const def = ref<AgentWorkflowDefVO>()
 const parseError = ref('')
 const flowNodes = ref<Node[]>([])
 const flowEdges = ref<Edge[]>([])
+/** 每次渲染换一个 key，强制 VueFlow 重挂载：避免在不同 def / 反复预览间残留上一份的视口与边 */
+const renderKey = ref<string | number>('empty')
+/** openDsl（未保存草稿预览）时为 true，仅用于标题区分「预览」与「只读」 */
+const isPreview = ref(false)
 
 const statusLabel = (status: string) =>
   ({ DRAFT: '草稿', PUBLISHED: '已发布', DISABLED: '已停用' })[status] ?? status
@@ -90,36 +94,56 @@ const triggerLabel = (type?: string) =>
     ? ({ form_event: '表单事件', schedule: '定时', chat: '对话', webhook: 'Webhook' })[type] ?? type
     : '—'
 
-/** 打开对话框：拉定义 → 解析 DSL → 布局 */
-const open = async (id: number) => {
-  visible.value = true
-  loading.value = true
+/**
+ * 解析 DSL 原文 → 布局 → 填充画布。open（按 id 拉）与 openDsl（预览未保存草稿）共用。
+ * 🔴 dsl 非法/为空时置 parseError 显式报错，绝不白屏（R3）。
+ */
+const renderFromDsl = (dslText: string | null | undefined, meta: AgentWorkflowDefVO) => {
+  def.value = meta
   parseError.value = ''
   flowNodes.value = []
   flowEdges.value = []
+  renderKey.value = meta?.id ?? `draft-${Date.now()}`
+  if (!dslText) {
+    parseError.value = '该流程定义为空（没有 DSL 正文），无法渲染画布。'
+    return
+  }
+  let parsed: any
+  try {
+    parsed = JSON.parse(dslText)
+  } catch (e: any) {
+    parseError.value = `DSL 解析失败：${e?.message ?? '格式不合法'}`
+    return
+  }
+  const { nodes, edges } = layoutDsl(parsed)
+  flowNodes.value = nodes
+  flowEdges.value = edges
+}
+
+/** 打开对话框（列表页「查看画布」）：按 id 拉已保存定义 → 解析 → 布局 */
+const open = async (id: number) => {
+  visible.value = true
+  loading.value = true
+  isPreview.value = false
   def.value = undefined
   try {
     const data = await AgentWorkflowApi.getDef(id)
-    def.value = data
-    if (!data.dsl) {
-      parseError.value = '该流程定义为空（没有 DSL 正文），无法渲染画布。'
-      return
-    }
-    let parsed: any
-    try {
-      parsed = JSON.parse(data.dsl)
-    } catch (e: any) {
-      // DSL 非法 JSON：显式报错而非白屏（R3）
-      parseError.value = `DSL 解析失败：${e?.message ?? '格式不合法'}`
-      return
-    }
-    const { nodes, edges } = layoutDsl(parsed)
-    flowNodes.value = nodes
-    flowEdges.value = edges
+    renderFromDsl(data.dsl, data)
   } finally {
     loading.value = false
   }
 }
 
-defineExpose({ open })
+/**
+ * 打开对话框（表单「预览画布」）：直接渲染一份<b>未保存</b>的 DSL 原文。
+ * meta 供头部展示当前表单里的 code/name/status 等（新建时无 id/version，头部相应显示「未保存」）。
+ */
+const openDsl = (dslText: string, meta: Partial<AgentWorkflowDefVO>) => {
+  visible.value = true
+  loading.value = false
+  isPreview.value = true
+  renderFromDsl(dslText, meta as AgentWorkflowDefVO)
+}
+
+defineExpose({ open, openDsl })
 </script>
