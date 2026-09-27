@@ -64,6 +64,11 @@
         :formatter="dateFormatter"
       />
       <el-table-column label="失败原因" prop="errorMsg" min-width="160" show-overflow-tooltip />
+      <el-table-column label="操作" width="100" align="center" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="onReplay(row.id)">画布回放</el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <el-empty v-if="!loading && list.length === 0" description="暂无执行记录" :image-size="80" />
@@ -74,6 +79,9 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
+
+    <!-- 节点级执行回放画布（增量15 / P4 后续刀）：把某次执行的 trace 叠加到该版本的流程图上 -->
+    <WorkflowReplayDialog ref="replayRef" />
   </el-drawer>
 </template>
 
@@ -84,8 +92,16 @@ import {
   type AgentNodeExecutionVO,
   type AgentWorkflowExecutionVO
 } from '@/api/agent/workflow'
+import WorkflowReplayDialog from './WorkflowReplayDialog.vue'
 
 defineOptions({ name: 'ExecutionHistoryDrawer' })
+
+const replayRef = ref()
+
+/** 打开画布回放：把该执行的节点 trace 叠加到其流程图版本上 */
+const onReplay = (executionId: number) => {
+  replayRef.value?.open(executionId)
+}
 
 const visible = ref(false)
 const loading = ref(false)

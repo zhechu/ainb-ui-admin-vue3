@@ -21,7 +21,8 @@ export interface DslNode {
 /** DSL 边。conditional 边用 cases（路由键→目标）+ default 展开成多条；普通边用 from→to */
 export interface DslEdge {
   from: string
-  to: string
+  /** 普通边的线性目标；条件边（走 cases/default 路由）没有线性 to，故可空——与 editorModel 的 EditorDslEdge 对齐 */
+  to?: string
   type?: string
   /** 条件边的分支：路由键 → 目标节点 id（或 START/END 保留字） */
   cases?: Record<string, string>
@@ -111,7 +112,7 @@ export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
         if (tgt) pushEdge(source, mapEndpoint(tgt), routeKey)
       }
       if (e.default) pushEdge(source, mapEndpoint(e.default), 'default')
-    } else {
+    } else if (e.to) {
       pushEdge(source, mapEndpoint(e.to))
     }
   }
