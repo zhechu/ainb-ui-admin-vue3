@@ -51,6 +51,7 @@ export type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
 export const nodeTagType = (type?: string): TagType => {
   if (!type) return 'info'
   if (type === 'tool') return 'primary'
+  if (type === 'script') return 'primary'
   if (type === 'llm') return 'success'
   if (type.startsWith('condition')) return 'warning'
   if (type.startsWith('hitl')) return 'danger'

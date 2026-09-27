@@ -26,8 +26,18 @@ export interface AgentToolVO {
 /** 配额 */
 export interface AgentQuotaVO {
   id?: number
-  /** null 表示租户级配额 */
+  /** null 表示不限定用户（租户级 / Agent 级 / 工作流级都为 null） */
   userId?: number
+  /**
+   * 配额维度：TENANT 整个租户 / USER 指定用户 / AGENT 指定 Agent / WORKFLOW 指定工作流。
+   * 🔴 判别归属的权威列；AGENT/WORKFLOW 的目标见 targetKey。
+   */
+  dimension?: 'TENANT' | 'USER' | 'AGENT' | 'WORKFLOW'
+  /**
+   * 维度目标键，仅 AGENT/WORKFLOW 用：存对应定义的 code（非 numeric id，跨版本稳定）。
+   * 🔴 WORKFLOW 维度只支持 token 上限（节点 trace 无金额、不改计费语义），金额上限对它无效。
+   */
+  targetKey?: string
   period: 'DAY' | 'MONTH'
   tokenLimit?: number
   costLimit?: number

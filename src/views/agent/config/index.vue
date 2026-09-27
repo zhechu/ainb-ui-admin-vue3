@@ -62,10 +62,12 @@
     </el-button>
 
     <el-table :data="quotas" v-loading="quotaLoading" stripe>
-      <el-table-column label="范围" width="150">
+      <el-table-column label="范围" min-width="180">
         <template #default="{ row }">
-          <el-tag v-if="row.userId == null" type="warning">整个租户</el-tag>
-          <span v-else>用户 {{ row.userId }}</span>
+          <el-tag v-if="scopeOf(row) === 'TENANT'" type="warning">整个租户</el-tag>
+          <span v-else-if="scopeOf(row) === 'USER'">用户 {{ row.userId }}</span>
+          <span v-else-if="scopeOf(row) === 'AGENT'">Agent：{{ row.targetKey }}</span>
+          <span v-else>工作流：{{ row.targetKey }}</span>
         </template>
       </el-table-column>
       <el-table-column label="周期" width="90">
@@ -75,7 +77,11 @@
         <template #default="{ row }">{{ row.tokenLimit ?? '不限' }}</template>
       </el-table-column>
       <el-table-column label="金额上限（元）" width="140" align="right">
-        <template #default="{ row }">{{ row.costLimit ?? '不限' }}</template>
+        <template #default="{ row }">
+          <!-- 🔴 工作流维度只支持 token（节点 trace 无金额、不改计费语义），金额对它不适用 -->
+          <span v-if="scopeOf(row) === 'WORKFLOW'" class="color-#c0c4cc">不适用</span>
+          <span v-else>{{ row.costLimit ?? '不限' }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="预警线" width="100" align="right">
         <template #default="{ row }">{{ (row.warnRatio * 100).toFixed(0) }}%</template>
@@ -132,13 +138,41 @@
   <Dialog v-model="quotaFormVisible" :title="quotaForm.id ? '编辑配额' : '新增配额'" width="520px">
     <el-form :model="quotaForm" label-width="120px">
       <el-form-item label="范围">
-        <el-radio-group v-model="quotaScope">
+        <el-radio-group v-model="quotaScope" @change="handleScopeChange">
           <el-radio value="TENANT">整个租户</el-radio>
           <el-radio value="USER">指定用户</el-radio>
+          <el-radio value="AGENT">指定 Agent</el-radio>
+          <el-radio value="WORKFLOW">指定工作流</el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item v-if="quotaScope === 'USER'" label="用户编号">
         <el-input-number v-model="quotaForm.userId" :min="1" controls-position="right" />
+      </el-form-item>
+      <el-form-item v-if="quotaScope === 'AGENT'" label="选择 Agent">
+        <el-select
+          v-model="quotaForm.targetKey"
+          filterable
+          placeholder="按名称/编码筛选"
+          style="width: 100%"
+        >
+          <el-option v-for="a in agentOptions" :key="a.code" :label="a.label" :value="a.code" />
+        </el-select>
+        <span class="ml-8px text-13px color-#909399">
+          绑定的是 Agent 的<b>编码</b>（跨版本稳定），该 Agent 的所有版本用量都计入这条配额
+        </span>
+      </el-form-item>
+      <el-form-item v-if="quotaScope === 'WORKFLOW'" label="选择工作流">
+        <el-select
+          v-model="quotaForm.targetKey"
+          filterable
+          placeholder="按名称/编码筛选"
+          style="width: 100%"
+        >
+          <el-option v-for="w in workflowOptions" :key="w.code" :label="w.label" :value="w.code" />
+        </el-select>
+        <span class="ml-8px text-13px color-#909399">
+          绑定的是工作流的<b>编码</b>（跨版本稳定），该工作流的所有版本用量都计入这条配额
+        </span>
       </el-form-item>
       <el-form-item label="周期">
         <el-radio-group v-model="quotaForm.period">
@@ -151,7 +185,16 @@
         <span class="ml-8px text-13px color-#909399">留空表示该维度不限</span>
       </el-form-item>
       <el-form-item label="金额上限（元）">
-        <el-input-number v-model="quotaForm.costLimit" :min="0" :precision="2" controls-position="right" />
+        <el-input-number
+          v-model="quotaForm.costLimit"
+          :min="0"
+          :precision="2"
+          :disabled="quotaScope === 'WORKFLOW'"
+          controls-position="right"
+        />
+        <span v-if="quotaScope === 'WORKFLOW'" class="ml-8px text-13px color-#909399">
+          工作流维度只支持 token 上限（节点用量不记金额）
+        </span>
       </el-form-item>
       <el-form-item label="预警线">
         <el-input-number
@@ -181,6 +224,8 @@ import { formatDate } from '@/utils/formatTime'
 import { checkPermi } from '@/utils/permission'
 import * as ConfigApi from '@/api/agent/config'
 import type { AgentQuotaVO } from '@/api/agent/config'
+import { AgentDefApi } from '@/api/agent/def'
+import { AgentWorkflowApi } from '@/api/agent/workflow'
 
 defineOptions({ name: 'AgentConfig' })
 
@@ -200,9 +245,12 @@ const quotaLoading = ref(false)
 
 const quotaFormVisible = ref(false)
 const quotaForm = ref<AgentQuotaVO>(emptyQuota())
-const quotaScope = ref<'TENANT' | 'USER'>('TENANT')
+const quotaScope = ref<'TENANT' | 'USER' | 'AGENT' | 'WORKFLOW'>('TENANT')
 /** 界面上用百分比，接口用小数 —— 让管理员填 0.8 太容易填成 80 */
 const warnPercent = ref(80)
+/** 可绑定的 Agent / 工作流下拉选项（去重后 code 唯一），进入页面时加载一次 */
+const agentOptions = ref<{ code: string; label: string }[]>([])
+const workflowOptions = ref<{ code: string; label: string }[]>([])
 
 function emptyQuota(): AgentQuotaVO {
   return { period: 'MONTH', warnRatio: 0.8, status: 0 }
@@ -212,6 +260,14 @@ const riskTagType = (risk: string) =>
   ({ READ_ONLY: 'success', LOW: 'info', MEDIUM: 'warning', HIGH: 'danger', IRREVERSIBLE: 'danger' })[
     risk
   ] ?? 'info'
+
+/**
+ * 一行配额的范围判别：优先看后端权威的 dimension；
+ * 老数据（增量前落的行）没有 dimension，按 userId 是否为空回落 TENANT/USER。
+ */
+function scopeOf(row: AgentQuotaVO): 'TENANT' | 'USER' | 'AGENT' | 'WORKFLOW' {
+  return row.dimension ?? (row.userId == null ? 'TENANT' : 'USER')
+}
 
 /** 开关只在点「保存」时才真正提交，避免误触就把助手关了 */
 const handleToggle = () => {
@@ -231,21 +287,55 @@ const handleSaveConfig = async () => {
 
 const openQuotaForm = (row?: AgentQuotaVO) => {
   quotaForm.value = row ? { ...row } : emptyQuota()
-  quotaScope.value = quotaForm.value.userId == null ? 'TENANT' : 'USER'
+  quotaScope.value = scopeOf(quotaForm.value)
   warnPercent.value = Math.round((quotaForm.value.warnRatio ?? 0.8) * 100)
   quotaFormVisible.value = true
 }
 
-const handleSaveQuota = async () => {
-  const payload: AgentQuotaVO = {
-    ...quotaForm.value,
-    // 租户级配额的 userId 必须是 null 而不是 0 —— 0 是个合法的用户编号
-    userId: quotaScope.value === 'TENANT' ? undefined : quotaForm.value.userId,
-    warnRatio: warnPercent.value / 100
+/**
+ * 切换范围时清掉上一个范围残留的目标字段，避免把 USER 的 userId 或 AGENT 的 targetKey
+ * 带进下一个范围（后端 normalize 会再清一遍，但界面上先清干净、避免误显示）。
+ */
+const handleScopeChange = () => {
+  if (quotaScope.value !== 'USER') {
+    quotaForm.value.userId = undefined
   }
-  if (!payload.tokenLimit && !payload.costLimit) {
+  if (quotaScope.value !== 'AGENT' && quotaScope.value !== 'WORKFLOW') {
+    quotaForm.value.targetKey = undefined
+  }
+  // WORKFLOW 不支持金额，切到它时清掉已填的 costLimit，避免带着一个会被后端丢弃的值
+  if (quotaScope.value === 'WORKFLOW') {
+    quotaForm.value.costLimit = undefined
+  }
+}
+
+const handleSaveQuota = async () => {
+  const scope = quotaScope.value
+  // 各范围的必填目标校验：与后端 normalize 同口径，界面上先拦，省一次往返 + 明确提示
+  if (scope === 'USER' && !quotaForm.value.userId) {
+    message.warning('请指定用户编号')
+    return
+  }
+  if ((scope === 'AGENT' || scope === 'WORKFLOW') && !quotaForm.value.targetKey) {
+    message.warning(scope === 'AGENT' ? '请选择要限制的 Agent' : '请选择要限制的工作流')
+    return
+  }
+  // WORKFLOW 只认 token，所以「至少填一个上限」的口径里 costLimit 不参与
+  const costEffective = scope === 'WORKFLOW' ? undefined : quotaForm.value.costLimit
+  if (!quotaForm.value.tokenLimit && !costEffective) {
     message.warning('token 上限与金额上限至少要填一个，否则这条配额不会限制任何东西')
     return
+  }
+  const payload: AgentQuotaVO = {
+    ...quotaForm.value,
+    dimension: scope,
+    // 租户级配额的 userId 必须是 null 而不是 0 —— 0 是个合法的用户编号
+    userId: scope === 'USER' ? quotaForm.value.userId : undefined,
+    // 只有 AGENT/WORKFLOW 带目标 code；TENANT/USER 一律清空
+    targetKey: scope === 'AGENT' || scope === 'WORKFLOW' ? quotaForm.value.targetKey : undefined,
+    // WORKFLOW 不支持金额（节点 trace 无金额、不改计费语义），强制不带 costLimit
+    costLimit: costEffective,
+    warnRatio: warnPercent.value / 100
   }
   await ConfigApi.saveQuota(payload)
   message.success('已保存')
@@ -282,9 +372,38 @@ const loadTools = async () => {
   }
 }
 
+/**
+ * 按 code 去重（agent_def / workflow_def 同 code 多版本共存，下拉只该出现一次），
+ * label 用「名称（code）」让管理员既能按名字认、也能核对绑定的是哪个 code。
+ */
+function uniqueByCode<T extends { code: string; name: string }>(list: T[]): { code: string; label: string }[] {
+  const seen = new Set<string>()
+  const out: { code: string; label: string }[] = []
+  for (const item of list) {
+    if (!item.code || seen.has(item.code)) continue
+    seen.add(item.code)
+    out.push({ code: item.code, label: `${item.name}（${item.code}）` })
+  }
+  return out
+}
+
+/**
+ * 加载可绑定的 Agent / 工作流下拉选项。任一失败都回落空数组 ——
+ * 配额管理不该因为定义列表拉取失败而整页打不开（fail-soft）。
+ */
+const loadTargetOptions = async () => {
+  const [agents, workflows] = await Promise.all([
+    AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100 }).catch(() => ({ list: [] })),
+    AgentWorkflowApi.getDefPage({ pageNo: 1, pageSize: 100 }).catch(() => ({ list: [] }))
+  ])
+  agentOptions.value = uniqueByCode((agents as any).list ?? [])
+  workflowOptions.value = uniqueByCode((workflows as any).list ?? [])
+}
+
 onMounted(async () => {
   await loadConfig()
   await loadQuotas()
   await loadTools()
+  await loadTargetOptions()
 })
 </script>

@@ -92,9 +92,11 @@ describe('layoutDsl', () => {
 describe('nodeTagType', () => {
   it('按类型着色，未知默认 info', () => {
     expect(nodeTagType('tool')).toBe('primary')
+    expect(nodeTagType('script')).toBe('primary')
     expect(nodeTagType('llm')).toBe('success')
     expect(nodeTagType('condition.llm')).toBe('warning')
     expect(nodeTagType('hitl.confirm')).toBe('danger')
+    expect(nodeTagType('hitl.bpm_approval')).toBe('danger')
     expect(nodeTagType('whatever')).toBe('info')
     expect(nodeTagType(undefined)).toBe('info')
   })

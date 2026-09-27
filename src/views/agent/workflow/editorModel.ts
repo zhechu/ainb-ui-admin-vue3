@@ -46,7 +46,7 @@ export interface NodeTypeOption {
 
 /**
  * 可拖入的节点类型目录。
- * 🔴 逐字对齐后端 {@code NodeExecutorRegistry} 已注册的 8 种执行器 type（getType()）——
+ * 🔴 逐字对齐后端 {@code NodeExecutorRegistry} 已注册的 10 种执行器 type（getType()）——
  * 目录里放一个后端没有执行器的 type，作者拖出来发布了也会在编译期报「找不到节点类型的执行器」。
  * 标签色沿用 layout.ts 的 nodeTagType 映射，保证画布预览与编辑器同色。
  */
@@ -56,9 +56,11 @@ export const NODE_TYPE_OPTIONS: NodeTypeOption[] = [
   { value: 'condition.rule', label: '规则条件', tagType: 'warning' },
   { value: 'condition.llm', label: 'LLM 条件', tagType: 'warning' },
   { value: 'hitl.confirm', label: '人工确认', tagType: 'danger' },
+  { value: 'hitl.bpm_approval', label: 'BPM 审批', tagType: 'danger' },
   { value: 'knowledge_retrieval', label: '知识检索', tagType: 'info' },
   { value: 'parallel', label: '并行', tagType: 'info' },
-  { value: 'wait', label: '等待', tagType: 'info' }
+  { value: 'wait', label: '等待', tagType: 'info' },
+  { value: 'script', label: '脚本', tagType: 'primary' }
 ]
 
 /** 条件边「默认分支」在渲染边 data.route 里的哨兵值（与 case 的路由键区分开） */
@@ -93,6 +95,9 @@ export const genNodeId = (type: string, existing: string[]): string => {
 export const defaultConfig = (type: string): Record<string, any> => {
   if (type === 'tool') return { toolId: '', args: {}, outputVar: '' }
   if (type === 'llm') return { prompt: '', outputVar: '' }
+  if (type === 'hitl.bpm_approval')
+    return { bpmProcessDefKey: '', approveVar: 'bpm_approved', statusVar: 'bpm_status', formVars: {} }
+  if (type === 'script') return { code: '', language: 'javascript', timeoutMs: 2000, outputVar: '' }
   return { outputVar: '' }
 }
 

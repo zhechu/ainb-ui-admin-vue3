@@ -11,7 +11,9 @@
  *   queryVar/query/topK/similarityThreshold/outputVar)、condition.rule→RuleConditionNodeExecutor(branches/
  *   default)、condition.llm→LlmConditionNodeExecutor(prompt/choices/modelId/temperature/maxTokens/default/
  *   outputVar)、hitl.confirm→HitlConfirmNodeExecutor(approveVar)、wait→validateWaitConfig(waitType/duration/
- *   eventKey)、parallel→validateParallelNode(join/branches)。
+ *   eventKey)、parallel→validateParallelNode(join/branches)、hitl.bpm_approval→HitlBpmApprovalNodeExecutor/
+ *   AgentBpmApprovalService(bpmProcessDefKey/approveVar/statusVar/formVars)、script→ScriptNodeExecutor(code/
+ *   language/timeoutMs/outputVar)。
  *
  * 🔴 刻意只做「标量/简单键」的结构化编辑；复杂嵌套结构（tool.args 对象、condition.rule.branches 的条件组、
  *   condition.llm.choices 列表、parallel.branches 的 List<List<String>>）留给底部 DSL JSON 兜底编辑，
@@ -51,7 +53,7 @@ export interface ConfigField {
 }
 
 /**
- * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的 8 种 type。
+ * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的 10 种 type。
  * 顺序即渲染顺序（常用/必填在前）。
  */
 export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
@@ -119,6 +121,29 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       hint: '用户是否批准的布尔 state 变量名；下游 condition.rule 可用 is_true/is_false 判定。'
     }
   ],
+  'hitl.bpm_approval': [
+    {
+      key: 'bpmProcessDefKey',
+      label: 'BPM 流程定义 Key（bpmProcessDefKey）',
+      kind: 'text',
+      placeholder: '如 oa_leave_approval',
+      hint: '必填。指向一个已部署的 BPM 流程定义 key；节点挂起时以执行所有者身份发起该审批，审批人在 BPM 里通过/驳回后自动唤醒工作流。'
+    },
+    {
+      key: 'approveVar',
+      label: '批准变量（approveVar）',
+      kind: 'text',
+      placeholder: '默认 bpm_approved',
+      hint: '审批是否通过的布尔 state 变量名；下游 condition.rule 可用 is_true/is_false 判定。'
+    },
+    {
+      key: 'statusVar',
+      label: '状态码变量（statusVar）',
+      kind: 'text',
+      placeholder: '默认 bpm_status',
+      hint: 'BPM 原始状态码（2 通过 / 3 驳回 / 4 取消）写入的 state 变量名，供审计或更细的分支判定。'
+    }
+  ],
   wait: [
     {
       key: 'waitType',
@@ -154,6 +179,32 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       options: [{ label: '全部完成（all）', value: 'all' }],
       hint: '当前仅支持 all（各分支全部完成才激活 join 目标）。'
     }
+  ],
+  script: [
+    {
+      key: 'code',
+      label: '脚本（code）',
+      kind: 'textarea',
+      placeholder: "JS，可直接写 return；用 state 读工作流状态，如 return state.a + state.b;",
+      hint: '在 GraalJS 沙箱内执行：禁 IO / 线程 / 进程 / 访问 Java 类；return 的值写入 outputVar。脚本上限 1 万字符。'
+    },
+    {
+      key: 'language',
+      label: '语言（language）',
+      kind: 'select',
+      options: [{ label: 'JavaScript', value: 'javascript' }],
+      hint: '目前仅支持 javascript。'
+    },
+    {
+      key: 'timeoutMs',
+      label: '超时毫秒（timeoutMs）',
+      kind: 'number',
+      min: 1,
+      max: 10000,
+      step: 100,
+      hint: '缺省 2000，上限 10000；死循环到点被强制中断。'
+    },
+    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '默认 script_result' }
   ]
 }
 
@@ -164,6 +215,7 @@ export const NODE_CONFIG_JSON_HINT: Record<string, string> = {
   tool: 'args（工具入参，对象）请用下方 DSL JSON 编辑。',
   'condition.rule': 'branches（条件组 conditionGroups / 扁平 conditions）结构复杂，请用下方 DSL JSON 编辑。',
   'condition.llm': 'choices（候选路由列表）请用下方 DSL JSON 编辑。',
+  'hitl.bpm_approval': 'formVars（发起审批时传给流程的变量，对象）请用下方 DSL JSON 编辑。',
   parallel: 'branches（List<List<String>>，每个元素一条节点 id 链）请用下方 DSL JSON 编辑。'
 }
 

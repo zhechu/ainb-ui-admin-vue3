@@ -615,8 +615,6 @@ const remainingRouter: AppRouteRecordRaw[] = [
           activeMenu: '/ai/knowledge'
         }
       }
-      // ai/workflow 路由已摘除：ai_workflow 表尚未建立，功能仍是半成品，从菜单到路由统一隐藏。
-      // 源码保留，待功能完整后重新开放。
     ]
   },
   {
