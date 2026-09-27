@@ -8,8 +8,9 @@ import request from '@/config/axios'
  *
  * 🔴 分刀：增量10（slice-2）已把 <b>persona（→系统提示词）</b>与 <b>modelId（→问答模型）</b>接入对话流——
  * 聊天入口选中一个已发布 Agent，它的人设与绑定模型即刻生效。增量11（slice-3a）再把 <b>knowledgeId
- * （→专属知识库检索）</b>接入：绑定后聊天从该 KB 检索并注入「参考资料」。工具集/绑定工作流因需先建消费方
- * （聊天路径的 agentic 工具循环）顺延 slice-3b/3c。
+ * （→专属知识库检索）</b>接入：绑定后聊天从该 KB 检索并注入「参考资料」。增量12（slice-3b）接线
+ * <b>toolKeys（→聊天 agentic 只读工具循环）</b>：绑定只读工具后，聊天跑「思考→调工具→观察→再思考」ReAct 循环；
+ * slice-3c 接线 <b>trigger.chat（→工作流驱动）</b>：被已发布 chatflow 绑定的 Agent，每条消息改跑工作流（见 workflowDriven）。
  */
 export interface AgentDefVO {
   id: number
@@ -27,6 +28,16 @@ export interface AgentDefVO {
    * 非空时聊天从该 KB 检索命中片段并注入 prompt（增量11 / slice-3a）。
    */
   knowledgeId?: number | null
+  /**
+   * 绑定的只读工具键，逗号分隔（如 {@code data_interface_list,datamodel_list}）；空=不启用工具循环。
+   * 非空时聊天跑 agentic 只读工具循环（增量12 / slice-3b）。发布期校验每个键都已登记且为只读。
+   */
+  toolKeys?: string | null
+  /**
+   * 是否被一条已发布 chatflow 驱动（只读派生字段，后端按 trigger.chat.agentId 反查填充）。
+   * true = 该 Agent 的每条聊天消息都跑绑定工作流，而非直连 LLM（增量12 / slice-3c）。仅 PUBLISHED 行可能为 true。
+   */
+  workflowDriven?: boolean
   description?: string
   remark?: string
   version: number
@@ -56,6 +67,8 @@ export interface AgentDefSaveVO {
   modelId?: number | null
   /** 绑定知识库编号；空=该 Agent 不检索知识库。见 {@link AgentDefVO.knowledgeId} */
   knowledgeId?: number | null
+  /** 绑定只读工具键，逗号分隔；空=不启用工具循环。见 {@link AgentDefVO.toolKeys} */
+  toolKeys?: string | null
   description?: string
   remark?: string
 }

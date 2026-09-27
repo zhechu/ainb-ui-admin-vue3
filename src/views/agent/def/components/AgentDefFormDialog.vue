@@ -10,6 +10,8 @@
      persona 即成系统提示词、modelId 即固定问答模型（留空则用平台动态默认）。
   🔴 增量11（slice-3a）：知识库绑定已接入——绑定后该 Agent 聊天时从其专属 KB 检索并注入「参考资料」；
      留空=不检索（仅凭人设作答）。下拉复用 KnowledgeApi.getSimpleKnowledgeList（只列启用的库）。
+  🔴 增量12（slice-3b）：只读工具绑定已接入——绑定后该 Agent 聊天时跑「思考→调只读工具→观察→再思考」ReAct 循环；
+     留空=直连问答。下拉复用 config getToolList 并前端过滤只读工具（requireConfirm===false），与后端发布期校验同口径。
 -->
 <template>
   <el-dialog
@@ -97,6 +99,35 @@
           </el-select>
         </div>
       </el-form-item>
+      <el-form-item label="工具" prop="toolKeys">
+        <div class="w-full">
+          <div class="text-12px text-[var(--el-text-color-secondary)] mb-6px leading-16px">
+            绑定后该 Agent 聊天时会先「思考→调工具查现状→再思考」直到给出结论，而非凭空作答。
+            <b>仅可绑定只读工具</b>（写操作须走 Plan 确认或工作流 tool 节点，聊天循环无人工确认故不放行）；留空=直连问答。
+          </div>
+          <el-select
+            v-model="selectedTools"
+            :disabled="isView"
+            multiple
+            clearable
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="不绑定（直连问答，无工具调查）"
+            class="w-full"
+          >
+            <el-option
+              v-for="t in toolList"
+              :key="t.name"
+              :label="t.name"
+              :value="t.name"
+            >
+              <span>{{ t.name }}</span>
+              <span class="text-12px text-[var(--el-text-color-secondary)] ml-8px">{{ t.description }}</span>
+            </el-option>
+          </el-select>
+        </div>
+      </el-form-item>
       <el-form-item label="描述" prop="description">
         <el-input
           v-model="formData.description"
@@ -134,6 +165,7 @@
 import { AgentDefApi, type AgentDefSaveVO, type AgentDefVO } from '@/api/agent/def'
 import { ModelApi, type ModelVO } from '@/api/ai/model/model'
 import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
+import { getToolList, type AgentToolVO } from '@/api/agent/config'
 
 defineOptions({ name: 'AgentDefFormDialog' })
 
@@ -172,16 +204,45 @@ const loadKnowledge = async () => {
   }
 }
 
+/**
+ * 工具下拉数据源（增量12 / slice-3b）：只列<b>只读</b>工具（requireConfirm===false ⟺ 风险 READ_ONLY）。
+ * 后端发布期 validateToolKeys 也只放行只读工具，故这里前端先过滤，业务人员看不到不可绑的写工具（防错配）。
+ */
+const toolList = ref<AgentToolVO[]>([])
+const loadTools = async () => {
+  if (toolList.value.length > 0) return // 一次会话内缓存，避免每次开表单都打一次
+  try {
+    const all = (await getToolList()) || []
+    toolList.value = all.filter((t) => !t.requireConfirm)
+  } catch {
+    toolList.value = [] // 拉不到不阻断建 Agent：留空即不绑定工具（走直连问答）
+  }
+}
+
+/** 空表单初值（新建时用）。toolKeys 初值为空串=不绑定工具，走直连问答 */
 const emptyForm = (): AgentDefSaveVO => ({
   code: '',
   name: '',
   persona: '',
   modelId: undefined,
   knowledgeId: undefined,
+  toolKeys: '',
   description: '',
   remark: ''
 })
 const formData = ref<AgentDefSaveVO>(emptyForm())
+
+/**
+ * 工具多选 v-model 适配器：表单存的是逗号分隔串（toolKeys，与后端一一对应），
+ * el-select multiple 绑数组。用 computed get/set 在两者间转换，单一真源仍是 formData.toolKeys
+ * （避免「开表单解析一次、提交再拼一次」的同步漏写）。
+ */
+const selectedTools = computed<string[]>({
+  get: () => (formData.value.toolKeys ? formData.value.toolKeys.split(',').filter(Boolean) : []),
+  set: (val: string[]) => {
+    formData.value.toolKeys = val && val.length ? val.join(',') : ''
+  }
+})
 
 const formRules = reactive({
   code: [
@@ -212,6 +273,7 @@ const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
   visible.value = true
   loadModels()
   loadKnowledge()
+  loadTools()
   if (openMode === 'create') {
     formData.value = emptyForm()
     return
@@ -226,6 +288,7 @@ const open = async (openMode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
       persona: data.persona ?? '',
       modelId: data.modelId ?? undefined,
       knowledgeId: data.knowledgeId ?? undefined,
+      toolKeys: data.toolKeys ?? '',
       description: data.description ?? '',
       remark: data.remark ?? ''
     }

@@ -71,10 +71,20 @@
       <el-table-column label="Agent 编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
       <el-table-column label="名称" align="center" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column label="版本" align="center" prop="version" width="70" />
-      <el-table-column label="状态" align="center" prop="status" width="100">
+      <el-table-column label="状态" align="center" prop="status" width="150">
         <template #default="scope">
           <el-tag :type="statusTagType(scope.row.status)" size="small">
             {{ statusLabel(scope.row.status) }}
+          </el-tag>
+          <!-- 增量12 / slice-3c：被已发布 chatflow 驱动的 Agent 打标（discoverability），提示「对话即跑工作流」 -->
+          <el-tag
+            v-if="scope.row.workflowDriven"
+            type="primary"
+            size="small"
+            effect="plain"
+            class="ml-4px"
+          >
+            工作流驱动
           </el-tag>
         </template>
       </el-table-column>
