@@ -4,11 +4,16 @@ import {
   addEdge,
   addNode,
   defaultConfig,
+  ensureCompensation,
   genNodeId,
+  getNodeRecovery,
+  isNonCompensableType,
   nodeTypeLabel,
   removeEdge,
   removeNode,
-  type EditorDsl
+  setNodeRecovery,
+  type EditorDsl,
+  type EditorDslNode
 } from './editorModel'
 
 /**
@@ -135,5 +140,91 @@ describe('editorModel', () => {
     // a 被删，指向它的边也清了，只剩新加的 llm_1（无边）
     expect(dsl.nodes!.map((n) => n.id)).toEqual(['llm_1'])
     expect(dsl.edges).toEqual([])
+  })
+})
+
+describe('editorModel：Saga 补偿打标（缺口收口，设计方案「一之三」/ DSL §6.3）', () => {
+  it('isNonCompensableType：逐字对齐后端 NON_COMPENSABLE_TYPES（llm/knowledge_retrieval）', () => {
+    expect(isNonCompensableType('llm')).toBe(true)
+    expect(isNonCompensableType('knowledge_retrieval')).toBe(true)
+    expect(isNonCompensableType('tool')).toBe(false)
+    expect(isNonCompensableType('script')).toBe(false)
+    expect(isNonCompensableType(undefined)).toBe(false)
+  })
+
+  it('getNodeRecovery：只认 forward/compensate，其余（含未声明）归空串', () => {
+    expect(getNodeRecovery({ id: 'a' })).toBe('')
+    expect(getNodeRecovery({ id: 'a', recovery: 'forward' })).toBe('forward')
+    expect(getNodeRecovery({ id: 'a', recovery: 'compensate' })).toBe('compensate')
+    expect(getNodeRecovery({ id: 'a', recovery: 'whatever' })).toBe('')
+  })
+
+  it('setNodeRecovery：切 compensate 时补建 compensation 对象（面板字段有真实引用可写）', () => {
+    const node: EditorDslNode = { id: 'a', type: 'tool' }
+    setNodeRecovery(node, 'compensate')
+    expect(node.recovery).toBe('compensate')
+    expect(node.compensation).toEqual({})
+    // 已有的 compensation 不被覆盖
+    node.compensation = { compensate_ref: 'form_data_delete' }
+    setNodeRecovery(node, 'compensate')
+    expect(node.compensation).toEqual({ compensate_ref: 'form_data_delete' })
+  })
+
+  it('setNodeRecovery：切走 compensate 时整个删掉 compensation（防后端 warn 的脏声明）', () => {
+    const node: EditorDslNode = {
+      id: 'a',
+      type: 'tool',
+      recovery: 'compensate',
+      compensation: { compensate_ref: 'x' }
+    }
+    setNodeRecovery(node, 'forward')
+    expect(node.recovery).toBe('forward')
+    expect(node.compensation).toBeUndefined()
+    expect('compensation' in node).toBe(false)
+    setNodeRecovery(node, '')
+    expect(node.recovery).toBeUndefined()
+    expect('recovery' in node).toBe(false)
+  })
+
+  it('ensureCompensation：缺失/非对象时重建并挂到节点上，返回的是节点身上的引用', () => {
+    const node: EditorDslNode = { id: 'a', type: 'tool' }
+    const comp = ensureCompensation(node)
+    expect(node.compensation).toBe(comp)
+    comp.compensate_ref = 'form_data_delete'
+    expect(node.compensation).toEqual({ compensate_ref: 'form_data_delete' })
+    node.compensation = 'bad'
+    expect(ensureCompensation(node)).toEqual({})
+    node.compensation = [1]
+    expect(ensureCompensation(node)).toEqual({})
+  })
+
+  it('往返保真：compensation/recovery 顶层字段经画布增删后原样保留', () => {
+    const dsl: EditorDsl = {
+      id: 'wf_x',
+      nodes: [
+        {
+          id: 'a',
+          type: 'tool',
+          recovery: 'compensate',
+          compensation: {
+            compensate_ref: 'form_data_delete',
+            before_image: { recordId: '{{$.a_out.id}}' },
+            idempotency_key: '{{$.execution.id}}:a'
+          },
+          config: { toolId: 'form_data_create' }
+        }
+      ],
+      edges: [{ from: 'START', to: 'a' }]
+    }
+    addNode(dsl, 'llm')
+    addEdge(dsl, 'a', 'llm_1')
+    removeNode(dsl, 'llm_1')
+    const kept = dsl.nodes!.find((n) => n.id === 'a')!
+    expect(kept.recovery).toBe('compensate')
+    expect(kept.compensation).toEqual({
+      compensate_ref: 'form_data_delete',
+      before_image: { recordId: '{{$.a_out.id}}' },
+      idempotency_key: '{{$.execution.id}}:a'
+    })
   })
 })

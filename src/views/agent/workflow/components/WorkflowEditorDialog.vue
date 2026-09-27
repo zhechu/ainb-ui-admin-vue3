@@ -181,6 +181,83 @@
                 </div>
               </el-form-item>
             </template>
+            <!-- 失败恢复与补偿（Saga）：recovery/compensation 是节点顶层字段（与 config 平级，
+                 对齐后端 NodeDTO/AgentWorkflowCompensator），故不走 nodeConfigSchema，单独渲染 -->
+            <el-divider content-position="left">失败恢复与补偿</el-divider>
+            <el-form-item v-if="nonCompensable" label="失败恢复">
+              <el-tag size="small" type="info" data-testid="node-noncompensable-tag">不可补偿（固定向前恢复）</el-tag>
+              <div class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-2px">
+                该节点类型的副作用不可逆（模型 token 已耗/检索无副作用），声明补偿不会生效；编排时请尽量后置。
+              </div>
+            </el-form-item>
+            <template v-else>
+              <el-form-item label="失败恢复（recovery）">
+                <el-select
+                  :model-value="nodeRecovery"
+                  class="w-full"
+                  data-testid="node-recovery-select"
+                  @update:model-value="onRecoveryChange"
+                >
+                  <el-option label="跟随全局（默认 forward 断点续跑）" value="" />
+                  <el-option label="forward — 失败后从断点续跑" value="forward" />
+                  <el-option label="compensate — 失败时 Saga 逆序补偿" value="compensate" />
+                </el-select>
+              </el-form-item>
+              <template v-if="nodeRecovery === 'compensate'">
+                <el-form-item label="补偿动作工具（compensate_ref）">
+                  <el-select
+                    v-model="selComp.compensate_ref"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    placeholder="选择或输入工具键"
+                    class="w-full"
+                    data-testid="node-compensate-ref"
+                    @change="buildFlow"
+                  >
+                    <el-option v-for="t in toolList" :key="t.name" :label="t.name" :value="t.name">
+                      <span class="float-left">{{ t.name }}</span>
+                      <span
+                        v-if="t.description"
+                        class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
+                      >
+                        {{ t.description }}
+                      </span>
+                    </el-option>
+                  </el-select>
+                  <div class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-2px">
+                    指向执行「语义反做」的工具键，如 form_data_delete 撤销 form_data_create。
+                  </div>
+                </el-form-item>
+                <el-form-item label="补偿前像（before_image，JSON 对象）">
+                  <el-input
+                    v-model="beforeImageText"
+                    type="textarea"
+                    :rows="3"
+                    class="editor-json"
+                    :placeholder="BEFORE_IMAGE_PLACEHOLDER"
+                    data-testid="node-before-image"
+                    @change="onBeforeImageChange"
+                  />
+                  <div class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-2px">
+                    「参数名 → 模板」对象（模板形如双花括号包 $.变量路径）；补偿执行前把模板解析成工具入参。
+                  </div>
+                </el-form-item>
+                <el-form-item label="幂等键（idempotency_key）">
+                  <el-input
+                    v-model="selComp.idempotency_key"
+                    :placeholder="IDEMPOTENCY_KEY_PLACEHOLDER"
+                    data-testid="node-idempotency-key"
+                    @input="buildFlow"
+                  />
+                  <div class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-2px">
+                    补偿重放时去重，防止重复反做。
+                  </div>
+                </el-form-item>
+              </template>
+            </template>
+            <el-divider content-position="left">config</el-divider>
             <el-form-item label="完整 config（JSON）">
               <div v-if="jsonHint" class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mb-4px">
                 {{ jsonHint }}
@@ -266,8 +343,13 @@ import {
   removeNode,
   addEdge,
   removeEdge,
+  isNonCompensableType,
+  getNodeRecovery,
+  setNodeRecovery,
+  ensureCompensation,
   type EditorDsl,
-  type EditorDslEdge
+  type EditorDslEdge,
+  type EditorDslNode
 } from '../editorModel'
 import {
   fieldsFor,
@@ -286,6 +368,13 @@ const START_VISUAL_ID = '__start__'
 const END_VISUAL_ID = '__end__'
 const START_KEYWORD = 'START'
 const END_KEYWORD = 'END'
+
+/**
+ * 补偿字段的占位示例。放 script 常量而非写死在模板属性里：
+ * 内容含字面「双花括号 + $.路径」模板，写进模板属性会被 vue 编译器当成插值表达式解析报错。
+ */
+const BEFORE_IMAGE_PLACEHOLDER = '{"recordId": "{{$.create_out.id}}"}'
+const IDEMPOTENCY_KEY_PLACEHOLDER = '如 {{$.execution.id}}:create_order'
 
 const visible = ref(false)
 const parseError = ref('')
@@ -320,6 +409,62 @@ const selectedNode = computed(() =>
  * getter 返回的是 DSL 里那个真实 config 对象引用，故对其属性赋值即写回 DSL。
  */
 const selConfig = computed<Record<string, any>>(() => selectedNode.value?.config ?? {})
+
+/** 选中节点类型是否不可补偿（llm/knowledge_retrieval）——面板打标并隐藏 recovery 选择 */
+const nonCompensable = computed(() => isNonCompensableType(selectedNode.value?.type))
+
+/** 节点级 recovery（顶层字段），'' = 未声明（跟随全局 settings.recovery） */
+const nodeRecovery = computed(() =>
+  selectedNode.value ? getNodeRecovery(selectedNode.value as EditorDslNode) : ''
+)
+
+/**
+ * compensation 对象（节点顶层字段）。recovery=compensate 时经 ensureCompensation 保证挂在节点上，
+ * v-model 写它的属性即写回 DSL（与 selConfig 同款「真实引用」手法）。
+ */
+const selComp = computed<Record<string, any>>(() => {
+  const n = selectedNode.value as EditorDslNode | undefined
+  if (!n) return {}
+  return n.recovery === 'compensate'
+    ? ensureCompensation(n)
+    : n.compensation && typeof n.compensation === 'object' && !Array.isArray(n.compensation)
+      ? n.compensation
+      : {}
+})
+
+/** before_image 的 JSON 文本视图（对象 ↔ 文本框），失焦/回车时解析写回 */
+const beforeImageText = ref('')
+
+const onRecoveryChange = (value: '' | 'forward' | 'compensate') => {
+  const n = selectedNode.value as EditorDslNode | undefined
+  if (!n) return
+  setNodeRecovery(n, value)
+  if (value === 'compensate') {
+    beforeImageText.value = n.compensation?.before_image
+      ? JSON.stringify(n.compensation.before_image, null, 2)
+      : ''
+  }
+  buildFlow()
+}
+
+const onBeforeImageChange = () => {
+  const text = beforeImageText.value.trim()
+  if (!text) {
+    delete selComp.value.before_image
+    buildFlow()
+    return
+  }
+  try {
+    const parsed = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('before_image 必须是 JSON 对象（参数名 → 模板）')
+    }
+    selComp.value.before_image = parsed
+    buildFlow()
+  } catch (e: any) {
+    message.error(`before_image 解析失败：${e?.message ?? '格式不合法'}`)
+  }
+}
 
 /** 当前节点类型的结构化字段（按 showIf 过滤后即在面板渲染的顺序） */
 const visibleFields = computed<ConfigField[]>(() =>
@@ -509,9 +654,11 @@ const onApplyJson = () => {
   }
 }
 
-/** 选中节点变化时，把它的 config 同步到面板的 JSON 文本框 */
+/** 选中节点变化时，把它的 config / before_image 同步到面板的两个 JSON 文本框 */
 watch(selectedNodeId, () => {
   configText.value = selectedNode.value?.config ? JSON.stringify(selectedNode.value.config, null, 2) : '{}'
+  const bi = (selectedNode.value as EditorDslNode | undefined)?.compensation?.before_image
+  beforeImageText.value = bi ? JSON.stringify(bi, null, 2) : ''
 })
 
 const handleConfirm = () => {

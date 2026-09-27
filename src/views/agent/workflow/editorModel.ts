@@ -143,6 +143,47 @@ const isConditional = (e: EditorDslEdge): boolean =>
   (e.type ?? '').toLowerCase() === 'conditional' || (!!e.cases && Object.keys(e.cases).length > 0)
 
 /**
+ * Saga 补偿（设计方案「一之三」/ DSL §6.3）：recovery 与 compensation 是节点<b>顶层</b>字段
+ * （与 config 平级，对齐后端 NodeDTO），故不走 nodeConfigSchema（那套只写 config），单独建模。
+ */
+
+/**
+ * 不可补偿节点类型 —— 逐字对齐后端 {@code WorkflowDslValidator.NON_COMPENSABLE_TYPES}。
+ * 模型 token 已耗、检索无副作用，声明补偿不会生效（后端校验会给 warning），设计器里直接打标锁定。
+ */
+export const NON_COMPENSABLE_NODE_TYPES = ['llm', 'knowledge_retrieval']
+
+export const isNonCompensableType = (type?: string): boolean =>
+  !!type && NON_COMPENSABLE_NODE_TYPES.includes(type)
+
+/** 节点级 recovery：'' = 未声明（跟随全局 settings.recovery，默认 forward） */
+export const getNodeRecovery = (node: EditorDslNode): '' | 'forward' | 'compensate' =>
+  node.recovery === 'compensate' ? 'compensate' : node.recovery === 'forward' ? 'forward' : ''
+
+/**
+ * 写节点级 recovery 并维护 compensation 的生命周期：
+ * 切到 compensate → 确保 compensation 对象存在（面板字段要有真实引用可写）；
+ * 切走 → 整个删掉 compensation（留着会被后端校验 warn「声明不会生效」，也是脏数据）。
+ */
+export const setNodeRecovery = (node: EditorDslNode, value: '' | 'forward' | 'compensate'): void => {
+  if (value) node.recovery = value
+  else delete node.recovery
+  if (value === 'compensate') {
+    if (!node.compensation || typeof node.compensation !== 'object') node.compensation = {}
+  } else {
+    delete node.compensation
+  }
+}
+
+/** 取节点的 compensation 对象引用；recovery=compensate 时保证已挂在节点上（面板 v-model 直接写它） */
+export const ensureCompensation = (node: EditorDslNode): Record<string, any> => {
+  if (!node.compensation || typeof node.compensation !== 'object' || Array.isArray(node.compensation)) {
+    node.compensation = {}
+  }
+  return node.compensation
+}
+
+/**
  * 删除一条「渲染边」对应的 DSL 边。route 语义：
  * undefined=普通边（from→to）；{@link DEFAULT_ROUTE}=条件边的 default 分支；其余字符串=条件边的某个 case 路由键。
  * 反向匹配（而非靠下标），因为渲染边是条件边展开后的多条，下标对不上原始 DSL 边。
