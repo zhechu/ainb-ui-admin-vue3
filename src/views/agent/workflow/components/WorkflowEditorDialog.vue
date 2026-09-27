@@ -3,7 +3,8 @@
 
   在既有「JSON 原文 + 校验 + 只读预览」（WorkflowDefFormDialog + WorkflowCanvasDialog）之上，
   补一个<b>可交互编辑</b>的画布：左侧节点目录点击新增、中间 Vue Flow 画布可拖动/连线/选中、
-  右侧节点配置面板（名称/outputVar/tool 下拉/config JSON）、底部 DSL JSON 兜底编辑。
+  右侧节点配置面板（名称 + 按节点类型结构化的字段，由 nodeConfigSchema.ts 驱动 + config JSON 兜底）、
+  底部 DSL JSON 兜底编辑。
 
   🔴 事实源是 DSL 对象（dsl.value），Vue Flow 图只是它的派生视图。所有增删改都走 editorModel.ts 的
      纯函数就地改 DSL 数组，再 buildFlow() 重算视图——绝不「从图反推 DSL」（那样会丢条件边 cases/未知字段）。
@@ -121,28 +122,69 @@
             <el-form-item label="名称">
               <el-input v-model="selectedNode.name" placeholder="节点显示名" @input="buildFlow" />
             </el-form-item>
-            <el-form-item v-if="selectedNode.type === 'tool'" label="工具（toolId）">
-              <el-select
-                v-model="selConfig.toolId"
-                filterable
-                allow-create
-                default-first-option
-                placeholder="选择或输入工具键"
-                class="w-full"
-                @change="buildFlow"
-              >
-                <el-option v-for="t in toolList" :key="t.name" :label="t.name" :value="t.name">
-                  <span class="float-left">{{ t.name }}</span>
-                  <span class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate">
-                    {{ t.description }}
-                  </span>
-                </el-option>
-              </el-select>
-            </el-form-item>
-            <el-form-item label="输出变量（outputVar）">
-              <el-input v-model="selConfig.outputVar" placeholder="结果写入的 state 变量名" @input="buildFlow" />
-            </el-form-item>
+            <!-- 结构化字段：由 nodeConfigSchema 按节点类型驱动（键逐字对齐后端执行器） -->
+            <template v-for="f in visibleFields" :key="f.key">
+              <el-form-item :label="f.label">
+                <el-select
+                  v-if="f.kind === 'select'"
+                  v-model="selConfig[f.key]"
+                  filterable
+                  :allow-create="f.optionsFrom === 'tool'"
+                  :default-first-option="f.optionsFrom === 'tool'"
+                  clearable
+                  :placeholder="f.placeholder || '请选择'"
+                  class="w-full"
+                  @change="buildFlow"
+                >
+                  <el-option
+                    v-for="o in optionsFor(f)"
+                    :key="String(o.value)"
+                    :label="o.label"
+                    :value="o.value"
+                  >
+                    <span class="float-left">{{ o.label }}</span>
+                    <span
+                      v-if="o.desc"
+                      class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
+                    >
+                      {{ o.desc }}
+                    </span>
+                  </el-option>
+                </el-select>
+                <el-input
+                  v-else-if="f.kind === 'textarea'"
+                  v-model="selConfig[f.key]"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="f.placeholder"
+                  @input="buildFlow"
+                />
+                <el-input-number
+                  v-else-if="f.kind === 'number'"
+                  v-model="selConfig[f.key]"
+                  :min="f.min"
+                  :max="f.max"
+                  :step="f.step"
+                  :controls-position="'right'"
+                  class="!w-full"
+                  @change="buildFlow"
+                />
+                <el-switch v-else-if="f.kind === 'switch'" v-model="selConfig[f.key]" @change="buildFlow" />
+                <el-input
+                  v-else
+                  v-model="selConfig[f.key]"
+                  :placeholder="f.placeholder"
+                  @input="buildFlow"
+                />
+                <div v-if="f.hint" class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-2px">
+                  {{ f.hint }}
+                </div>
+              </el-form-item>
+            </template>
             <el-form-item label="完整 config（JSON）">
+              <div v-if="jsonHint" class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mb-4px">
+                {{ jsonHint }}
+              </div>
               <el-input
                 v-model="configText"
                 type="textarea"
@@ -213,6 +255,8 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import type { Edge, Node } from '@vue-flow/core'
 import { getToolList, type AgentToolVO } from '@/api/agent/config'
+import { ModelApi, type ModelVO } from '@/api/ai/model/model'
+import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
 import { layoutDsl } from '../layout'
 import {
   NODE_TYPE_OPTIONS,
@@ -225,6 +269,12 @@ import {
   type EditorDsl,
   type EditorDslEdge
 } from '../editorModel'
+import {
+  fieldsFor,
+  jsonHintFor,
+  isFieldVisible,
+  type ConfigField
+} from '../nodeConfigSchema'
 
 defineOptions({ name: 'WorkflowEditorDialog' })
 
@@ -252,6 +302,8 @@ const selectedEdge = ref<{ from: string; to: string; route?: string } | null>(nu
 const dslText = ref('')
 const configText = ref('{}')
 const toolList = ref<AgentToolVO[]>([])
+const modelList = ref<ModelVO[]>([])
+const kbList = ref<KnowledgeVO[]>([])
 
 const dialogTitle = computed(() => {
   const suffix = meta.value.name || meta.value.code
@@ -268,6 +320,31 @@ const selectedNode = computed(() =>
  * getter 返回的是 DSL 里那个真实 config 对象引用，故对其属性赋值即写回 DSL。
  */
 const selConfig = computed<Record<string, any>>(() => selectedNode.value?.config ?? {})
+
+/** 当前节点类型的结构化字段（按 showIf 过滤后即在面板渲染的顺序） */
+const visibleFields = computed<ConfigField[]>(() =>
+  fieldsFor(selectedNode.value?.type).filter((f) => isFieldVisible(f, selConfig.value))
+)
+
+/** 当前节点类型对应的「复杂键走底部 JSON」提示（如 tool.args / condition.cases） */
+const jsonHint = computed(() => jsonHintFor(selectedNode.value?.type))
+
+/**
+ * 一个 select 字段的可选项。动态来源（tool/model/kb）映射已加载的目录，静态来源直接用 f.options。
+ * value 逐字对齐后端读取的类型：toolId=工具键(string)、modelId/knowledgeBaseId=数字 id。
+ */
+const optionsFor = (f: ConfigField): { label: string; value: string | number | boolean; desc?: string }[] => {
+  if (f.optionsFrom === 'tool') {
+    return toolList.value.map((t) => ({ label: t.name, value: t.name, desc: t.description }))
+  }
+  if (f.optionsFrom === 'model') {
+    return modelList.value.map((m) => ({ label: m.name, value: m.id, desc: m.model }))
+  }
+  if (f.optionsFrom === 'kb') {
+    return kbList.value.map((k) => ({ label: k.name, value: k.id }))
+  }
+  return f.options ?? []
+}
 
 /** 视觉 id ⇄ DSL 保留字/节点 id 的双向映射 */
 const toVisual = (ref: string): string =>
@@ -288,8 +365,8 @@ const syncDslText = () => {
  *    条件边展开成多条带 label 的虚线边，每条 data 记住它对应的 DSL 端点与分支键，供 removeEdge 精确回删。
  */
 const buildFlow = () => {
-  // EditorDsl 是 DslGraph 的超集（条件边的 to 可省略、节点带 config/索引签名），layoutDsl 只防御性读取少数字段，
-  // 故此处按 DslGraph 形状传入是安全的；用 as any 跨过 EditorDslEdge.to 可选 vs DslEdge.to 必填的结构差异。
+  // EditorDsl 是 DslGraph 的超集（节点带 config/索引签名等编辑期字段），layoutDsl 只防御性读取少数字段，
+  // 故此处按 DslGraph 形状传入是安全的；用 as any 跨过「节点/边带额外编辑期字段」的结构差异（两侧 DslEdge.to 均已可选）。
   const { nodes } = layoutDsl(dsl.value as any)
   for (const n of nodes) {
     const isStart = n.id === START_VISUAL_ID
@@ -474,6 +551,22 @@ const open = async (dslTextIn: string, metaIn?: { code?: string; name?: string }
       toolList.value = (await getToolList()) ?? []
     } catch {
       toolList.value = [] // 工具目录拉取失败不阻断编辑（tool 下拉可手输 toolId）
+    }
+  }
+  // 模型/知识库目录：供 llm/condition.llm 的 modelId、knowledge_retrieval 的 knowledgeBaseId 下拉。
+  // 与工具目录同款 fail-soft + 缓存：拉取失败不阻断编辑（下拉可留空或走底部 JSON 手填 id）。
+  if (!modelList.value.length) {
+    try {
+      modelList.value = (await ModelApi.getModelSimpleList(1)) ?? []
+    } catch {
+      modelList.value = []
+    }
+  }
+  if (!kbList.value.length) {
+    try {
+      kbList.value = (await KnowledgeApi.getSimpleKnowledgeList()) ?? []
+    } catch {
+      kbList.value = []
     }
   }
 }

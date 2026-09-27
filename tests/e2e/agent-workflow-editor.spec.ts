@@ -54,6 +54,11 @@ test.describe('流程可视化编辑器（首刀）', () => {
     await expect(editor.getByText('节点配置').first()).toBeVisible({ timeout: 10000 })
     await expect(editor.locator('input[placeholder="节点显示名"]')).toHaveValue('大模型')
 
+    // 5b（增量16A）：llm 节点现在渲染「结构化配置字段」（不再只有裸 JSON）——
+    //     提示词 textarea + 模型 select 的标签应出现，证明 schema 驱动面板对非 tool 类型也生效
+    await expect(editor.getByText('提示词（prompt）').first()).toBeVisible({ timeout: 10000 })
+    await expect(editor.getByText('模型（modelId）').first()).toBeVisible({ timeout: 10000 })
+
     // 6. 画布改动同步回底部 DSL JSON（事实源）：出现新节点的 type=llm
     const dslTextarea = editor.locator('.editor-json textarea').last()
     await expect(dslTextarea).toHaveValue(/"type":\s*"llm"/, { timeout: 10000 })
@@ -61,6 +66,10 @@ test.describe('流程可视化编辑器（首刀）', () => {
     // 7. 选中工具节点（骨架里的 step_1）→ 配置面板出现 toolId 下拉
     await editor.locator('.vue-flow__node').filter({ hasText: '示例工具节点' }).first().click()
     await expect(editor.getByText('工具（toolId）').first()).toBeVisible({ timeout: 10000 })
+    // 7b（增量16A）：tool 节点的「复杂键走 JSON」提示出现（args 不做结构化编辑，明示作者）
+    await expect(editor.getByText('args（工具入参，对象）请用下方 DSL JSON 编辑。').first()).toBeVisible({
+      timeout: 10000
+    })
 
     // 8. 取消：先关编辑器，再关表单，不落任何库数据
     await editor.getByRole('button', { name: '取消' }).click()
