@@ -67,7 +67,9 @@ export const AgentPlannerApi = {
    * 运行已发布的流程（流式），复用既有 {@code /agent/workflow/run-stream}。
    *
    * 🔴 用 fetchEventSource 而不是原生 EventSource：后者只能发 GET、不能带 Authorization 头，
-   * 而这个接口要登录态（权限 agent:workflow:query）。理由与 assistant.sendStream 完全一致。
+   * 而这个接口要登录态（增量14a 起权限为 {@code agent:workflow:run}——副作用面，与只读的
+   * {@code agent:workflow:query} 分开；持有「流程编排」菜单的角色已被迁移非破坏性授予 run）。
+   * 理由与 assistant.sendStream 完全一致。
    */
   runWorkflowStream: (
     code: string,

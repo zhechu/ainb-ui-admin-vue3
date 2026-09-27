@@ -52,6 +52,9 @@
               <el-button size="small" @click="handlePreview">
                 <Icon icon="ep:view" class="mr-4px" />预览画布
               </el-button>
+              <el-button size="small" type="primary" plain @click="handleVisualEdit">
+                <Icon icon="ep:edit" class="mr-4px" />可视化编辑
+              </el-button>
             </div>
           </div>
           <CodeEditor
@@ -104,6 +107,9 @@
 
     <!-- 预览画布：复用只读画布，渲染当前未保存的 DSL -->
     <WorkflowCanvasDialog ref="canvasRef" />
+
+    <!-- 可视化编辑：把当前未保存的 DSL 交给可交互画布，编辑后 apply 回写 formData.dsl -->
+    <WorkflowEditorDialog ref="editorRef" @apply="onEditorApply" />
   </el-dialog>
 </template>
 
@@ -116,6 +122,7 @@ import {
   type AgentWorkflowDefValidateVO
 } from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './WorkflowCanvasDialog.vue'
+import WorkflowEditorDialog from './WorkflowEditorDialog.vue'
 
 defineOptions({ name: 'WorkflowDefFormDialog' })
 
@@ -129,6 +136,7 @@ const submitting = ref(false)
 const isEdit = ref(false)
 const formRef = ref()
 const canvasRef = ref()
+const editorRef = ref()
 const validateResult = ref<AgentWorkflowDefValidateVO>()
 
 const DSL_PLACEHOLDER = '{\n  "id": "wf_demo",\n  "nodes": [ ... ],\n  "edges": [ ... ]\n}'
@@ -146,6 +154,17 @@ const DSL_PLACEHOLDER = '{\n  "id": "wf_demo",\n  "nodes": [ ... ],\n  "edges": 
  *  ② output 变量：流程跑完后，聊天回复取 state 里的 `output`（约定键，与固定的输入键 `input` 对称）。
  *     想让 Agent 在聊天里回什么，就把最终文本写进 `output`（例如再加一个 llm/模板节点，outputVar 指向 output）。
  *     没写 output 不会报错，聊天里会回落一句「流程已执行完成，但未产出文本回复」的提示。
+ *
+ * 🔴 增量14c / P6——webhook 触发器（外部系统 HTTP 回调拉起流程）。要用它，把上面的 trigger 换成：
+ *     trigger: { type: 'trigger.webhook', config: { path: 'order_hook', authType: 'hmac', secret: '<随机密钥>' } }
+ *  ① path：入站 URL 的键，只能是字母/数字/下划线/连字符（1~64 位、不含斜杠或点）。发布后入站地址为
+ *     POST /admin-api/agent/webhook/{path}，调用方须带标准 `tenant-id` 头定位租户。
+ *  ② authType：none（仅靠不可猜的 path）/ hmac（对原始请求体算 HMAC-SHA256）/ token（静态令牌）。缺省 none。
+ *     选 hmac/token 时 secret 必填——发布时会校验，缺失直接拒发布。
+ *  ③ 调用方所带的头：hmac → `X-Webhook-Signature: <对请求体的 HMAC-SHA256 十六进制，可带 sha256= 前缀>`；
+ *     token → `X-Webhook-Token: <令牌>`。验签 fail-close：缺失或不符一律拒。
+ *  ④ 请求体建议为 JSON 对象，其字段即工作流 `input` 变量的键（作者用 `input.字段名` 取）；非 JSON 体则包进 `input.raw`。
+ *  注意：secret 会随 DSL 一起版本化、并对持有「流程编排」查看权者可见——如需更强的密钥托管（独立密钥库、轮换），记后续。
  */
 const DEFAULT_DSL = JSON.stringify(
   {
@@ -273,6 +292,21 @@ const handlePreview = () => {
     description: formData.value.description,
     status: 'DRAFT'
   } as Partial<AgentWorkflowDefVO>)
+}
+
+/** 「可视化编辑」：把当前未保存的 DSL 交给可交互画布（增量14d）。空 DSL 给最小骨架，方便从零拖起 */
+const handleVisualEdit = () => {
+  editorRef.value.open(formData.value.dsl?.trim() ? formData.value.dsl : DEFAULT_DSL, {
+    code: formData.value.code,
+    name: formData.value.name
+  })
+}
+
+/** 可视化编辑器「应用到表单」：回写 DSL 原文，并清掉上一轮校验结果（内容已变，需重新校验） */
+const onEditorApply = (dsl: string) => {
+  formData.value.dsl = dsl
+  validateResult.value = undefined
+  message.success('已把画布编辑结果写回 DSL，可继续「校验DSL」或保存')
 }
 
 /** 保存：表单校验 → DSL 软门禁（有阻断错误则二次确认可存草稿）→ create/update */

@@ -7,7 +7,10 @@
   本刀只读 + 管理：def 列表 / 分页 / 只读画布 / 发布 / 停用 / 执行历史（含节点级 trace）。
   🔴 有界：暂不做拖拽编辑、节点配置面板、新建-编辑表单、调试运行（P4 后续刀）。
 
-  权限：读写统一 agent:workflow:query（照后端 AgentWorkflowDefController 的 D1 决策，细粒度写权限留后续）。
+  权限（增量14a 拆分，与后端 AgentWorkflowDefController @PreAuthorize 逐字一致）：
+     读（查看画布/执行历史）= agent:workflow:query；新增 = :create；编辑 = :update；删除 = :delete；
+     发布/停用 = :publish；发起执行（run/resume/event，在 ExecutionHistoryDrawer）= :run。
+     按钮权限行 + 角色授权见 sql/mysql/xpy-2026-09-27-agent-fine-grained-perms.sql（super_admin 绕过一切权限点）。
   状态无数据字典，用本地 map 渲染 tag（同 views/agent/usage 的做法）。
 -->
 <template>
@@ -62,7 +65,7 @@
       plain
       class="mb-10px"
       @click="openForm('create')"
-      v-hasPermi="['agent:workflow:query']"
+      v-hasPermi="['agent:workflow:create']"
     >
       <Icon icon="ep:plus" class="mr-5px" /> 新增流程
     </el-button>
@@ -91,7 +94,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="320" fixed="right">
+      <el-table-column label="操作" align="center" min-width="380" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -110,11 +113,19 @@
             执行历史
           </el-button>
           <el-button
+            link
+            type="primary"
+            @click="openVersions(scope.row)"
+            v-hasPermi="['agent:workflow:query']"
+          >
+            版本
+          </el-button>
+          <el-button
             v-if="scope.row.status === 'DRAFT'"
             link
             type="primary"
             @click="openForm('edit', scope.row)"
-            v-hasPermi="['agent:workflow:query']"
+            v-hasPermi="['agent:workflow:update']"
           >
             编辑
           </el-button>
@@ -123,7 +134,7 @@
             link
             type="success"
             @click="handlePublish(scope.row)"
-            v-hasPermi="['agent:workflow:query']"
+            v-hasPermi="['agent:workflow:publish']"
           >
             发布
           </el-button>
@@ -132,7 +143,7 @@
             link
             type="warning"
             @click="handleDisable(scope.row)"
-            v-hasPermi="['agent:workflow:query']"
+            v-hasPermi="['agent:workflow:publish']"
           >
             停用
           </el-button>
@@ -141,7 +152,7 @@
             link
             type="danger"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['agent:workflow:query']"
+            v-hasPermi="['agent:workflow:delete']"
           >
             删除
           </el-button>
@@ -161,6 +172,8 @@
   <WorkflowCanvasDialog ref="canvasRef" />
   <!-- 执行历史抽屉 -->
   <ExecutionHistoryDrawer ref="historyRef" />
+  <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
+  <WorkflowVersionDrawer ref="versionRef" @success="getList" />
   <!-- 新建/编辑表单对话框 -->
   <WorkflowDefFormDialog ref="formRef" @success="getList" />
 </template>
@@ -170,6 +183,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
+import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
 import WorkflowDefFormDialog from './components/WorkflowDefFormDialog.vue'
 
 defineOptions({ name: 'AgentWorkflow' })
@@ -243,6 +257,12 @@ const openCanvas = (id: number) => {
 const historyRef = ref()
 const openHistory = (row: AgentWorkflowDefVO) => {
   historyRef.value.open(row.id, row.name || row.code)
+}
+
+/** 版本管理（增量14b）：按 code 列出该流程的全部版本，供对比/回滚/设主版本 */
+const versionRef = ref()
+const openVersions = (row: AgentWorkflowDefVO) => {
+  versionRef.value.open(row.code, row.name || row.code)
 }
 
 /** 新建/编辑表单（编辑仅对 DRAFT 行开放，与后端 updateDef/deleteDef 的草稿守卫一致） */

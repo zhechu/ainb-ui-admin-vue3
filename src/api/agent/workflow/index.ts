@@ -13,6 +13,8 @@ export interface AgentWorkflowDefVO {
   version: number
   /** DRAFT 草稿 / PUBLISHED 已发布 / DISABLED 已停用 */
   status: string
+  /** 是否主版本（增量14b）：同 code 多已发布版本中被指定为当前生效的那一版；执行入口优先选中它 */
+  primaryFlag?: boolean
   description?: string
   /** DSL JSON 原文；仅 get?id 返回，分页为 null */
   dsl?: string | null
@@ -142,5 +144,26 @@ export const AgentWorkflowApi = {
 
   /** 节点级 trace 列表 */
   getNodeTrace: (executionId: number): Promise<AgentNodeExecutionVO[]> =>
-    request.get({ url: '/agent/workflow/node-trace/list', params: { executionId } })
+    request.get({ url: '/agent/workflow/node-trace/list', params: { executionId } }),
+
+  /**
+   * 版本管理（增量14b）：某 code 的全部版本（version 倒序，不含 dsl 正文）。
+   * 对比时前端另调 {@link AgentWorkflowApi.getDef} 按 id 取两份完整 DSL。
+   */
+  getVersionList: (code: string): Promise<AgentWorkflowDefVO[]> =>
+    request.get({ url: '/agent/workflow-def/version-list', params: { code } }),
+
+  /**
+   * 回滚到某历史版本：基于其 DSL 复制成一个新草稿（绝不改历史快照），返回新草稿 id。
+   * 产物是 DRAFT，需再走 publishDef 才生效（与「新建流程」同类写动作，权限 agent:workflow:create）。
+   */
+  rollback: (id: number): Promise<number> =>
+    request.post({ url: '/agent/workflow-def/rollback', params: { id } }),
+
+  /**
+   * 把某已发布版本设为主版本：执行入口优先选中它（灰度回退），权限 agent:workflow:publish。
+   * 同 code 至多一个主版本（后端先清后置）；目标须 PUBLISHED。
+   */
+  setPrimary: (id: number): Promise<boolean> =>
+    request.post({ url: '/agent/workflow-def/set-primary', params: { id } })
 }

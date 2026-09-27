@@ -7,7 +7,9 @@
   🔴 有界：本刀只交付「管理目录」。人设尚无运行期消费方——把它接入对话流（聊天入口按 Agent 路由）
      与 model/工具集/知识库/绑定工作流是 slice-2。故本页没有「调试/对话」入口，只有目录 CRUD。
 
-  权限：读写统一 agent:def:query（照后端 AgentDefController 的 D1 决策，细粒度写权限留后续）。
+  权限（增量14a 拆分，与后端 AgentDefController @PreAuthorize 逐字一致）：
+     读（查看）= agent:def:query；新增 = :create；编辑 = :update；删除 = :delete；发布/停用 = :publish。
+     按钮权限行 + 角色授权见 sql/mysql/xpy-2026-09-27-agent-fine-grained-perms.sql（super_admin 绕过一切权限点）。
   状态无数据字典，用本地 map 渲染 tag（同 views/agent/workflow 的做法）。
 -->
 <template>
@@ -62,7 +64,7 @@
       plain
       class="mb-10px"
       @click="openForm('create')"
-      v-hasPermi="['agent:def:query']"
+      v-hasPermi="['agent:def:create']"
     >
       <Icon icon="ep:plus" class="mr-5px" /> 新增 Agent
     </el-button>
@@ -111,7 +113,7 @@
             link
             type="primary"
             @click="openForm('edit', scope.row)"
-            v-hasPermi="['agent:def:query']"
+            v-hasPermi="['agent:def:update']"
           >
             编辑
           </el-button>
@@ -120,7 +122,7 @@
             link
             type="success"
             @click="handlePublish(scope.row)"
-            v-hasPermi="['agent:def:query']"
+            v-hasPermi="['agent:def:publish']"
           >
             发布
           </el-button>
@@ -129,7 +131,7 @@
             link
             type="warning"
             @click="handleDisable(scope.row)"
-            v-hasPermi="['agent:def:query']"
+            v-hasPermi="['agent:def:publish']"
           >
             停用
           </el-button>
@@ -138,7 +140,7 @@
             link
             type="danger"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['agent:def:query']"
+            v-hasPermi="['agent:def:delete']"
           >
             删除
           </el-button>
