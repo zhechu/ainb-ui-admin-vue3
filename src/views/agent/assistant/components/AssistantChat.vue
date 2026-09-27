@@ -120,6 +120,19 @@
                 @cancel="() => handleCancelWorkflow(item)"
               />
 
+              <!-- HITL 确认卡片（增量13）：流程走到人工闸口，就在聊天里问「同意/拒绝」，
+                   不再把用户支去「工作流执行历史」里恢复。三态由 item.hitl 承载：
+                   待确认（decided=null）→ 续跑中（running）→ 已处理（decided 有值） -->
+              <HitlConfirmCard
+                v-else-if="item.hitl"
+                :content="item.hitl.content"
+                :node-id="item.hitl.nodeId"
+                :running="item.hitl.running"
+                :decided="item.hitl.decided"
+                :error="item.hitl.error"
+                @decide="(approved) => handleHitlDecision(item, approved)"
+              />
+
               <!-- 普通问答气泡 -->
               <template v-else>
                 <div
@@ -166,7 +179,7 @@
 
               <!-- 对话后建议：只在最后一条上显示，历史消息的建议已经过期了 -->
               <SuggestionBar
-                v-if="index === messageList.length - 1 && !streaming && !item.cardStatus"
+                v-if="index === messageList.length - 1 && !streaming && !item.cardStatus && !item.hitl"
                 :suggestions="item.suggestions"
                 @select="handleSuggestion"
               />
@@ -237,9 +250,11 @@ import type {
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
 import { AgentPlannerApi } from '@/api/agent/planner'
 import type { AgentWorkflowDraftVO, WorkflowNodePreview } from '@/api/agent/planner'
+import { AgentWorkflowApi } from '@/api/agent/workflow'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
 import WorkflowDraftCard from './WorkflowDraftCard.vue'
+import HitlConfirmCard from './HitlConfirmCard.vue'
 import MessageReasoning from '@/views/ai/chat/index/components/message/MessageReasoning.vue'
 import MessageKnowledge from '@/views/ai/chat/index/components/message/MessageKnowledge.vue'
 
@@ -535,7 +550,7 @@ const loadMessages = async (conversationId: number) => {
   pendingNewAgentDefId.value = null
   const list: AgentMessageVO[] = await AgentAssistantApi.getMessageList(conversationId)
   if (seq !== loadSeq) return
-  // 有 workflowDefId 的助手消息需要重建草稿卡片
+  // 有 workflowDefId 的助手消息需要重建草稿卡片，有 executionId 的需要重建确认卡片
   const rebuilt = await Promise.all(
     list.map(async (item) => {
       const msg: any = { ...item }
@@ -565,6 +580,25 @@ const loadMessages = async (conversationId: number) => {
           msg.defStatus = draft.status
         } catch {
           // 草稿加载失败就当普通消息显示（warnings 本就不可在刷新后恢复，与旧卡一致）
+        }
+      }
+      // 有 executionId 的助手消息需要重建 HITL 确认卡片（增量13）
+      if (item.role === 'assistant' && item.executionId) {
+        try {
+          const exec = await AgentWorkflowApi.getExecution(item.executionId)
+          msg.hitl = {
+            executionId: item.executionId,
+            // nodeId 刻意不重建：VO 上的 currentNode 是<b>最后一个跑完的节点</b>，
+            // 而 SAA 是在 hitl 节点<b>之前</b>挂起的，拿它当「卡在哪个节点」会把用户指错地方
+            content: item.content || '',
+            running: false,
+            // 仍 INTERRUPTED → 刷新后还能接着确认（这是把 execution_id 落库的全部意义）；
+            // 已终态 → 只能诚实地说「已处理」：库里没记当时用户点的是同意还是拒绝
+            decided: exec.status === 'INTERRUPTED' ? null : 'resolved',
+            error: ''
+          }
+        } catch {
+          // 查不到执行实例就退化成普通消息，别让整个会话加载失败
         }
       }
       return msg
@@ -643,6 +677,87 @@ const handleResume = async () => {
   }
 }
 
+/**
+ * 把一个 SSE 聊天事件应用到目标消息上
+ *
+ * 🔴 提问（handleSend）与「确认卡片点了同意/拒绝」后的续跑（handleHitlDecision）
+ * 是两条<b>不同的 HTTP 请求</b>，但后端回推的是<b>同一套 AgentChatEvent 类型</b>。
+ * 早先这里只有一份 switch 写死在 handleSend 里，续跑那份如果复制粘贴，
+ * 以后后端每加一种事件都得记得改两处 —— 漏掉的那处表现是「点了同意、卡片消失了，
+ * 然后什么都没发生」，而控制台毫无报错。所以抽成一份，两条路径共用。
+ */
+const applyChatEvent = (msg: any, data: any) => {
+  switch (data.type) {
+    case 'META':
+      // 新建会话时要靠它拿到 conversationId，否则刷新页面就找不回这次对话
+      if (data.conversationId && !innerConversationId.value) {
+        innerConversationId.value = data.conversationId
+        emit('update:conversationId', data.conversationId)
+      }
+      msg.references = data.references || []
+      break
+    case 'MESSAGE':
+      // 🔴 工作流驱动的 Agent（slice-3c）会先发 PLANNING（节点进度）再发 MESSAGE（最终回复）。
+      //    答案开始吐字时必须撤掉进度卡片：cardStatus 若仍是 'planning'，模板会持续渲染
+      //    WorkflowDraftCard 而把普通答案气泡（assistant-answer）整个挡掉 ——
+      //    表现为「进度停在最后一个节点、答案永远不出现」（浏览器 e2e 实测抓到，单测看不出来）。
+      //    直连 LLM 路径不发 PLANNING、BUILD 路径发的是 WORKFLOW_DRAFT（不发 MESSAGE），
+      //    故只有「PLANNING→MESSAGE」这一条序列需要这次清理，对既有两条路径无影响。
+      if (msg.cardStatus === 'planning') {
+        msg.cardStatus = null
+        msg.planningText = ''
+      }
+      typewriter.push(data.content || '')
+      break
+    case 'REASONING':
+      msg.reasoningContent += data.content || ''
+      break
+    case 'SUGGESTIONS':
+      msg.suggestions = data.suggestions || []
+      break
+    case 'PLANNING':
+      // 规划进度：原地替换，不是追加
+      msg.cardStatus = 'planning'
+      msg.planningText = data.content || '正在规划…'
+      break
+    case 'WORKFLOW_DRAFT':
+      // 产出了 Workflow 草稿：记下 defId/code/name/摘要/警告，DSL 正文另取
+      msg.workflowDefId = data.workflowDefId
+      msg.workflowCode = data.workflowCode
+      msg.workflowName = data.workflowName
+      msg.summary = data.summary || ''
+      msg.warnings = data.warnings || []
+      loadWorkflowDraft(msg, data.workflowDefId)
+      break
+    case 'WORKFLOW_CONFIRM':
+      // 🔴 同样必须先撤进度卡片：中断（INTERRUPTED）这一轮<b>不会再有 MESSAGE</b>，
+      //    没人来清 cardStatus，模板会一直渲染 WorkflowDraftCard 把确认卡片挡在 v-else-if 之后 ——
+      //    表现就是「点了同意没反应，页面卡在一个进度条上」。
+      msg.cardStatus = null
+      msg.planningText = ''
+      // executionId 是续跑的唯一钥匙；落库在 agent_message.execution_id 上，刷新页面据此重建
+      msg.hitl = {
+        executionId: data.executionId,
+        nodeId: data.nodeId,
+        content: data.content || '',
+        running: false,
+        decided: null as 'approved' | 'rejected' | 'resolved' | null,
+        error: ''
+      }
+      break
+    case 'DONE':
+      msg.status = 'SUCCESS'
+      break
+    case 'ERROR':
+      msg.status = 'ERROR'
+      msg.errorMsg = data.errorMsg || 'AI 助手暂时无法回答'
+      break
+    default:
+      // 后端新增了事件类型而前端还没跟上 —— 忽略即可，不要炸掉整个流
+      break
+  }
+}
+
 /** 发送 */
 const handleSend = async (text?: string) => {
   const content = (text ?? inputText.value).trim()
@@ -697,60 +812,7 @@ const handleSend = async (text?: string) => {
         assistantMessage.errorMsg = payload.msg || '请求失败'
         return
       }
-      const data = payload.data
-      switch (data.type) {
-        case 'META':
-          // 新建会话时要靠它拿到 conversationId，否则刷新页面就找不回这次对话
-          if (data.conversationId) {
-            innerConversationId.value = data.conversationId
-            emit('update:conversationId', data.conversationId)
-          }
-          assistantMessage.references = data.references || []
-          break
-        case 'MESSAGE':
-          // 🔴 工作流驱动的 Agent（slice-3c）会先发 PLANNING（节点进度）再发 MESSAGE（最终回复）。
-          //    答案开始吐字时必须撤掉进度卡片：cardStatus 若仍是 'planning'，模板会持续渲染
-          //    WorkflowDraftCard 而把普通答案气泡（assistant-answer）整个挡掉 ——
-          //    表现为「进度停在最后一个节点、答案永远不出现」（浏览器 e2e 实测抓到，单测看不出来）。
-          //    直连 LLM 路径不发 PLANNING、BUILD 路径发的是 WORKFLOW_DRAFT（不发 MESSAGE），
-          //    故只有「PLANNING→MESSAGE」这一条序列需要这次清理，对既有两条路径无影响。
-          if (assistantMessage.cardStatus === 'planning') {
-            assistantMessage.cardStatus = null
-            assistantMessage.planningText = ''
-          }
-          typewriter.push(data.content || '')
-          break
-        case 'REASONING':
-          assistantMessage.reasoningContent += data.content || ''
-          break
-        case 'SUGGESTIONS':
-          assistantMessage.suggestions = data.suggestions || []
-          break
-        case 'PLANNING':
-          // 规划进度：原地替换，不是追加
-          assistantMessage.cardStatus = 'planning'
-          assistantMessage.planningText = data.content || '正在规划…'
-          break
-        case 'WORKFLOW_DRAFT':
-          // 产出了 Workflow 草稿：记下 defId/code/name/摘要/警告，DSL 正文另取
-          assistantMessage.workflowDefId = data.workflowDefId
-          assistantMessage.workflowCode = data.workflowCode
-          assistantMessage.workflowName = data.workflowName
-          assistantMessage.summary = data.summary || ''
-          assistantMessage.warnings = data.warnings || []
-          loadWorkflowDraft(assistantMessage, data.workflowDefId)
-          break
-        case 'DONE':
-          assistantMessage.status = 'SUCCESS'
-          break
-        case 'ERROR':
-          assistantMessage.status = 'ERROR'
-          assistantMessage.errorMsg = data.errorMsg || 'AI 助手暂时无法回答'
-          break
-        default:
-          // 后端新增了事件类型而前端还没跟上 —— 忽略即可，不要炸掉整个流
-          break
-      }
+      applyChatEvent(assistantMessage, payload.data)
     },
     (err) => {
       // 🔴 必须 throw：fetchEventSource 的 onerror 不抛异常就会<b>自动无限重连</b>，
@@ -773,7 +835,10 @@ const handleSend = async (text?: string) => {
         // text/event-stream，内容协商失败 → 客户端收到一个空 body，curl 退出码还是 0）。
         // 标成 SUCCESS 的话界面就是一个空气泡，用户只能得出「没反应，又坏了」的结论，
         // 而日志里那句真正的错误没人看得见。
-        if (!assistantMessage.content && !assistantMessage.workflowDefId) {
+        // 🔴 判空要把「确认卡片」也算产出：中断那一轮后端只回 META + WORKFLOW_CONFIRM + DONE，
+        //    既没有 content 也没有 workflowDefId，不加这个条件就会被误判成「后端什么都没答」，
+        //    卡片上盖一条红色报错 —— 而流程其实好好地在等用户点「同意」。
+        if (!assistantMessage.content && !assistantMessage.workflowDefId && !assistantMessage.hitl) {
           assistantMessage.status = 'ERROR'
           assistantMessage.errorMsg = 'AI 助手没有返回任何内容，请重试；若反复出现请联系管理员查看服务端日志'
         } else {
@@ -796,7 +861,7 @@ const handleStop = () => {
     // 同理：中断时如果什么都没产出，别留一个看起来「答完了」的空气泡。
     // 后端收到取消后会落一条 CANCELLED 消息，刷新页面就能看到「本次规划已中断」，
     // 界面上也该说清楚这一轮是被停掉的
-    if (!last.content && !last.workflowDefId) {
+    if (!last.content && !last.workflowDefId && !last.hitl) {
       last.status = 'ERROR'
       last.errorMsg = '已停止生成'
     } else {
@@ -808,6 +873,112 @@ const handleStop = () => {
     last.cardStatus = null
     last.planningText = ''
   }
+  // 续跑被停掉时，确认卡片要放开「续跑中」，否则按钮永久 loading、用户只能刷新页面。
+  // 执行实例在后端仍处 INTERRUPTED（doOnCancel 只落消息、不改执行状态），刷新即可重建待确认卡片
+  messageList.value.forEach((m: any) => {
+    if (m?.hitl?.running) {
+      m.hitl.running = false
+      m.hitl.decided = null
+      m.hitl.error = '已停止续跑，可重新确认'
+    }
+  })
+}
+
+// ==================== 聊天内 HITL 确认（增量13） ====================
+
+/**
+ * 用户在确认卡片上点了「同意并继续 / 拒绝」
+ *
+ * <p>为什么续跑要<b>另起一条助手消息</b>，而不是把结果写回卡片那条：
+ * 后端也是这样落的库 —— 中断那一轮 settle 一条带 execution_id 的消息（=卡片），
+ * 续跑那一轮 settle 一条普通消息（=最终答案）。前端若把答案塞回卡片里，
+ * 直播时看到「卡片变成了答案」，刷新后却看到「卡片 + 答案两条」，两边对不上。
+ * 这条纪律和 slice-3c 一样：<b>直播渲染 == 刷新渲染</b>。
+ */
+const handleHitlDecision = async (item: any, approved: boolean) => {
+  const hitl = item?.hitl
+  // running/decided 双重闸：一次点击就把卡片锁住，防止连点造成并发 resume
+  // （后端 casInterruptedToRunning 也会拒第二个，但界面先给反馈比等报错好）
+  if (!hitl || hitl.running || hitl.decided) return
+  if (!hitl.executionId || !innerConversationId.value) {
+    message.error('缺少执行实例或会话信息，请刷新页面后重试')
+    return
+  }
+
+  hitl.decided = approved ? 'approved' : 'rejected'
+  hitl.running = true
+  hitl.error = ''
+
+  const answerMessage = reactive<any>({
+    role: 'assistant',
+    content: '',
+    reasoningContent: '',
+    references: [] as any[],
+    suggestions: [] as AgentSuggestionVO[],
+    status: 'STREAMING',
+    errorMsg: '',
+    createTime: new Date()
+  })
+  messageList.value.push(answerMessage)
+  autoFollow.value = true
+  await scrollToBottom()
+
+  streaming.value = true
+  typewriter.reset()
+  // 复用同一个 abortController：这样「停止」按钮与组件卸载时的 abort 已经覆盖续跑，无需另立一套
+  abortController = new AbortController()
+
+  await AgentAssistantApi.resumeWorkflowStream(
+    hitl.executionId,
+    approved,
+    innerConversationId.value,
+    abortController,
+    (event) => {
+      let payload: any
+      try {
+        payload = JSON.parse(event.data)
+      } catch {
+        return
+      }
+      if (payload.code !== 0) {
+        hitl.running = false
+        hitl.error = payload.msg || '续跑请求被拒绝'
+        answerMessage.status = 'ERROR'
+        answerMessage.errorMsg = payload.msg || '续跑请求被拒绝'
+        return
+      }
+      applyChatEvent(answerMessage, payload.data)
+      // 续跑又撞上一个人工闸口（多闸口流程）：WORKFLOW_CONFIRM 会落在 answerMessage 上，
+      // 它自己就成了下一张卡片，用户可以在同一段对话里连续确认
+      if (payload.data?.type === 'WORKFLOW_CONFIRM') hitl.running = false
+    },
+    (err) => {
+      // 🔴 同 handleSend：必须 throw，否则 fetchEventSource 会无限重连、反复提交 resume
+      streaming.value = false
+      typewriter.flush()
+      hitl.running = false
+      if (answerMessage.status === 'STREAMING') {
+        answerMessage.status = 'ERROR'
+        answerMessage.errorMsg = '连接中断，请重试'
+      }
+      throw err
+    },
+    () => {
+      streaming.value = false
+      hitl.running = false
+      if (answerMessage.status === 'STREAMING') {
+        // 同 handleSend 的空流判定；确认卡片本身也算产出（连续闸口）
+        if (!answerMessage.content && !answerMessage.workflowDefId && !answerMessage.hitl) {
+          answerMessage.status = 'ERROR'
+          answerMessage.errorMsg =
+            '流程恢复后没有返回任何内容，请刷新页面查看执行状态；若反复出现请联系管理员查看服务端日志'
+        } else {
+          answerMessage.status = 'SUCCESS'
+        }
+      }
+      emit('conversation-updated')
+    }
+  )
 }
 
 // ==================== Workflow 草稿卡片相关 ====================

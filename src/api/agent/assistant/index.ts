@@ -54,6 +54,13 @@ export interface AgentMessageVO {
    * defId/code/name/摘要，刷新页面之后这条路径是唯一能把卡片找回来的办法。
    */
   workflowDefId?: number
+  /**
+   * 关联的 Workflow 执行实例编号（增量13）。有值说明这条助手消息是一张「人工确认卡片」——
+   * 工作流驱动的 Agent 绑定的 chatflow 在 hitl.confirm 节点挂起时落的。刷新页面后凭它调
+   * /agent/workflow/execution/get 查执行状态重建卡片：仍 INTERRUPTED→「待确认」（按钮可点，
+   * 走 resume-workflow-stream 续跑）；已结束→只读「已处理」。与 workflowDefId 同为「卡片重建钥匙」。
+   */
+  executionId?: number
   createTime: Date
 }
 
@@ -78,6 +85,7 @@ export interface AgentChatEventVO {
     | 'SUGGESTIONS'
     | 'PLANNING'
     | 'WORKFLOW_DRAFT'
+    | 'WORKFLOW_CONFIRM'
     | 'DONE'
     | 'ERROR'
   content?: string
@@ -95,6 +103,10 @@ export interface AgentChatEventVO {
   summary?: string
   /** WORKFLOW_DRAFT 事件：需要用户留意的提示（如校验器的静默改写警告） */
   warnings?: string[]
+  /** WORKFLOW_CONFIRM 事件：挂起的执行实例编号，点确认/拒绝时回传 resume-workflow-stream（增量13） */
+  executionId?: number
+  /** WORKFLOW_CONFIRM 事件：挂起所在的节点 id，供卡片显示「卡在哪个闸口」 */
+  nodeId?: string
   errorMsg?: string
 }
 
@@ -128,6 +140,42 @@ export const AgentAssistantApi = {
       // agentDefId 仅在<b>新建会话</b>（conversationId 为空）时被后端采纳并落库绑定；
       // 既有会话以会话自己的 agent_def_id 为准，这里带不带都被忽略（防中途换人设）
       body: JSON.stringify({ conversationId, content, agentDefId }),
+      onmessage: onMessage,
+      onerror: onError,
+      onclose: onClose,
+      signal: ctrl.signal
+    })
+  },
+
+  /**
+   * 聊天内恢复挂起的工作流（流式，增量13）
+   *
+   * 工作流驱动的 Agent 绑定的 chatflow 在 hitl.confirm 节点挂起后，用户在确认卡片点「同意/拒绝」即发这个请求，
+   * 从断点续跑，回推的仍是聊天事件（PLANNING/MESSAGE/WORKFLOW_CONFIRM/DONE/ERROR），与 sendStream 同款消费。
+   *
+   * 🔴 与 sendStream 完全同构：同样用 fetchEventSource（要登录态、要 POST）、同样 openWhenHidden、
+   *    同样把 AbortController 的 signal 传进去（用户切走/组件卸载时可中断，避免续跑在后台白跑）。
+   * @param executionId 挂起的执行实例编号（从 WORKFLOW_CONFIRM 事件 / 刷新重建时取得）
+   * @param approved    true=同意续跑，false=拒绝（服务端写进 hitl_approved 变量）
+   */
+  resumeWorkflowStream: (
+    executionId: number,
+    approved: boolean,
+    conversationId: number,
+    ctrl: AbortController,
+    onMessage: (event: any) => void,
+    onError: (err: any) => void,
+    onClose: () => void
+  ) => {
+    return fetchEventSource(`${config.base_url}/agent/assistant/resume-workflow-stream`, {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+        'tenant-id': `${getTenantId()}`
+      },
+      openWhenHidden: true,
+      body: JSON.stringify({ executionId, approved, conversationId }),
       onmessage: onMessage,
       onerror: onError,
       onclose: onClose,
