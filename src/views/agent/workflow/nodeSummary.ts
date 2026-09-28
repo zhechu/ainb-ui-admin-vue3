@@ -155,8 +155,23 @@ const str = (v: any): string => {
   }
 }
 
-/** 把任意 config 值转成可读单行文本（对象走 JSON、截断） */
-const readable = (v: any): string => truncate(str(v).replace(/\s+/g, ' ').trim(), 120)
+/**
+ * 把任意 config 值转成可读单行文本。
+ * 🔴 人话化（问题3a）：对象渲染成「键=值、键=值」而非原样吐 JSON；数组用「、」连接；标量直接转字符串。
+ * 递归有深度上限，防脏数据自引用爆栈。
+ */
+const readable = (v: any, depth = 0): string => {
+  if (v === null || v === undefined) return ''
+  if (depth > 3) return truncate(str(v).replace(/\s+/g, ' ').trim(), 120)
+  if (Array.isArray(v)) return truncate(v.map((x) => readable(x, depth + 1)).filter(Boolean).join('、'), 120)
+  if (typeof v === 'object') {
+    const parts = Object.entries(v)
+      .map(([k, val]) => `${k}=${readable(val, depth + 1)}`)
+      .filter((s) => !s.endsWith('='))
+    return truncate(parts.join('、'), 120)
+  }
+  return truncate(str(v).replace(/\s+/g, ' ').trim(), 120)
+}
 
 const asArray = (v: any): any[] => (Array.isArray(v) ? v : [])
 const asObject = (v: any): Record<string, any> =>
@@ -168,21 +183,20 @@ const ruleBranchCount = (config: Record<string, any>): number => asArray(config.
 /**
  * 单节点一句话摘要 —— 把 config 提炼成业务人员看得懂的「这个节点要做什么」。
  * 每种类型一个模板；缺字段时如实说「未配置 xx」（这本身就是有用的信息），未知类型兜底列 config 键名。
+ * 🔴 人话化（问题3a）：不再把 outputVar / 变量名 / 工具入参键名这些技术标识甩给用户；
+ *    分支目标本就是要给用户看的路由名（condition.rule 的 target / condition.llm 的 choices），保留原样。
  */
 export const summarizeNode = (node?: { type?: string; config?: Record<string, any> } | null): string => {
   if (!node) return ''
   const config = asObject(node.config)
-  const out = config.outputVar ? ` → 写入 ${config.outputVar}` : ''
   switch (node.type) {
     case 'tool': {
       if (!config.toolId) return '调用工具（未选择工具）'
-      const argKeys = Object.keys(asObject(config.args))
-      const argsText = argKeys.length ? `，入参 ${argKeys.slice(0, 3).join('、')}${argKeys.length > 3 ? ' 等' : ''}` : ''
-      return `调用工具「${config.toolId}」${argsText}${out}`
+      return `调用工具「${config.toolId}」`
     }
     case 'llm': {
-      if (!config.prompt) return `调用大模型生成文本（未填写提示词）${out}`
-      return `让大模型：「${truncate(str(config.prompt).replace(/\s+/g, ' '), 40)}」${out}`
+      if (!config.prompt) return '调用大模型生成文本（未填写提示词）'
+      return `让大模型：「${truncate(str(config.prompt).replace(/\s+/g, ' '), 40)}」`
     }
     case 'condition.rule': {
       const n = ruleBranchCount(config)
@@ -191,37 +205,40 @@ export const summarizeNode = (node?: { type?: string; config?: Record<string, an
         .map((b: any) => asObject(b).target)
         .filter(Boolean)
         .slice(0, 3)
-      const def = config.default ? `；默认 → ${config.default}` : ''
+      const def = config.default ? `；都不命中走「${config.default}」` : ''
       return `按变量值分 ${n} 路：${targets.join('、')}${def}`
     }
     case 'condition.llm': {
       const choices = asArray(config.choices)
-      if (!choices.length) return `让模型选路（未配置候选项）${config.default ? `；默认 → ${config.default}` : ''}`
+      if (!choices.length) return `让模型选路（未配置候选项）${config.default ? `；都不命中走「${config.default}」` : ''}`
       return `让模型在 ${choices.length} 个选项中选路：${truncate(choices.map(str).join('、'), 40)}`
     }
     case 'knowledge_retrieval': {
-      const kb = config.knowledgeBaseId ? `知识库 #${config.knowledgeBaseId}` : '知识库（未选择）'
-      const q = config.queryVar ? `按变量 ${config.queryVar} 检索` : config.query ? `检索「${truncate(str(config.query), 30)}」` : ''
+      const q = config.queryVar
+        ? '按上游结果检索'
+        : config.query
+          ? `检索「${truncate(str(config.query), 30)}」`
+          : '检索相关资料'
       const topK = config.topK ? `，取前 ${config.topK} 条` : ''
-      return `从${kb}${q ? `：${q}` : ''}${topK}${out}`
+      return `从知识库${q}${topK}`
     }
     case 'hitl.confirm':
-      return `暂停流程，等用户点「同意 / 拒绝」，结果写入 ${config.approveVar || 'hitl_approved'}`
+      return '暂停流程，等用户点「同意 / 拒绝」后再继续'
     case 'hitl.bpm_approval':
       return config.bpmProcessDefKey
-        ? `发起 BPM 审批「${config.bpmProcessDefKey}」，结果写入 ${config.approveVar || 'bpm_approved'}`
-        : '发起 BPM 审批（未配置流程定义 Key）'
+        ? `发起 BPM 审批「${config.bpmProcessDefKey}」，等审批有结果后继续`
+        : '发起 BPM 审批（未配置流程标识）'
     case 'parallel': {
       const n = asArray(config.branches).length
       return n ? `${n} 条分支同时执行，全部完成后汇聚` : '并行分发（未配置分支）'
     }
     case 'wait': {
-      if (config.waitType === 'event') return `挂起等待外部事件「${config.eventKey || '未配置事件键'}」`
+      if (config.waitType === 'event') return `挂起等待外部事件「${config.eventKey || '未配置事件'}」`
       if (config.waitType === 'duration' || config.duration) return `等待 ${config.duration ?? '?'} 秒后继续`
       return '等待（未配置等待方式）'
     }
     case 'script':
-      return config.code ? `执行一段 JavaScript 计算${out}` : '执行脚本（未填写脚本内容）'
+      return config.code ? '执行一段 JavaScript 计算' : '执行脚本（未填写脚本内容）'
     case 'agent_loop': {
       const goal = config.goal ? `：「${truncate(str(config.goal), 40)}」` : '（未描述目标）'
       const tools = asArray(config.tools).length ? `，可用工具 ${asArray(config.tools).length} 个` : ''
@@ -229,9 +246,8 @@ export const summarizeNode = (node?: { type?: string; config?: Record<string, an
       return `让模型自主完成${goal}${tools}${steps}`
     }
     case 'iteration': {
-      const items = config.itemsVar || '（未指定列表变量）'
       const body = asArray(config.body).length ? `，循环体 ${asArray(config.body).length} 个节点` : ''
-      return `逐项处理列表 ${items}，每项写入 ${config.itemVar || 'item'}${body}`
+      return `逐项处理一个列表里的每一项${body}`
     }
     case 'sub_workflow':
       return config.workflowId
@@ -316,14 +332,17 @@ export const nodeDetailLines = (node?: {
   return lines
 }
 
-/** 把 nodes[] 组装成卡片用的 SummaryNode[]（容错：非数组/元素残缺都跳过） */
+/**
+ * 把 nodes[] 组装成卡片用的 SummaryNode[]（容错：非数组/元素残缺都跳过）。
+ * 🔴 人话化（问题3a）：无名节点回退成「步骤 N」（按在列表里的次序），不再把裸节点 id 甩给用户。
+ */
 export const buildSummaryNodes = (nodes: any): SummaryNode[] =>
   asArray(nodes)
     .filter((n) => n && n.id)
-    .map((n) => ({
+    .map((n, i) => ({
       id: str(n.id),
       type: n.type,
-      name: n.name,
+      name: n.name ? str(n.name) : `步骤 ${i + 1}`,
       summary: summarizeNode(n),
       details: nodeDetailLines(n)
     }))
@@ -341,18 +360,18 @@ const isConditionalEdge = (e: SummaryEdge): boolean =>
   (e.type ?? '').toLowerCase() === 'conditional' || (!!e.cases && Object.keys(e.cases).length > 0)
 
 /**
- * edges → 流程走向文本行（卡片「流程走向」小节）。
- * 普通边 `A → B`；条件边每个 case 一行 `A ⇒[路由键] B`、default 一行 `A ⇒[默认] B`。
- * START/END 译作「开始/结束」；端点指向不存在节点的边跳过（结构合法性是后端校验的事，展示层不崩不谎报）。
+ * edges → 流程走向文本行（卡片「执行顺序」小节）。
+ * 普通边 `A → B`；条件边每个 case 一行 `A →（分支名） B`、default 一行 `A →（默认） B`。
+ * START/END 译作「开始/结束」；无名节点回退「步骤 N」；端点指向不存在节点的边跳过（结构合法性是后端校验的事，展示层不崩不谎报）。
  */
 export const flowStepsText = (
   nodes: { id?: string; name?: string }[] | undefined | null,
   edges: SummaryEdge[] | undefined | null
 ): string[] => {
   const nameOf = new Map<string, string>()
-  for (const n of asArray(nodes)) {
-    if (n && n.id) nameOf.set(str(n.id), n.name ? str(n.name) : str(n.id))
-  }
+  asArray(nodes).forEach((n, i) => {
+    if (n && n.id) nameOf.set(str(n.id), n.name ? str(n.name) : `步骤 ${i + 1}`)
+  })
   const label = (ref: string): string | null => {
     if (ref === 'START') return '开始'
     if (ref === 'END') return '结束'
@@ -366,11 +385,11 @@ export const flowStepsText = (
     if (isConditionalEdge(e)) {
       for (const [route, tgt] of Object.entries(asObject(e.cases))) {
         const to = tgt ? label(str(tgt)) : null
-        if (to) lines.push(`${from} ⇒［${route}］ ${to}`)
+        if (to) lines.push(`${from} →（${route}） ${to}`)
       }
       if (e.default) {
         const to = label(str(e.default))
-        if (to) lines.push(`${from} ⇒［默认］ ${to}`)
+        if (to) lines.push(`${from} →（默认） ${to}`)
       }
     } else if (e.to) {
       const to = label(str(e.to))

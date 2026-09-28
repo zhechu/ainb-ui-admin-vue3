@@ -83,8 +83,8 @@ describe('nodeConfigSchema', () => {
     expect(jsonHintFor('condition.llm')).toBe('')
     expect(jsonHintFor('hitl.bpm_approval')).toBe('')
     expect(jsonHintFor('parallel')).toBe('')
-    // condition.rule 仅剩「嵌套 AND/OR conditionGroups」建议走 JSON
-    expect(jsonHintFor('condition.rule')).toContain('conditionGroups')
+    // condition.rule 仅剩「嵌套 AND/OR 复杂条件」建议走开发者模式的 JSON
+    expect(jsonHintFor('condition.rule')).toContain('开发者模式')
     // llm / hitl.confirm 无复杂嵌套键 → 无提示
     expect(jsonHintFor('llm')).toBe('')
     expect(jsonHintFor('hitl.confirm')).toBe('')

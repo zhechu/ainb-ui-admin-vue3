@@ -35,17 +35,22 @@
       </el-tag>
     </div>
 
-    <!-- 警告：后端不会报错的静默改写，不在卡片上说出来就没有第二次机会了 -->
+    <!-- 警告：后端不会报错的静默改写。默认折叠成一句人话汇总，点「查看详情」才展开技术原文，
+         避免把 JSON 片段 / recovery:compensate 这类术语直接甩给业务用户。 -->
     <div v-if="warnings?.length" class="px-16px pt-10px">
-      <el-alert
-        v-for="(w, i) in warnings"
-        :key="i"
-        :title="w"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="mb-6px !py-6px"
-      />
+      <el-alert type="warning" :closable="false" show-icon class="!py-6px">
+        <template #title>
+          <div class="flex items-center gap-6px">
+            <span>有 {{ warnings.length }} 条技术提示，通常不影响运行。</span>
+            <el-link type="warning" :underline="false" class="!text-12px" @click="showWarnings = !showWarnings">
+              {{ showWarnings ? '收起' : '查看详情' }}
+            </el-link>
+          </div>
+        </template>
+        <ul v-if="showWarnings" class="pl-18px mb-0 mt-4px">
+          <li v-for="(w, i) in warnings" :key="i" class="text-12px leading-20px">{{ w }}</li>
+        </ul>
+      </el-alert>
     </div>
 
     <!-- 只读节点预览：plan-as-workflow 产出的是一整份 DSL（DAG），这里列出节点顺序与类型。
@@ -54,7 +59,7 @@
          点击展开 config 详情行，让用户看清「这个节点到底要做什么」，而不只是一个名字。 -->
     <div v-if="nodes?.length" class="divide-y divide-[var(--el-border-color-lighter)]">
       <div
-        v-for="node in nodes"
+        v-for="(node, idx) in nodes"
         :key="node.id"
         data-testid="workflow-node"
         class="px-16px py-10px"
@@ -72,7 +77,7 @@
             {{ nodeTypeMeta(node.type).label }}
           </el-tag>
           <div class="flex-1 min-w-0">
-            <div class="text-14px break-words">{{ node.name || node.id }}</div>
+            <div class="text-14px break-words">{{ node.name || `步骤 ${idx + 1}` }}</div>
             <div
               v-if="node.summary"
               class="text-12px text-[var(--el-text-color-secondary)] leading-18px mt-2px break-words"
@@ -113,19 +118,21 @@
       （未能解析出节点预览）
     </div>
 
-    <!-- 流程走向：把 edges 译成「A → B / A ⇒[路由] B」文本行，让用户看清节点如何串联 -->
+    <!-- 执行顺序：把 edges 译成「A → B / A →（分支）B」文本行，让用户看清节点如何串联 -->
     <div
       v-if="edgesText?.length"
       class="px-16px py-10px bg-[var(--el-fill-color-blank)] border-t border-[var(--el-border-color-lighter)] border-t-solid"
     >
-      <div class="text-12px font-600 text-[var(--el-text-color-secondary)] mb-6px">流程走向</div>
-      <div
-        v-for="(line, i) in edgesText"
-        :key="i"
-        class="text-12px text-[var(--el-text-color-regular)] leading-20px font-mono"
-      >
-        {{ line }}
-      </div>
+      <div class="text-12px font-600 text-[var(--el-text-color-secondary)] mb-6px">执行顺序</div>
+      <ol class="pl-18px mb-0">
+        <li
+          v-for="(line, i) in edgesText"
+          :key="i"
+          class="text-13px text-[var(--el-text-color-regular)] leading-22px"
+        >
+          {{ line }}
+        </li>
+      </ol>
     </div>
 
 
@@ -220,6 +227,8 @@ defineEmits<{
 
 /** 展开态：记录哪些节点 id 的 config 详情被展开（点击节点行切换） */
 const expanded = ref<Set<string>>(new Set())
+/** 技术提示默认折叠，点「查看详情」才展开原文 */
+const showWarnings = ref(false)
 const toggle = (id: string) => {
   const next = new Set(expanded.value)
   next.has(id) ? next.delete(id) : next.add(id)

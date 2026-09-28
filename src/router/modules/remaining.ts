@@ -174,6 +174,29 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/agent-def',
+    component: Layout,
+    name: 'AgentDefCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'editor',
+        component: () => import('@/views/agent/def/editor/index.vue'),
+        name: 'AgentDefEditor',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: 'Agent 定义设计器',
+          // 「Agent 定义」菜单在 /agent/def（DB 菜单驱动），设计器是它的隐藏整页子页
+          activeMenu: '/agent/def'
+        }
+      }
+    ]
+  },
+  {
     path: '/dict',
     component: Layout,
     name: 'dict',

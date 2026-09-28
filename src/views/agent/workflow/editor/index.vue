@@ -39,7 +39,7 @@
       </div>
       <div class="flex items-center gap-8px flex-shrink-0">
         <el-button :disabled="readonly" :loading="validating" @click="handleValidate">
-          <Icon icon="ep:circle-check" class="mr-4px" />校验
+          <Icon icon="ep:circle-check" class="mr-4px" />体检
         </el-button>
         <el-button
           :loading="savingAction === 'save'"
@@ -60,11 +60,11 @@
       </div>
     </header>
 
-    <!-- 校验结果（结构化 errors/warnings，直接展示后端返回的「怎么改」文案） -->
+    <!-- 体检结果（结构化 errors/warnings，直接展示后端返回的「怎么改」文案） -->
     <div v-if="validateResult" class="px-16px pt-8px">
       <el-alert
         v-if="validateResult.passed && !validateResult.warnings.length"
-        title="校验通过：结构合法，可作为可执行流程发布"
+        title="体检通过：这条流程结构完整，可以发布运行"
         type="success"
         :closable="false"
         show-icon
@@ -77,15 +77,15 @@
           show-icon
           class="mb-6px"
         >
-          <template #title>校验未通过：{{ validateResult.errors.length }} 个必须修正的错误</template>
+          <template #title>还有 {{ validateResult.errors.length }} 处必须修正</template>
           <ul class="pl-18px mb-0 mt-2px">
             <li v-for="(e, i) in validateResult.errors" :key="i" class="text-12px leading-20px">{{ e }}</li>
           </ul>
         </el-alert>
         <el-alert v-if="validateResult.warnings.length" type="warning" :closable="false" show-icon>
           <template #title>
-            {{ validateResult.errors.length ? '另有' : '校验通过，但有' }}
-            {{ validateResult.warnings.length }} 条建议调整（不阻断保存）
+            {{ validateResult.errors.length ? '另有' : '体检通过，另有' }}
+            {{ validateResult.warnings.length }} 条优化建议（不影响保存）
           </template>
           <ul class="pl-18px mb-0 mt-2px">
             <li v-for="(w, i) in validateResult.warnings" :key="i" class="text-12px leading-20px">{{ w }}</li>
@@ -139,7 +139,7 @@
         @change="markDirty"
         @replace="onCanvasReplace"
       />
-      <el-empty v-else description="DSL 解析失败，无法进入画布编辑" />
+      <el-empty v-else description="这条流程的配置数据损坏，无法打开画布编辑" />
     </div>
   </div>
 </template>
@@ -255,7 +255,7 @@ const loadDef = async (id: number) => {
       remark: data.remark ?? ''
     }
     if (!loadDslText(formData.value.dsl || '{}')) {
-      message.error('该流程的 DSL 不是合法 JSON，无法进入画布编辑')
+      message.error('这条流程的配置数据损坏，无法打开画布编辑')
     }
     dirty.value = false
   } finally {
@@ -276,7 +276,7 @@ onMounted(() => {
 const runValidate = async (): Promise<AgentWorkflowDefValidateVO | null> => {
   const dsl = currentDslText()
   if (!dsl?.trim()) {
-    message.warning('DSL 为空，无法校验')
+    message.warning('流程内容为空，无法体检')
     return null
   }
   validating.value = true
@@ -294,10 +294,10 @@ const handleValidate = async () => {
   if (!res) return
   if (res.passed) {
     res.warnings.length
-      ? message.warning(`校验通过，但有 ${res.warnings.length} 条建议调整`)
-      : message.success('校验通过')
+      ? message.warning(`体检通过，但有 ${res.warnings.length} 条建议调整`)
+      : message.success('体检通过，没有发现问题')
   } else {
-    message.error(`校验未通过：${res.errors.length} 个错误`)
+    message.error(`体检未通过：还有 ${res.errors.length} 处需要修正`)
   }
 }
 
@@ -309,7 +309,7 @@ const validateForm = (): string => {
     if (!code) return '请填写流程编码'
     if (!CODE_PATTERN.test(code)) return '流程编码需小写字母开头，仅含小写字母/数字/下划线，长度 2~64'
   }
-  if (!currentDslText()?.trim()) return 'DSL 不能为空'
+  if (!currentDslText()?.trim()) return '流程内容为空，请先在画布上添加节点'
   return ''
 }
 
@@ -327,12 +327,12 @@ const handleSave = async (action: 'save' | 'publish') => {
   if (!res) return
   if (!res.passed) {
     if (action === 'publish') {
-      message.error(`存在 ${res.errors.length} 个阻断错误，无法发布；请修正后再试（可先保存草稿）`)
+      message.error(`还有 ${res.errors.length} 处需要修正，暂时无法发布；请改好后再试（也可以先保存草稿）`)
       return
     }
     try {
       await message.confirm(
-        `DSL 存在 ${res.errors.length} 个错误，仍要保存为草稿吗？草稿不可执行，可稍后修正再发布。`
+        `这条流程还有 ${res.errors.length} 处需要修正，仍要先保存为草稿吗？草稿还不能运行，可以稍后改好再发布。`
       )
     } catch {
       return

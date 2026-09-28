@@ -95,8 +95,19 @@
             </el-button>
           </template>
           <span class="text-11px text-[var(--el-text-color-placeholder)] ml-auto">
-            从节点右侧圆点拉线到另一节点左侧圆点即连线<template v-if="!readonly">；条件节点拉线会询问分支路由键</template>
+            从节点右侧圆点拉线到另一节点左侧圆点即连线
           </span>
+          <!-- 开发者模式：默认关，把裸 JSON / 失败补偿等高级项藏起来（对标表单设计器不暴露 JSON 预览） -->
+          <el-tooltip
+            content="打开后可直接编辑流程的 JSON 原文、配置失败恢复与补偿等高级项"
+            placement="bottom"
+            :show-after="300"
+          >
+            <div class="flex items-center gap-4px flex-shrink-0">
+              <span class="text-11px text-[var(--el-text-color-secondary)]">开发者模式</span>
+              <el-switch v-model="devMode" size="small" data-testid="dev-mode-switch" />
+            </div>
+          </el-tooltip>
         </div>
         <div
           class="relative flex-1 min-h-0 border border-solid border-[var(--el-border-color)] rounded-6px overflow-hidden"
@@ -394,7 +405,8 @@
               </el-button>
             </template>
 
-            <!-- 失败恢复与补偿（Saga）：recovery/compensation 是节点顶层字段，不走 nodeConfigSchema -->
+            <!-- 失败恢复与补偿（Saga）：属高级项，默认藏在开发者模式后。recovery/compensation 是节点顶层字段，不走 nodeConfigSchema -->
+            <template v-if="devMode">
             <el-divider content-position="left">失败恢复与补偿</el-divider>
             <el-form-item v-if="nonCompensable" label="失败恢复">
               <el-tag size="small" type="info" data-testid="node-noncompensable-tag">不可补偿（固定向前恢复）</el-tag>
@@ -469,9 +481,10 @@
                 </el-form-item>
               </template>
             </template>
+            </template>
 
-            <!-- config JSON 兜底：condition.rule 的 branches 已有可视化面板，不再摆裸 JSON 防双头编辑 -->
-            <template v-if="selectedNode.type !== 'condition.rule'">
+            <!-- config JSON 兜底：属高级项，默认藏在开发者模式后；condition.rule 的 branches 已有可视化面板，不再摆裸 JSON 防双头编辑 -->
+            <template v-if="devMode && selectedNode.type !== 'condition.rule'">
               <el-divider content-position="left">config</el-divider>
               <el-form-item label="完整 config（JSON）">
                 <div v-if="jsonHint" class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mb-4px">
@@ -511,13 +524,13 @@
 
           <!-- 条件边可视化编辑（问题4-②）：增改删 case 与 default -->
           <template v-if="selectedEdgeIsConditional">
-            <el-divider content-position="left">分支路由</el-divider>
+            <el-divider content-position="left">分支走向</el-divider>
             <el-form label-position="top" size="small" :disabled="readonly">
               <div v-for="c in caseRows" :key="c.key" class="flex items-center gap-4px mb-6px">
                 <el-input
                   :model-value="c.key"
                   size="small"
-                  placeholder="路由键"
+                  placeholder="分支名"
                   class="!w-90px"
                   @change="onCaseKeyChange(c.key, $event)"
                 />
@@ -559,10 +572,10 @@
                 </el-select>
               </div>
               <el-button v-if="!readonly" size="small" text type="primary" @click="onCaseAdd">
-                <Icon icon="ep:plus" class="mr-2px" />添加分支路由
+                <Icon icon="ep:plus" class="mr-2px" />添加分支
               </el-button>
               <div class="text-11px text-[var(--el-text-color-placeholder)] leading-16px mt-4px">
-                路由键需与条件节点配置里的分支（condition.rule 的 target / condition.llm 的 choices）一致，否则永远不会走到。
+                这里的分支名要和条件节点里设置的分支一致，否则流程永远走不到这条分支。
               </div>
             </el-form>
           </template>
@@ -585,18 +598,18 @@
             <li>左侧目录点击或拖拽新增节点</li>
             <li>拖动节点调整位置（保存后记住布局）</li>
             <li>从节点右侧圆点拉到另一节点左侧圆点连线</li>
-            <li>条件节点拉线时会询问分支路由键</li>
+            <li>从条件节点拉线时，会让你选择走哪条分支</li>
             <li>单击节点/连线在此编辑或删除</li>
           </ul>
         </div>
       </div>
     </div>
 
-    <!-- 底部：DSL JSON 兜底编辑（trigger、variables、conditionGroups 等非画布可编辑项走这里） -->
-    <div v-if="!parseError" class="mt-10px flex-shrink-0">
+    <!-- 底部：流程 JSON 兜底编辑（属开发者模式）——画布改动实时同步到此；也可直接改 JSON 后「应用到画布」 -->
+    <div v-if="!parseError && devMode" class="mt-10px flex-shrink-0">
       <div class="flex items-center justify-between mb-6px">
         <span class="text-12px text-[var(--el-text-color-secondary)]">
-          DSL JSON（事实源）。画布改动实时同步到此；也可直接改 JSON 后「应用到画布」。
+          流程 JSON（事实源）。画布改动实时同步到此；也可直接改 JSON 后「应用到画布」。
         </span>
         <el-button v-if="!readonly" size="small" @click="onApplyJson">
           <Icon icon="ep:refresh-right" class="mr-4px" />应用到画布
@@ -611,6 +624,30 @@
         :readonly="readonly"
       />
     </div>
+
+    <!-- 条件分支可视化选择弹窗：从条件节点拉线/添加分支时，用单选代替逼用户手输路由键 -->
+    <el-dialog
+      v-model="routeDialogVisible"
+      title="选择分支"
+      width="420px"
+      append-to-body
+      :close-on-click-modal="false"
+      data-testid="route-picker-dialog"
+      @close="cancelRouteDialog"
+    >
+      <div class="text-13px text-[var(--el-text-color-regular)] mb-10px leading-20px">
+        这条连线代表哪个分支？选中后流程会在这个条件下走向对应分支。
+      </div>
+      <el-radio-group v-model="routeDialogSelected" class="flex flex-col items-start gap-8px">
+        <el-radio v-for="c in routeDialogCandidates" :key="c" :value="c" border class="!mr-0">
+          {{ routeTargetName(c) }}
+        </el-radio>
+      </el-radio-group>
+      <template #footer>
+        <el-button @click="cancelRouteDialog">取消</el-button>
+        <el-button type="primary" :disabled="!routeDialogSelected.trim()" @click="confirmRouteDialog">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -656,6 +693,7 @@ import {
 import { NODE_TYPE_META, NODE_TYPE_GROUPS } from '../nodeSummary'
 import { fieldsFor, jsonHintFor, isFieldVisible, type ConfigField } from '../nodeConfigSchema'
 import KeyValueEditor from './KeyValueEditor.vue'
+import { useLocalStorage } from '@vueuse/core'
 
 defineOptions({ name: 'WorkflowEditorCanvas' })
 
@@ -690,6 +728,19 @@ const flowId = `wf-editor-${Math.random().toString(36).slice(2, 8)}`
 const { zoomIn, zoomOut, fitView, screenToFlowCoordinate } = useVueFlow(flowId)
 
 const parseError = ref('')
+/**
+ * 开发者模式（默认关，持久化到 localStorage）：开启后才展示底部流程 JSON、每节点 config JSON、
+ * 失败恢复与补偿（Saga）等高级/技术项。对标表单设计器「JSON 预览刻意隐藏」，让零基础用户只看结构化面板。
+ * 🔴 DSL 仍是事实源（syncDslText/getDslText 逻辑不受此开关影响），关时只是不常驻展示。
+ */
+const devMode = useLocalStorage('agent-wf-dev-mode', false)
+// 开关切换会增删底部流程 JSON 面板，画布可视高度随之变化；不重新适配的话，原本贴合的节点会溢出到
+// 面板下方被遮住、点不中。等 DOM 更新且 VueFlow 的 ResizeObserver 拿到新尺寸后（nextTick + 一帧）再 fitView。
+watch(devMode, () => {
+  // 等 DOM 更新 + VueFlow 的 ResizeObserver 量到新画布尺寸后再适配；rAF 太早（量到的还是旧高度），
+  // 会把节点拟合进一个「已经不存在的高度」，结果节点被裁到面板下方点不中。
+  setTimeout(() => fitView({ padding: 0.2 }), 150)
+})
 /** 事实源：已解析的 DSL 对象（克隆自 props，画布/JSON 都是它的视图） */
 const inner = ref<EditorDsl>({ nodes: [], edges: [] })
 /** 编辑会话内的坐标（视觉 id → 位置），保存时经 getDslText 写回 DSL 各节点 position */
@@ -886,27 +937,32 @@ const onConnect = async (params: any) => {
   const from = toDsl(params.source)
   const to = toDsl(params.target)
   if (!from || !to || from === to) return
-  // 条件节点拉线（问题4-②）：询问路由键，写进该 from 的 conditional 边 cases
+  // 条件节点拉线：弹可视化分支选择（替代逼用户手输路由键），选中即写进该 from 的 conditional 边 cases
   const src = (inner.value.nodes ?? []).find((n) => n.id === from)
   if (src && (src.type ?? '').startsWith('condition.')) {
     const candidates = routeKeyCandidates(src)
-    let routeKey: string
-    try {
-      const res = await ElMessageBox.prompt(
-        candidates.length
-          ? `这条连线代表哪个分支？请输入路由键（候选：${candidates.join('、')}）`
-          : '这条连线代表哪个分支？请输入路由键（需与条件节点配置里的分支一致）',
-        '条件分支路由键',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          inputPlaceholder: '如 approved',
-          inputValidator: (v: string) => (v && v.trim() ? true : '路由键不能为空')
-        }
-      )
-      routeKey = (res.value ?? '').trim()
-    } catch {
-      return // 取消 = 不连线
+    let routeKey = ''
+    if (candidates.length) {
+      const picked = await openRouteDialog(candidates)
+      if (!picked) return // 取消 = 不连线
+      routeKey = picked
+    } else {
+      // 无候选：条件节点还没配分支，回落 prompt 并明示「先去右侧添加分支」
+      try {
+        const res = await ElMessageBox.prompt(
+          '这个条件节点还没有配置分支。建议先在右侧面板为它添加分支后再连线；也可以先临时输入一个分支名。',
+          '这条连线代表哪个分支？',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            inputPlaceholder: '分支名',
+            inputValidator: (v: string) => (v && v.trim() ? true : '分支名不能为空')
+          }
+        )
+        routeKey = (res.value ?? '').trim()
+      } catch {
+        return // 取消 = 不连线
+      }
     }
     if (!routeKey) return
     setEdgeCase(inner.value, from, routeKey, to)
@@ -915,6 +971,41 @@ const onConnect = async (params: any) => {
   }
   addEdge(inner.value, from, to)
   mutate()
+}
+
+// ---------- 条件分支可视化选择弹窗（替代 ElMessageBox.prompt 手输路由键） ----------
+const routeDialogVisible = ref(false)
+const routeDialogCandidates = ref<string[]>([])
+const routeDialogSelected = ref('')
+let routeDialogResolve: ((key: string | null) => void) | null = null
+
+/** 结算弹窗：先摘掉 resolver 再回调，保证「确定」后 el-dialog 的 @close 再触发也不会二次覆盖结果 */
+const settleRoute = (key: string | null) => {
+  const r = routeDialogResolve
+  routeDialogResolve = null
+  r?.(key)
+}
+/** 打开分支选择弹窗，返回用户选中的分支名（取消返回 null） */
+const openRouteDialog = (candidates: string[]): Promise<string | null> => {
+  routeDialogCandidates.value = candidates
+  routeDialogSelected.value = candidates[0] ?? ''
+  routeDialogVisible.value = true
+  return new Promise((resolve) => {
+    routeDialogResolve = resolve
+  })
+}
+const confirmRouteDialog = () => {
+  settleRoute(routeDialogSelected.value.trim() || null)
+  routeDialogVisible.value = false
+}
+const cancelRouteDialog = () => {
+  settleRoute(null)
+  routeDialogVisible.value = false
+}
+/** 弹窗里把分支名/节点 id 显示成人话：优先取目标节点名，无名回落「步骤」措辞 */
+const routeTargetName = (routeKey: string): string => {
+  const n = (inner.value.nodes ?? []).find((x) => x.id === routeKey)
+  return n?.name || routeKey
 }
 
 /** 条件节点的候选路由键：condition.llm 取 choices；condition.rule 取 branches[].target + default */
@@ -1301,23 +1392,31 @@ const onCaseAdd = async () => {
   if (!e) return
   const src = (inner.value.nodes ?? []).find((n) => n.id === e.from)
   const candidates = src ? routeKeyCandidates(src) : []
-  let routeKey: string
-  try {
-    const res = await ElMessageBox.prompt(
-      candidates.length
-        ? `新分支的路由键（候选：${candidates.join('、')}）：`
-        : '新分支的路由键（需与条件节点配置里的分支一致）：',
-      '添加分支路由',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        inputPlaceholder: '如 approved',
-        inputValidator: (v: string) => (v && v.trim() ? true : '路由键不能为空')
-      }
-    )
-    routeKey = (res.value ?? '').trim()
-  } catch {
-    return
+  // 过滤掉已接过线的分支，只让用户从未接的候选里选（避免重复/手输）
+  const available = candidates.filter((k) => !e.cases?.[k])
+  let routeKey = ''
+  if (available.length) {
+    const picked = await openRouteDialog(available)
+    if (!picked) return
+    routeKey = picked
+  } else {
+    try {
+      const res = await ElMessageBox.prompt(
+        candidates.length
+          ? '这个条件节点的分支都已接过线了。若确需新增，请输入一个分支名（要和条件节点里设置的分支一致）。'
+          : '请输入新分支的分支名（要和条件节点里设置的分支一致）。',
+        '添加分支',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          inputPlaceholder: '分支名',
+          inputValidator: (v: string) => (v && v.trim() ? true : '分支名不能为空')
+        }
+      )
+      routeKey = (res.value ?? '').trim()
+    } catch {
+      return
+    }
   }
   if (!routeKey || e.cases?.[routeKey]) return
   // 先占位空目标（buildFlow 会跳过无目标的 case），用户在行内下拉里选目标

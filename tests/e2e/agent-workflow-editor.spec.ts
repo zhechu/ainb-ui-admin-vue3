@@ -50,6 +50,11 @@ test.describe('流程可视化编辑器（整页设计器）', () => {
     const flowBox = await page.locator('.vue-flow').first().boundingBox()
     expect(flowBox?.height ?? 0).toBeGreaterThan(100)
 
+    // 2b. 打开「开发者模式」：底部流程 JSON、每节点 config JSON、失败恢复与补偿（Saga）默认藏在此开关后。
+    //     本用例后续要断言 DSL 双向同步 / 补偿字段，故先显式打开（普通用户默认看不到这些技术项）。
+    await page.locator('[data-testid="dev-mode-switch"]').click()
+    await expect(page.locator('.editor-json textarea').last()).toBeVisible({ timeout: 10000 })
+
     // 3. 左侧目录点击「大模型」→ 加一个 llm 节点（节点数 +1）
     await page.locator('.palette-item').filter({ hasText: '大模型' }).first().click()
     await expect(page.locator('.vue-flow__node')).toHaveCount(initialCount + 1, { timeout: 10000 })
@@ -59,10 +64,10 @@ test.describe('流程可视化编辑器（整页设计器）', () => {
     await expect(page.locator('input[placeholder="节点显示名"]')).toHaveValue('大模型')
 
     // 4b. llm 节点渲染「结构化配置字段」（不再只有裸 JSON）：提示词 textarea + 模型 select 标签出现
-    await expect(page.getByText('提示词（prompt）').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('模型（modelId）').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('提示词', { exact: true }).first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('模型', { exact: true }).first()).toBeVisible({ timeout: 10000 })
 
-    // 5. 画布改动同步回底部 DSL JSON（事实源）：出现新节点的 type=llm
+    // 5. 画布改动同步回底部流程 JSON（事实源）：出现新节点的 type=llm
     const dslTextarea = page.locator('.editor-json textarea').last()
     await expect(dslTextarea).toHaveValue(/"type":\s*"llm"/, { timeout: 10000 })
 
@@ -71,13 +76,16 @@ test.describe('流程可视化编辑器（整页设计器）', () => {
     await expect(page.locator('[data-testid="node-noncompensable-tag"]')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('[data-testid="node-recovery-select"]')).toHaveCount(0)
 
-    // 6. 选中工具节点（骨架里的 step_1）→ 配置面板出现 toolId 下拉
+    // 6. 选中工具节点（骨架里的 step_1）→ 配置面板出现工具下拉
+    //    开发者模式开着时底部流程 JSON 会压缩画布高度，节点可能被裁到可视区外；先点「适配画布」
+    //    （真实用户动作）把全部节点收进可视区，再点节点，避免点到被面板遮住的坐标。
+    await page.locator('button[title="适配画布"]').click()
     await page.locator('.vue-flow__node').filter({ hasText: '示例工具节点' }).first().click()
-    await expect(page.getByText('工具（toolId）').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('工具', { exact: true }).first()).toBeVisible({ timeout: 10000 })
 
     // 6b（问题4）：tool.args 现在是 KeyValueEditor 结构化编辑（不再是「请用下方 DSL JSON 编辑」提示）。
     //     预填骨架 args={keyword,limit} → 键值编辑器渲染出「参数名」输入行，首行回填 keyword。
-    await expect(page.getByText('工具入参（args）').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('工具入参', { exact: true }).first()).toBeVisible({ timeout: 10000 })
     await expect(page.locator('input[placeholder="参数名"]').first()).toHaveValue('keyword', {
       timeout: 10000
     })

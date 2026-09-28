@@ -30,10 +30,13 @@
           @click="emit('select', item.id)"
         >
           <div class="flex items-center justify-between">
-            <span class="truncate text-14px flex items-center gap-4px">
-              <Icon v-if="item.pinned" icon="ep:top" :size="13" />
-              {{ item.title }}
-            </span>
+            <!-- 标题过长会被 truncate 截断，hover 用 tooltip 补全完整标题（历史会话可读性） -->
+            <el-tooltip :content="item.title" placement="top" :disabled="!item.title">
+              <span class="truncate text-14px flex items-center gap-4px min-w-0">
+                <Icon v-if="item.pinned" icon="ep:top" :size="13" />
+                {{ item.title }}
+              </span>
+            </el-tooltip>
             <el-dropdown trigger="click" @command="(cmd) => onCommand(cmd, item)">
               <Icon
                 icon="ep:more-filled"

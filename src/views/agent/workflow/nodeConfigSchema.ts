@@ -56,47 +56,49 @@ export interface ConfigField {
  * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的 10 种 type。
  * 顺序即渲染顺序（常用/必填在前）。
  */
+// 🔴 label 面向业务人员：刻意不带后端 config 键名（如 outputVar/toolId）。
+//    键名对配流程的人是噪音，字段含义靠 label + hint 说清即可；键逐字对齐后端的约束在 key 上，不在 label 上。
 export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   tool: [
     {
       key: 'toolId',
-      label: '工具（toolId）',
+      label: '工具',
       kind: 'select',
       optionsFrom: 'tool',
       placeholder: '选择或输入工具键'
     },
     {
       key: 'args',
-      label: '工具入参（args）',
+      label: '工具入参',
       kind: 'kv',
       hint: '参数名 → 值；值支持 {{$.变量}} 或 {{$.变量.字段}} 引用前序节点写入的结果。'
     },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '结果写入的 state 变量名' }
+    { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '给这一步的结果起个名字，供后面引用' }
   ],
   llm: [
-    { key: 'prompt', label: '提示词（prompt）', kind: 'textarea', placeholder: '支持 {{$.var}} 状态模板' },
-    { key: 'systemPrompt', label: '系统提示词（systemPrompt）', kind: 'textarea', placeholder: '可空' },
-    { key: 'modelId', label: '模型（modelId）', kind: 'select', optionsFrom: 'model', placeholder: '留空=动态默认' },
-    { key: 'temperature', label: '温度（temperature）', kind: 'number', min: 0, max: 2, step: 0.1 },
-    { key: 'maxTokens', label: '最大 tokens（maxTokens）', kind: 'number', min: 1, step: 1 },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text' }
+    { key: 'prompt', label: '提示词', kind: 'textarea', placeholder: '支持 {{$.var}} 状态模板' },
+    { key: 'systemPrompt', label: '系统提示词', kind: 'textarea', placeholder: '可空' },
+    { key: 'modelId', label: '模型', kind: 'select', optionsFrom: 'model', placeholder: '留空=动态默认' },
+    { key: 'temperature', label: '温度', kind: 'number', min: 0, max: 2, step: 0.1 },
+    { key: 'maxTokens', label: '最大 tokens', kind: 'number', min: 1, step: 1 },
+    { key: 'outputVar', label: '结果存到', kind: 'text' }
   ],
   knowledge_retrieval: [
-    { key: 'knowledgeBaseId', label: '知识库（knowledgeBaseId）', kind: 'select', optionsFrom: 'kb', placeholder: '必选' },
+    { key: 'knowledgeBaseId', label: '知识库', kind: 'select', optionsFrom: 'kb', placeholder: '必选' },
     {
       key: 'queryVar',
-      label: '查询变量（queryVar）',
+      label: '查询变量',
       kind: 'text',
-      placeholder: '取某 state 变量当查询，与 query 二选一',
-      hint: 'queryVar 优先于 query；两者都空则查询为空串。'
+      placeholder: '取某 state 变量当查询，与「查询内容」二选一',
+      hint: '填了查询变量就优先用它；两者都空则查询为空串。'
     },
-    { key: 'query', label: '查询模板（query）', kind: 'textarea', placeholder: '支持 {{$.a.b}} 嵌套路径' },
-    { key: 'topK', label: '召回条数（topK）', kind: 'number', min: 1, step: 1 },
-    { key: 'similarityThreshold', label: '相似度阈值（similarityThreshold）', kind: 'number', min: 0, max: 1, step: 0.05 },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '默认 retrieved' },
+    { key: 'query', label: '查询内容', kind: 'textarea', placeholder: '支持 {{$.a.b}} 嵌套路径' },
+    { key: 'topK', label: '召回条数', kind: 'number', min: 1, step: 1 },
+    { key: 'similarityThreshold', label: '相似度阈值', kind: 'number', min: 0, max: 1, step: 0.05 },
+    { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '默认 retrieved' },
     {
       key: 'citationsVar',
-      label: '引用出处变量（citationsVar）',
+      label: '引用出处存到',
       kind: 'text',
       placeholder: '选填，填 citations 可在聊天里展示参考资料',
       hint: '配上后额外写一份带文档名/相关度的命中段落。填「citations」时，工作流驱动的 Agent 会在聊天回复下渲染「参考资料」出处；填别的名字则仅供下游节点自用。'
@@ -105,60 +107,60 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   'condition.rule': [
     {
       key: 'default',
-      label: '默认路由（default）',
+      label: '默认分支',
       kind: 'text',
-      placeholder: '所有分支都不命中时走的路由键'
+      placeholder: '所有分支都不命中时走哪条'
     }
   ],
   'condition.llm': [
-    { key: 'prompt', label: '判定提示词（prompt）', kind: 'textarea', placeholder: '支持 {{$.var}} 状态模板' },
+    { key: 'prompt', label: '判定提示词', kind: 'textarea', placeholder: '支持 {{$.var}} 状态模板' },
     {
       key: 'choices',
-      label: '候选路由（choices）',
+      label: '候选分支',
       kind: 'tags',
       placeholder: '输入一个候选按回车添加',
-      hint: '模型只能从这些候选里选一个作为路由键；需与条件边的 cases 键一一对应。'
+      hint: '模型只能从这些候选里选一个作为分支；需与连线上设置的分支一一对应。'
     },
-    { key: 'modelId', label: '模型（modelId）', kind: 'select', optionsFrom: 'model', placeholder: '留空=动态默认' },
-    { key: 'temperature', label: '温度（temperature）', kind: 'number', min: 0, max: 2, step: 0.1 },
-    { key: 'maxTokens', label: '最大 tokens（maxTokens）', kind: 'number', min: 1, step: 1 },
-    { key: 'default', label: '默认路由（default）', kind: 'text' },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text' }
+    { key: 'modelId', label: '模型', kind: 'select', optionsFrom: 'model', placeholder: '留空=动态默认' },
+    { key: 'temperature', label: '温度', kind: 'number', min: 0, max: 2, step: 0.1 },
+    { key: 'maxTokens', label: '最大 tokens', kind: 'number', min: 1, step: 1 },
+    { key: 'default', label: '默认分支', kind: 'text' },
+    { key: 'outputVar', label: '结果存到', kind: 'text' }
   ],
   'hitl.confirm': [
     {
       key: 'approveVar',
-      label: '批准变量（approveVar）',
+      label: '批准结果存到',
       kind: 'text',
       placeholder: '默认 hitl_approved',
-      hint: '用户是否批准的布尔 state 变量名；下游 condition.rule 可用 is_true/is_false 判定。'
+      hint: '用户是否批准的布尔 state 变量名；下游「规则条件」可用「为真/为假」判定。'
     }
   ],
   'hitl.bpm_approval': [
     {
       key: 'bpmProcessDefKey',
-      label: 'BPM 流程定义 Key（bpmProcessDefKey）',
+      label: 'BPM 流程标识',
       kind: 'text',
       placeholder: '如 oa_leave_approval',
       hint: '必填。指向一个已部署的 BPM 流程定义 key；节点挂起时以执行所有者身份发起该审批，审批人在 BPM 里通过/驳回后自动唤醒工作流。'
     },
     {
       key: 'approveVar',
-      label: '批准变量（approveVar）',
+      label: '批准结果存到',
       kind: 'text',
       placeholder: '默认 bpm_approved',
-      hint: '审批是否通过的布尔 state 变量名；下游 condition.rule 可用 is_true/is_false 判定。'
+      hint: '审批是否通过的布尔 state 变量名；下游「规则条件」可用「为真/为假」判定。'
     },
     {
       key: 'statusVar',
-      label: '状态码变量（statusVar）',
+      label: '状态码存到',
       kind: 'text',
       placeholder: '默认 bpm_status',
       hint: 'BPM 原始状态码（2 通过 / 3 驳回 / 4 取消）写入的 state 变量名，供审计或更细的分支判定。'
     },
     {
       key: 'formVars',
-      label: '审批表单变量（formVars）',
+      label: '审批表单参数',
       kind: 'kv',
       hint: '发起审批时传给 BPM 流程的变量（参数名 → 值）；值支持 {{$.变量}} 引用前序结果。'
     }
@@ -166,16 +168,16 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   wait: [
     {
       key: 'waitType',
-      label: '等待类型（waitType）',
+      label: '等待方式',
       kind: 'select',
       options: [
-        { label: '定时（duration）', value: 'duration' },
-        { label: '外部事件（event）', value: 'event' }
+        { label: '定时等待', value: 'duration' },
+        { label: '等外部事件', value: 'event' }
       ]
     },
     {
       key: 'duration',
-      label: '时长（duration）',
+      label: '等待时长',
       kind: 'text',
       placeholder: '数字秒或 ISO-8601，如 PT30S',
       hint: '必填，>0 秒且 ≤7 天。',
@@ -183,7 +185,7 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
     },
     {
       key: 'eventKey',
-      label: '事件键（eventKey）',
+      label: '等待的事件',
       kind: 'text',
       placeholder: '等待的外部事件键',
       hint: '必填，长度 ≤128；由「发布外部事件」端点唤醒。',
@@ -193,64 +195,64 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   parallel: [
     {
       key: 'join',
-      label: '汇聚策略（join）',
+      label: '汇聚方式',
       kind: 'select',
-      options: [{ label: '全部完成（all）', value: 'all' }],
-      hint: '当前仅支持 all（各分支全部完成才激活 join 目标）。'
+      options: [{ label: '全部完成后汇聚', value: 'all' }],
+      hint: '当前仅支持「全部完成」（各分支全部完成才继续往下走）。'
     }
   ],
   script: [
     {
       key: 'code',
-      label: '脚本（code）',
+      label: '脚本内容',
       kind: 'textarea',
       placeholder: "JS，可直接写 return；用 state 读工作流状态，如 return state.a + state.b;",
-      hint: '在 GraalJS 沙箱内执行：禁 IO / 线程 / 进程 / 访问 Java 类；return 的值写入 outputVar。脚本上限 1 万字符。'
+      hint: '在 GraalJS 沙箱内执行：禁 IO / 线程 / 进程 / 访问 Java 类；return 的值写入「结果存到」。脚本上限 1 万字符。'
     },
     {
       key: 'language',
-      label: '语言（language）',
+      label: '语言',
       kind: 'select',
       options: [{ label: 'JavaScript', value: 'javascript' }],
       hint: '目前仅支持 javascript。'
     },
     {
       key: 'timeoutMs',
-      label: '超时毫秒（timeoutMs）',
+      label: '超时（毫秒）',
       kind: 'number',
       min: 1,
       max: 10000,
       step: 100,
       hint: '缺省 2000，上限 10000；死循环到点被强制中断。'
     },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '默认 script_result' }
+    { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '默认 script_result' }
   ],
   // 🔴 以下 3 种是编译器合成子图类型（WorkflowDslValidator.GRAPH_BUILDER_TYPES），非独立执行器。
   //   字段键逐字对齐 DslToStateGraphCompiler 与各 GraphBuilder 读取的 config 键。
   agent_loop: [
     {
       key: 'goal',
-      label: '目标（goal）',
+      label: '目标',
       kind: 'textarea',
       placeholder: '要让模型自主完成什么，如「查清某客户最近 3 单的物流状态并汇总」',
       hint: '模型会围绕这个目标自主决定调用哪些只读工具、调几轮，直到给出答案。'
     },
     {
       key: 'tools',
-      label: '可用只读工具（tools）',
+      label: '可用只读工具',
       kind: 'tags',
       placeholder: '输入工具键按回车添加',
       hint: '🔴 只能放只读工具（查询类）；放写入类工具不会被执行且可能被后端校验拒绝。'
     },
-    { key: 'maxSteps', label: '最大步数（maxSteps）', kind: 'number', min: 1, max: 20, step: 1, hint: '防止模型无限循环，缺省 5。' },
-    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '最终答案写入的变量名' }
+    { key: 'maxSteps', label: '最大步数', kind: 'number', min: 1, max: 20, step: 1, hint: '防止模型无限循环，缺省 5。' },
+    { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '最终答案写入的变量名' }
   ],
   iteration: [
-    { key: 'itemsVar', label: '列表变量（itemsVar）', kind: 'text', placeholder: '要遍历的数组变量名，如 orders' },
-    { key: 'itemVar', label: '单项变量（itemVar）', kind: 'text', placeholder: '每项写入的变量名，缺省 item', hint: '循环体节点用 {{$.itemVar}} 取当前项。' },
+    { key: 'itemsVar', label: '要遍历的列表', kind: 'text', placeholder: '要遍历的数组变量名，如 orders' },
+    { key: 'itemVar', label: '每项存到', kind: 'text', placeholder: '每项写入的变量名，缺省 item', hint: '循环体节点用 {{$.itemVar}} 取当前项。' },
     {
       key: 'body',
-      label: '循环体节点（body）',
+      label: '循环体节点',
       kind: 'tags',
       placeholder: '输入循环体内的节点 id 按回车添加',
       hint: '🔴 body 里的节点仍写在顶层 nodes[]，但<b>不要</b>把它们连进 edges[]（编译器自动接线）。'
@@ -259,13 +261,13 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   sub_workflow: [
     {
       key: 'workflowId',
-      label: '子流程（workflowId）',
+      label: '子流程',
       kind: 'select',
       optionsFrom: 'workflow',
       placeholder: '选择一条已发布的流程',
       hint: '只能内嵌「已发布」的流程；用其流程编码 code 调用。'
     },
-    { key: 'version', label: '指定版本（version）', kind: 'number', min: 1, step: 1, hint: '留空=用该流程的主版本。' }
+    { key: 'version', label: '指定版本', kind: 'number', min: 1, step: 1, hint: '留空=用该流程的主版本。' }
   ]
 }
 
@@ -277,7 +279,7 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
  */
 export const NODE_CONFIG_JSON_HINT: Record<string, string> = {
   'condition.rule':
-    '上方「分支」编辑的是单层 AND 条件；若某分支需要嵌套 AND/OR（conditionGroups），请用下方 DSL JSON 编辑。'
+    '上方「分支」编辑的是单层「并且」条件；若某分支需要嵌套「并且/或者」的复杂条件，请打开右上角「开发者模式」在 JSON 里编辑。'
 }
 
 /** 取某节点类型的结构化字段（认不出的类型返回空数组 → 面板只剩裸 JSON 兜底） */

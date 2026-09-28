@@ -48,40 +48,40 @@ describe('nodeSummary', () => {
     expect(nodeTypeMeta('whatever').tagType).toBe('info')
   })
 
-  it('summarizeNode：13 种类型各产出一句含关键信息的人话', () => {
+  it('summarizeNode：13 种类型各产出一句含关键信息的人话（不甩变量名/入参键名）', () => {
     expect(summarizeNode({ type: 'tool', config: { toolId: 'form_data_create', args: { a: 1, b: 2 }, outputVar: 'r' } })).toBe(
-      '调用工具「form_data_create」，入参 a、b → 写入 r'
+      '调用工具「form_data_create」'
     )
     expect(summarizeNode({ type: 'llm', config: { prompt: '总结以下客服记录', outputVar: 'sum' } })).toBe(
-      '让大模型：「总结以下客服记录」 → 写入 sum'
+      '让大模型：「总结以下客服记录」'
     )
     expect(
       summarizeNode({
         type: 'condition.rule',
         config: { branches: [{ target: 'big' }, { target: 'small' }], default: 'small' }
       })
-    ).toBe('按变量值分 2 路：big、small；默认 → small')
+    ).toBe('按变量值分 2 路：big、small；都不命中走「small」')
     expect(summarizeNode({ type: 'condition.llm', config: { prompt: '判断情绪', choices: ['正面', '负面'] } })).toBe(
       '让模型在 2 个选项中选路：正面、负面'
     )
     expect(
       summarizeNode({ type: 'knowledge_retrieval', config: { knowledgeBaseId: 7, query: '退货政策', topK: 3, outputVar: 'docs' } })
-    ).toBe('从知识库 #7：检索「退货政策」，取前 3 条 → 写入 docs')
-    expect(summarizeNode({ type: 'hitl.confirm', config: {} })).toBe('暂停流程，等用户点「同意 / 拒绝」，结果写入 hitl_approved')
+    ).toBe('从知识库检索「退货政策」，取前 3 条')
+    expect(summarizeNode({ type: 'hitl.confirm', config: {} })).toBe('暂停流程，等用户点「同意 / 拒绝」后再继续')
     expect(summarizeNode({ type: 'hitl.bpm_approval', config: { bpmProcessDefKey: 'oa_leave' } })).toBe(
-      '发起 BPM 审批「oa_leave」，结果写入 bpm_approved'
+      '发起 BPM 审批「oa_leave」，等审批有结果后继续'
     )
     expect(summarizeNode({ type: 'parallel', config: { branches: [['a'], ['b']] } })).toBe('2 条分支同时执行，全部完成后汇聚')
     expect(summarizeNode({ type: 'wait', config: { waitType: 'duration', duration: 30 } })).toBe('等待 30 秒后继续')
     expect(summarizeNode({ type: 'wait', config: { waitType: 'event', eventKey: 'order_paid' } })).toBe(
       '挂起等待外部事件「order_paid」'
     )
-    expect(summarizeNode({ type: 'script', config: { code: 'return 1', outputVar: 'x' } })).toBe('执行一段 JavaScript 计算 → 写入 x')
+    expect(summarizeNode({ type: 'script', config: { code: 'return 1', outputVar: 'x' } })).toBe('执行一段 JavaScript 计算')
     expect(summarizeNode({ type: 'agent_loop', config: { goal: '查清库存', tools: ['a', 'b'], maxSteps: 5 } })).toBe(
       '让模型自主完成：「查清库存」，可用工具 2 个，最多 5 步'
     )
     expect(summarizeNode({ type: 'iteration', config: { itemsVar: 'orders', itemVar: 'o', body: ['n1', 'n2'] } })).toBe(
-      '逐项处理列表 orders，每项写入 o，循环体 2 个节点'
+      '逐项处理一个列表里的每一项，循环体 2 个节点'
     )
     expect(summarizeNode({ type: 'sub_workflow', config: { workflowId: 'wf_sub', version: 3 } })).toBe(
       '调用另一条已发布流程「wf_sub」 v3'
@@ -125,11 +125,13 @@ describe('nodeSummary', () => {
       timeoutSeconds: 60
     })
     const labels = lines.map((l) => l.label)
-    expect(labels).toContain('提示词（prompt）')
+    expect(labels).toContain('提示词')
     expect(labels).toContain('customKey')
     expect(labels).toContain('超时（秒）')
-    expect(labels).not.toContain('系统提示词（systemPrompt）') // 空值跳过
+    expect(labels).not.toContain('系统提示词') // 空值跳过
     expect(lines.find((l) => l.label === '超时（秒）')?.value).toBe('60')
+    // 对象值渲染成「键=值」而非原样 JSON
+    expect(lines.find((l) => l.label === 'customKey')?.value).toBe('a=1')
   })
 
   it('buildSummaryNodes：残缺元素跳过，正常元素带 summary/details', () => {
@@ -151,16 +153,16 @@ describe('nodeSummary', () => {
       { from: 'check', type: 'conditional', cases: { yes: 'ok' }, default: 'END' },
       { from: 'ok', to: 'END' }
     ])
-    expect(lines).toEqual(['开始 → 规则判断', '规则判断 ⇒［yes］ 通过处理', '规则判断 ⇒［默认］ 结束', '通过处理 → 结束'])
+    expect(lines).toEqual(['开始 → 规则判断', '规则判断 →（yes） 通过处理', '规则判断 →（默认） 结束', '通过处理 → 结束'])
   })
 
-  it('flowStepsText：悬空端点的边跳过，不崩不谎报', () => {
+  it('flowStepsText：悬空端点的边跳过，无名节点回退「步骤 N」，不崩不谎报', () => {
     const lines = flowStepsText([{ id: 'a' }], [
       { from: 'a', to: 'ghost' },
       { from: 'ghost', to: 'a' },
       { from: 'a', to: 'END' }
     ])
-    expect(lines).toEqual(['a → 结束'])
+    expect(lines).toEqual(['步骤 1 → 结束'])
   })
 
   it('flowStepsText：nodes/edges 缺失或非法返回空数组', () => {

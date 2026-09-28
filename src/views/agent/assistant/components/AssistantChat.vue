@@ -66,7 +66,9 @@
             @click="handleResume"
           >
             <Icon icon="ep:refresh-left" class="mr-4px flex-shrink-0" />
-            <span class="truncate">继续上次对话：{{ resumeTarget.title }}</span>
+            <el-tooltip :content="`继续上次对话：${resumeTarget.title}`" placement="top">
+              <span class="truncate">继续上次对话：{{ resumeTarget.title }}</span>
+            </el-tooltip>
           </el-button>
           <div class="flex flex-wrap gap-10px mt-24px justify-center max-w-560px" v-if="!effectiveAgentDefId">
             <el-tag

@@ -53,21 +53,21 @@
           <Icon icon="ep:refresh" class="mr-5px" />
           重置
         </el-button>
+        <!-- 操作按钮放搜索表单末尾，与 tenant 等列表页同款布局（原先孤悬在列表区顶部，位置突兀） -->
+        <el-button
+          type="primary"
+          plain
+          @click="openEditor()"
+          v-hasPermi="['agent:def:create']"
+        >
+          <Icon icon="ep:plus" class="mr-5px" /> 新增 Agent
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-button
-      type="primary"
-      plain
-      class="mb-10px"
-      @click="openForm('create')"
-      v-hasPermi="['agent:def:create']"
-    >
-      <Icon icon="ep:plus" class="mr-5px" /> 新增 Agent
-    </el-button>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="80" />
       <el-table-column label="Agent 编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
@@ -103,7 +103,7 @@
           <el-button
             link
             type="primary"
-            @click="openForm('view', scope.row)"
+            @click="openEditor(scope.row, 'view')"
             v-hasPermi="['agent:def:query']"
           >
             查看
@@ -112,7 +112,7 @@
             v-if="scope.row.status === 'DRAFT'"
             link
             type="primary"
-            @click="openForm('edit', scope.row)"
+            @click="openEditor(scope.row, 'edit')"
             v-hasPermi="['agent:def:update']"
           >
             编辑
@@ -155,19 +155,16 @@
       @pagination="getList"
     />
   </ContentWrap>
-
-  <!-- 新建/编辑/查看表单对话框 -->
-  <AgentDefFormDialog ref="formRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
-import AgentDefFormDialog from './components/AgentDefFormDialog.vue'
 
 defineOptions({ name: 'AgentDef' })
 
 const message = useMessage()
+const { push } = useRouter()
 
 const loading = ref(true)
 const total = ref(0)
@@ -217,10 +214,17 @@ const resetQuery = () => {
   handleQuery()
 }
 
-/** 新建/编辑/查看（编辑仅对 DRAFT 行开放，与后端 updateDef/deleteDef 的草稿守卫一致） */
-const formRef = ref()
-const openForm = (mode: 'create' | 'edit' | 'view', row?: AgentDefVO) => {
-  formRef.value.open(mode, row)
+/**
+ * 新建/编辑/查看：跳整页设计器（隐藏路由 AgentDefEditor，仿流程编排设计器）。
+ * 内容较多（人设大文本 + 模型/知识库/工具绑定），弹窗体验差、排版拥挤，改为整页编辑。
+ * 编辑仅对 DRAFT 行开放（与后端 updateDef 草稿守卫一致）；查看对任意状态开放（整页只读）。
+ * 带 id 走编辑/查看态，不带走新建态；mode=view 强制只读。
+ */
+const openEditor = (row?: AgentDefVO, mode?: 'view' | 'edit') => {
+  push({
+    name: 'AgentDefEditor',
+    query: row ? { id: String(row.id), ...(mode === 'view' ? { mode: 'view' } : {}) } : {}
+  })
 }
 
 /** 发布：DRAFT → PUBLISHED */
@@ -256,6 +260,16 @@ const handleDelete = async (row: AgentDefVO) => {
 }
 
 onMounted(() => {
+  getList()
+})
+
+// 从整页设计器返回时刷新列表（页面被 keep-alive 缓存时 onMounted 不会重跑）；首次激活跳过，避免与 onMounted 重复请求
+let firstActivated = true
+onActivated(() => {
+  if (firstActivated) {
+    firstActivated = false
+    return
+  }
   getList()
 })
 </script>
