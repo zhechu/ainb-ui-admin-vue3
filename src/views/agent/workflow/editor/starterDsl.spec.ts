@@ -1,0 +1,138 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildStarterDsl,
+  buildTriggerBlock,
+  injectTrigger,
+  type StarterMeta,
+  type WorkflowTriggerMeta
+} from './starterDsl'
+
+/**
+ * starterDsl 纯逻辑单测（AI助手 流程编排优化 / Req 2）
+ *
+ * 钉死三件事：① 三种模板都产出**合法 JSON**且带 code/name；② trigger 块与后端契约逐字对齐
+ * （type 全名 trigger.xxx + 对应 config 键），none 不写块；③ 编辑注入只换 trigger、保留画布节点。
+ */
+describe('buildTriggerBlock', () => {
+  it('chat：写全名 trigger.chat + inputVar/agentId，agentId 缺省为空串', () => {
+    expect(buildTriggerBlock({ type: 'chat' })).toEqual({
+      type: 'trigger.chat',
+      config: { inputVar: 'input', agentId: '' }
+    })
+    expect(buildTriggerBlock({ type: 'chat', agentId: 'sales_bot' })?.config.agentId).toBe('sales_bot')
+  })
+
+  it('form_event：写 formCode + eventType', () => {
+    expect(buildTriggerBlock({ type: 'form_event', formCode: 'order', eventType: 'create' })).toEqual({
+      type: 'trigger.form_event',
+      config: { formCode: 'order', eventType: 'create' }
+    })
+  })
+
+  it('schedule：写 cron', () => {
+    expect(buildTriggerBlock({ type: 'schedule', cron: '0 0 2 * * ?' })).toEqual({
+      type: 'trigger.schedule',
+      config: { cron: '0 0 2 * * ?' }
+    })
+  })
+
+  it('webhook：authType 缺省 none、不写 secret；hmac 才带 secret', () => {
+    expect(buildTriggerBlock({ type: 'webhook', path: 'order_hook' })).toEqual({
+      type: 'trigger.webhook',
+      config: { path: 'order_hook', authType: 'none' }
+    })
+    expect(
+      buildTriggerBlock({ type: 'webhook', path: 'hook', authType: 'hmac', secret: 's3cr3t' })?.config
+    ).toEqual({ path: 'hook', authType: 'hmac', secret: 's3cr3t' })
+  })
+
+  it('none：返回 undefined（不写 trigger 块）', () => {
+    expect(buildTriggerBlock({ type: 'none' })).toBeUndefined()
+  })
+})
+
+describe('buildStarterDsl', () => {
+  const meta = (trigger: WorkflowTriggerMeta, over?: Partial<StarterMeta>): StarterMeta => ({
+    code: 'wf_new',
+    name: '新流程',
+    description: '描述',
+    trigger,
+    ...over
+  })
+
+  it('sample：产出合法 DSL，含演示节点、START/END 边、trigger 注入', () => {
+    const dsl = JSON.parse(buildStarterDsl('sample', meta({ type: 'chat', agentId: 'a1' })))
+    expect(dsl.id).toBe('wf_new')
+    expect(dsl.name).toBe('新流程')
+    expect(dsl.trigger.type).toBe('trigger.chat')
+    expect(dsl.nodes.length).toBeGreaterThan(0)
+    expect(dsl.edges.some((e: any) => e.from === 'START')).toBe(true)
+    expect(dsl.edges.some((e: any) => e.to === 'END')).toBe(true)
+  })
+
+  it('blank：nodes/edges 皆空，但保留 input/output 变量（createDef 不做图校验，可建草稿）', () => {
+    const dsl = JSON.parse(buildStarterDsl('blank', meta({ type: 'none' })))
+    expect(dsl.nodes).toEqual([])
+    expect(dsl.edges).toEqual([])
+    expect(dsl.variables.map((v: any) => v.key)).toEqual(['input', 'output'])
+    expect(dsl.trigger).toBeUndefined()
+  })
+
+  it('copy：深拷贝源结构（保留节点），重置 id/name，注入新 trigger', () => {
+    const source = JSON.stringify({
+      dslVersion: '1.0',
+      id: 'wf_old',
+      name: '旧流程',
+      trigger: { type: 'trigger.chat', config: { inputVar: 'input', agentId: 'old' } },
+      variables: [{ key: 'input', type: 'string', merge: 'replace' }],
+      nodes: [{ id: 'n1', type: 'llm', name: '生成', config: { outputVar: 'out' } }],
+      edges: [
+        { from: 'START', to: 'n1' },
+        { from: 'n1', to: 'END' }
+      ],
+      settings: { recovery: 'forward' }
+    })
+    const dsl = JSON.parse(
+      buildStarterDsl('copy', meta({ type: 'webhook', path: 'p1' }, { copyDsl: source }))
+    )
+    expect(dsl.id).toBe('wf_new')
+    expect(dsl.name).toBe('新流程')
+    expect(dsl.nodes).toHaveLength(1)
+    expect(dsl.nodes[0].id).toBe('n1')
+    expect(dsl.trigger.type).toBe('trigger.webhook')
+  })
+
+  it('copy 源非法：安全退化为 sample（不抛、仍产合法 DSL）', () => {
+    const dsl = JSON.parse(buildStarterDsl('copy', meta({ type: 'none' }, { copyDsl: 'not-json' })))
+    expect(dsl.nodes.length).toBeGreaterThan(0)
+  })
+
+  it('产出物一定是合法 JSON 字符串', () => {
+    expect(() => JSON.parse(buildStarterDsl('blank', meta({ type: 'none' })))).not.toThrow()
+    expect(() => JSON.parse(buildStarterDsl('sample', meta({ type: 'schedule', cron: '0 0 * * * ?' })))).not.toThrow()
+  })
+})
+
+describe('injectTrigger', () => {
+  it('只替换 trigger，保留 nodes/edges 原样', () => {
+    const src = JSON.stringify({
+      id: 'wf',
+      trigger: { type: 'trigger.chat', config: { inputVar: 'input', agentId: 'old' } },
+      nodes: [{ id: 'n1', type: 'tool' }],
+      edges: [{ from: 'START', to: 'n1' }]
+    })
+    const out = JSON.parse(injectTrigger(src, { type: 'form_event', formCode: 'f', eventType: 'update' }))
+    expect(out.trigger.type).toBe('trigger.form_event')
+    expect(out.nodes).toHaveLength(1)
+    expect(out.edges).toHaveLength(1)
+  })
+
+  it('none：删除 trigger 块', () => {
+    const src = JSON.stringify({ id: 'wf', trigger: { type: 'trigger.chat', config: {} }, nodes: [] })
+    expect(JSON.parse(injectTrigger(src, { type: 'none' })).trigger).toBeUndefined()
+  })
+
+  it('源非法：原样返回，不破坏数据', () => {
+    expect(injectTrigger('broken', { type: 'chat' })).toBe('broken')
+  })
+})

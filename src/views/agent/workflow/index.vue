@@ -55,13 +55,14 @@
           重置
         </el-button>
         <!-- 操作按钮放搜索表单末尾，与 tenant 等列表页同款布局（AI助手 UX 修复：原先孤悬在列表区顶部） -->
+        <!-- Req 2：新增与设计分开——「新增」先弹元信息弹窗建草稿，再由弹窗回调跳整页设计器 -->
         <el-button
           type="primary"
           plain
-          @click="openEditor()"
+          @click="openCreate"
           v-hasPermi="['agent:workflow:create']"
         >
-          <Icon icon="ep:plus" class="mr-5px" /> 新增流程
+          <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
     </el-form>
@@ -70,6 +71,16 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <!-- Req 1：序号列（参考模型配置页 views/ai/model/model/index.vue；indexMethod 已配 auto-import） -->
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" width="80" />
       <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
       <el-table-column label="流程名称" align="center" prop="name" min-width="160" show-overflow-tooltip />
@@ -94,7 +105,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="380" fixed="right">
+      <el-table-column label="操作" align="center" min-width="440" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -120,11 +131,21 @@
           >
             版本
           </el-button>
+          <!-- Req 2：设计与编辑分开——「设计」跳整页设计器画画布；「编辑」弹窗只改元信息+触发方式 -->
           <el-button
             v-if="scope.row.status === 'DRAFT'"
             link
             type="primary"
             @click="openEditor(scope.row)"
+            v-hasPermi="['agent:workflow:update']"
+          >
+            设计
+          </el-button>
+          <el-button
+            v-if="scope.row.status === 'DRAFT'"
+            link
+            type="primary"
+            @click="openFormEdit(scope.row)"
             v-hasPermi="['agent:workflow:update']"
           >
             编辑
@@ -174,6 +195,8 @@
   <ExecutionHistoryDrawer ref="historyRef" />
   <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
   <WorkflowVersionDrawer ref="versionRef" @success="getList" />
+  <!-- Req 2：新增/编辑元信息弹窗（新增成功后跳整页设计器） -->
+  <WorkflowForm ref="formRef" @success="handleFormSuccess" />
 </template>
 
 <script lang="ts" setup>
@@ -182,6 +205,7 @@ import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
+import WorkflowForm from './components/WorkflowForm.vue'
 
 defineOptions({ name: 'AgentWorkflow' })
 
@@ -264,12 +288,26 @@ const openVersions = (row: AgentWorkflowDefVO) => {
 }
 
 /**
- * 新建/编辑：跳整页设计器（隐藏路由 AgentWorkflowEditor，仿门户设计器）。
- * AI助手 UX 修复：内容太多（DSL + 可视化画布 + 校验），弹窗套弹窗体验差，改为整页编辑。
- * 编辑仅对 DRAFT 行开放（与后端 updateDef 草稿守卫一致）；带 id 走编辑态，不带走新建态。
+ * 设计：跳整页设计器（隐藏路由 AgentWorkflowEditor，仿门户设计器）画画布。
+ * Req 2「新增与设计分开」后，本函数只服务行内「设计」按钮（必带 id 走编辑态）。
+ * 仅对 DRAFT 行开放（与后端 updateDef 草稿守卫一致）。
  */
-const openEditor = (row?: AgentWorkflowDefVO) => {
-  push({ name: 'AgentWorkflowEditor', query: row ? { id: String(row.id) } : {} })
+const openEditor = (row: AgentWorkflowDefVO) => {
+  push({ name: 'AgentWorkflowEditor', query: { id: String(row.id) } })
+}
+
+/**
+ * 新增/编辑元信息弹窗（Req 2）。
+ * · openCreate：弹「新增流程」——填 名称/编码/触发/模板，建草稿后由 handleFormSuccess 跳设计器；
+ * · openFormEdit：弹「编辑流程信息」——只改 名称/描述/备注/触发（编码只读），画布节点原样保留。
+ */
+const formRef = ref()
+const openCreate = () => formRef.value?.open('create')
+const openFormEdit = (row: AgentWorkflowDefVO) => formRef.value?.open('update', row)
+const handleFormSuccess = async (id?: number, isCreate?: boolean) => {
+  await getList()
+  // 新增成功 → 直进整页设计器（对齐门户 handleFormSuccess）；编辑元信息只刷新列表
+  if (isCreate && id) push({ name: 'AgentWorkflowEditor', query: { id: String(id) } })
 }
 
 /** 发布：DRAFT → PUBLISHED */

@@ -1,43 +1,62 @@
 <!--
-  流程编排设计器（整页）—— AI助手 UX 修复 / 问题3 + 问题4
+  流程编排设计器（整页）—— 增量8 / P4，Phase C 重构
 
-  仿门户设计器（InfraPortalEditor）的隐藏路由整页编辑：/agent-workflow/editor?id=xxx。
-  替代旧「900px 表单弹窗套 1200px 可视化弹窗」：URL 可刷新可分享、浏览器后退回列表、编辑空间充足。
+  仿门户设计器（InfraPortalEditor）：固定顶栏 + 三栏主体（左节点目录 / 中画布 / 右属性面板）。
+  替代旧「顶栏 + 折叠基本信息 + 内嵌 1515 行巨型画布」：
+    - 事实源 dslObject 由本页持有，三栏拆分为 WorkflowPalette / WorkflowDesigner / WorkflowPropertyPanel，
+      共享一份 useWorkflowEditor 上下文（editorModel/layout/nodeConfigSchema/nodeSummary 纯模块逐字节复用）；
+    - 顶栏加撤销/重做（editorHistory 快照栈）+ 重新布局；描述/备注移入右栏「流程信息」，让画布吃满高度；
+    - Req 2：新增走列表弹窗建草稿后带 id 进来，本页无有效 id 直接回列表（不再凭空新建）。
 
-  - 无 id → 新建态：DEFAULT_DSL 最小骨架，code 可编辑；保存走 createDef，成功后 router.replace 带上 id
-    （防刷新重复新建）。
-  - 有 id → 编辑态：getDef 回填；非 DRAFT 只读 + 提示（后端 updateDef 也只对草稿生效）。
-  - 顶栏：返回（未保存改动 confirm）/ 名称与编码就地编辑 / 状态 tag / 校验 / 保存草稿 / 保存并发布。
-  - 基本信息（描述/备注）折叠区 + 主体内嵌 WorkflowEditorCanvas（DSL JSON 兜底在画布组件底部）。
-  - 保存软门禁与旧 WorkflowDefFormDialog.handleSubmit 一致：先跑后端双层校验，有阻断错误时二次确认仍可存草稿。
+  🔴 撤销/重做：本页 watch(dslObject,{deep}) 捕获「就地突变」自动入栈；undo/redo 用 cloneDeep 整体换引用，
+     换引用会触发 useWorkflowEditor 的 ref-watch 重算画布，historyApplying 期间不再入栈。
 -->
 <template>
-  <div class="workflow-editor-page" v-loading="loading">
+  <div class="wf-editor" v-loading="loading">
     <!-- 顶栏 -->
-    <header class="editor-header flex items-center gap-10px px-16px py-10px">
-      <el-button circle title="返回列表" @click="handleBack">
-        <Icon icon="ep:arrow-left" />
-      </el-button>
-      <div class="flex items-center gap-8px flex-1 min-w-0">
-        <el-input
-          v-model="formData.name"
-          class="!w-220px"
-          placeholder="流程名称"
-          :disabled="readonly"
-          @input="markDirty"
-        />
-        <el-input
-          v-model="formData.code"
-          class="!w-200px"
-          placeholder="流程编码"
-          :disabled="isEdit || readonly"
-          @input="markDirty"
-        />
-        <el-tag v-if="isEdit" :type="statusTagType">{{ statusLabel }}</el-tag>
-        <el-tag v-else type="info">新建</el-tag>
-        <span v-if="readonly" class="text-12px text-[var(--el-color-warning)]">只读</span>
+    <header class="wf-editor__header">
+      <div class="wf-editor__identity">
+        <el-button circle title="返回列表" @click="handleBack">
+          <Icon icon="ep:arrow-left" />
+        </el-button>
+        <div class="wf-editor__meta">
+          <el-input
+            v-model="formData.name"
+            class="wf-editor__name"
+            placeholder="流程名称"
+            :disabled="readonly"
+            @input="markDirty"
+          />
+          <el-input v-model="formData.code" class="wf-editor__code" placeholder="流程编码" disabled />
+          <el-tag :type="statusTagType">{{ statusLabel }}</el-tag>
+          <span v-if="readonly" class="wf-editor__ro">只读</span>
+        </div>
       </div>
-      <div class="flex items-center gap-8px flex-shrink-0">
+      <div class="wf-editor__actions">
+        <div class="wf-editor__history">
+          <el-tooltip content="撤销 (回退上一步)" placement="bottom">
+            <el-button circle :disabled="!canUndo || saving" aria-label="撤销" @click="handleUndo">
+              <Icon icon="ep:refresh-left" />
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="重做 (恢复撤销的一步)" placement="bottom">
+            <el-button circle :disabled="!canRedo || saving" aria-label="重做" @click="handleRedo">
+              <Icon icon="ep:refresh-right" />
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="重新布局 (自动分层排列节点)" placement="bottom">
+            <el-button circle :disabled="readonly || saving" aria-label="重新布局" @click="handleRelayout">
+              <Icon icon="ep:share" />
+            </el-button>
+          </el-tooltip>
+        </div>
+        <el-button
+          v-hasPermi="['agent:workflow:run']"
+          :disabled="!canvasReady || saving"
+          @click="sandboxVisible = true"
+        >
+          <Icon icon="ep:cpu" class="mr-4px" />沙箱测试
+        </el-button>
         <el-button :disabled="readonly" :loading="validating" @click="handleValidate">
           <Icon icon="ep:circle-check" class="mr-4px" />体检
         </el-button>
@@ -50,18 +69,21 @@
         </el-button>
         <el-button
           type="primary"
+          v-hasPermi="['agent:workflow:publish']"
           :loading="savingAction === 'publish'"
           :disabled="readonly || (saving && savingAction !== 'publish')"
-          v-hasPermi="['agent:workflow:publish']"
           @click="handleSave('publish')"
         >
           <Icon icon="ep:promotion" class="mr-4px" />保存并发布
+        </el-button>
+        <el-button :disabled="saving" @click="handleBack">
+          <Icon icon="ep:close" class="mr-4px" />关闭
         </el-button>
       </div>
     </header>
 
     <!-- 体检结果（结构化 errors/warnings，直接展示后端返回的「怎么改」文案） -->
-    <div v-if="validateResult" class="px-16px pt-8px">
+    <div v-if="validateResult" class="wf-editor__validate">
       <el-alert
         v-if="validateResult.passed && !validateResult.warnings.length"
         title="体检通过：这条流程结构完整，可以发布运行"
@@ -78,8 +100,8 @@
           class="mb-6px"
         >
           <template #title>还有 {{ validateResult.errors.length }} 处必须修正</template>
-          <ul class="pl-18px mb-0 mt-2px">
-            <li v-for="(e, i) in validateResult.errors" :key="i" class="text-12px leading-20px">{{ e }}</li>
+          <ul class="wf-editor__validate-list">
+            <li v-for="(e, i) in validateResult.errors" :key="i">{{ e }}</li>
           </ul>
         </el-alert>
         <el-alert v-if="validateResult.warnings.length" type="warning" :closable="false" show-icon>
@@ -87,72 +109,102 @@
             {{ validateResult.errors.length ? '另有' : '体检通过，另有' }}
             {{ validateResult.warnings.length }} 条优化建议（不影响保存）
           </template>
-          <ul class="pl-18px mb-0 mt-2px">
-            <li v-for="(w, i) in validateResult.warnings" :key="i" class="text-12px leading-20px">{{ w }}</li>
+          <ul class="wf-editor__validate-list">
+            <li v-for="(w, i) in validateResult.warnings" :key="i">{{ w }}</li>
           </ul>
         </el-alert>
       </template>
     </div>
 
-    <!-- 基本信息折叠区 -->
-    <div class="px-16px pt-8px">
-      <el-collapse v-model="activeCollapse" class="editor-collapse">
-        <el-collapse-item name="basic">
-          <template #title>
-            <span class="text-13px font-600">基本信息（描述 / 备注）</span>
-          </template>
-          <el-form label-width="60px" size="small" :disabled="readonly">
-            <el-form-item label="描述">
-              <el-input
-                v-model="formData.description"
-                type="textarea"
-                :rows="2"
-                placeholder="选填"
-                maxlength="500"
-                show-word-limit
-                @input="markDirty"
-              />
-            </el-form-item>
-            <el-form-item label="备注">
-              <el-input
-                v-model="formData.remark"
-                type="textarea"
-                :rows="2"
-                placeholder="选填"
-                maxlength="500"
-                show-word-limit
-                @input="markDirty"
-              />
-            </el-form-item>
-          </el-form>
-        </el-collapse-item>
-      </el-collapse>
+    <!-- 主体：三栏（左目录 / 中画布 / 右属性面板） -->
+    <div class="wf-editor__body">
+      <main class="wf-editor__main">
+        <WorkflowPalette v-if="canvasReady && !readonly" :editor="editor" />
+        <WorkflowDesigner
+          v-if="canvasReady"
+          :editor="editor"
+          :readonly="readonly"
+          :sandbox-overlay="sandboxOverlay"
+        />
+        <el-empty
+          v-else
+          class="wf-editor__broken"
+          description="这条流程的配置数据损坏，无法打开画布编辑"
+        />
+      </main>
+      <WorkflowPropertyPanel
+        v-if="canvasReady"
+        v-model:description="formData.description"
+        v-model:remark="formData.remark"
+        :editor="editor"
+        :readonly="readonly"
+      />
     </div>
 
-    <!-- 主体：可视化画布（DSL JSON 兜底在画布组件底部） -->
-    <div class="editor-body px-16px py-10px">
-      <WorkflowEditorCanvas
-        v-if="canvasReady"
-        ref="canvasRef"
+    <!-- 条件分支可视化选择弹窗（单实例，跨中/右栏共用 editor 的路由弹窗状态） -->
+    <el-dialog
+      v-model="routeDialogVisible"
+      title="选择分支"
+      width="420px"
+      append-to-body
+      :close-on-click-modal="false"
+      data-testid="route-picker-dialog"
+      @close="cancelRouteDialog"
+    >
+      <div class="wf-editor__route-tip">
+        这条连线代表哪个分支？选中后流程会在这个条件下走向对应分支。
+      </div>
+      <el-radio-group v-model="routeDialogSelected" class="wf-editor__route-group">
+        <el-radio v-for="c in routeDialogCandidates" :key="c" :value="c" border class="!mr-0">
+          {{ routeTargetName(c) }}
+        </el-radio>
+      </el-radio-group>
+      <template #footer>
+        <el-button @click="cancelRouteDialog">取消</el-button>
+        <el-button type="primary" :disabled="!routeDialogSelected.trim()" @click="confirmRouteDialog">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!--
+      沙箱测试抽屉（Req4b）：非模态（modal=false），从右侧浮出，画布仍可见 —— 边跑边看节点被逐个染色。
+      面板 v-if 挂载：每次打开都是全新状态（重建输入表单与时间线）；关闭即销毁，顺带 abort 掉在跑的 SSE。
+    -->
+    <el-drawer
+      v-model="sandboxVisible"
+      title="沙箱测试"
+      direction="rtl"
+      size="460px"
+      :modal="false"
+      :append-to-body="true"
+      data-testid="sandbox-drawer"
+      @closed="sandboxOverlay = {}"
+    >
+      <SandboxPanel
+        v-if="sandboxVisible"
         :dsl="dslObject"
-        :readonly="readonly"
-        @change="markDirty"
-        @replace="onCanvasReplace"
+        @overlay="sandboxOverlay = $event"
       />
-      <el-empty v-else description="这条流程的配置数据损坏，无法打开画布编辑" />
-    </div>
+    </el-drawer>
   </div>
 </template>
 
 <script lang="ts" setup>
+import { cloneDeep } from 'lodash-es'
 import {
   AgentWorkflowApi,
   type AgentWorkflowDefSaveVO,
   type AgentWorkflowDefValidateVO
 } from '@/api/agent/workflow'
-import WorkflowEditorCanvas from '../components/WorkflowEditorCanvas.vue'
 import type { EditorDsl } from '../editorModel'
-import { CODE_PATTERN, DEFAULT_DSL } from './defaults'
+import WorkflowPalette from './components/WorkflowPalette.vue'
+import WorkflowDesigner from './components/WorkflowDesigner.vue'
+import WorkflowPropertyPanel from './components/WorkflowPropertyPanel.vue'
+import SandboxPanel from './components/SandboxPanel.vue'
+import { useWorkflowEditor } from './useWorkflowEditor'
+import { createHistory } from './editorHistory'
+import type { SandboxOverlayCell } from './sandboxModel'
 
 defineOptions({ name: 'AgentWorkflowEditor' })
 
@@ -169,9 +221,7 @@ const dirty = ref(false)
 const isEdit = ref(false)
 const readonly = ref(false)
 const status = ref('DRAFT')
-const activeCollapse = ref<string[]>([])
 
-const canvasRef = ref()
 const validateResult = ref<AgentWorkflowDefValidateVO>()
 
 const formData = ref<AgentWorkflowDefSaveVO>({
@@ -187,16 +237,86 @@ const formData = ref<AgentWorkflowDefSaveVO>({
 const dslObject = ref<EditorDsl>({ nodes: [], edges: [] })
 const canvasReady = ref(false)
 
+/** 沙箱测试抽屉可见性 + 运行时高亮覆盖层（nodeId → 状态格）。关闭抽屉时清空覆盖层 */
+const sandboxVisible = ref(false)
+const sandboxOverlay = ref<Record<string, SandboxOverlayCell>>({})
+
+const markDirty = () => {
+  dirty.value = true
+}
+
+/** 共享编辑上下文：三栏都吃这一份（页面持有 dslObject 作唯一事实源） */
+const editor = useWorkflowEditor(dslObject, { readonly, onChange: markDirty })
+// 路由弹窗状态跨中/右栏共用，解构到页面在单一 el-dialog 里渲染
+const {
+  routeDialogVisible,
+  routeDialogCandidates,
+  routeDialogSelected,
+  confirmRouteDialog,
+  cancelRouteDialog,
+  routeTargetName
+} = editor
+
+// ---------- 撤销 / 重做（editorHistory 快照栈 + deep watch 捕获就地突变） ----------
+const history = createHistory<EditorDsl>()
+const canUndo = ref(false)
+const canRedo = ref(false)
+const historyReady = ref(false)
+const historyApplying = ref(false)
+const syncHistoryFlags = () => {
+  canUndo.value = history.canUndo()
+  canRedo.value = history.canRedo()
+}
+
+watch(
+  dslObject,
+  () => {
+    if (!historyReady.value || historyApplying.value) return
+    history.push(dslObject.value)
+    syncHistoryFlags()
+  },
+  { deep: true, flush: 'post' }
+)
+
+const applySnapshot = (snap: EditorDsl) => {
+  historyApplying.value = true
+  dslObject.value = cloneDeep(snap)
+  // 换引用会触发 useWorkflowEditor 的 ref-watch 重算画布；待其跑完再解锁，避免把这次替换又当新编辑入栈
+  nextTick(() => {
+    historyApplying.value = false
+  })
+}
+const handleUndo = () => {
+  const s = history.undo()
+  if (!s) return
+  applySnapshot(s)
+  syncHistoryFlags()
+  markDirty()
+}
+const handleRedo = () => {
+  const s = history.redo()
+  if (!s) return
+  applySnapshot(s)
+  syncHistoryFlags()
+  markDirty()
+}
+const handleRelayout = () => editor.relayout()
+const resetHistory = () => {
+  history.reset(cloneDeep(dslObject.value))
+  historyReady.value = true
+  syncHistoryFlags()
+}
+
+// 描述/备注经右栏 v-model 回写 formData，这里监听标脏
+watch(() => formData.value.description, markDirty)
+watch(() => formData.value.remark, markDirty)
+
 const statusLabel = computed(() =>
   status.value === 'PUBLISHED' ? '已发布' : status.value === 'DISABLED' ? '已停用' : '草稿'
 )
 const statusTagType = computed<'info' | 'success' | 'warning'>(() =>
   status.value === 'PUBLISHED' ? 'success' : status.value === 'DISABLED' ? 'warning' : 'info'
 )
-
-const markDirty = () => {
-  dirty.value = true
-}
 
 /** 把 DSL 原文解析进画布事实源；非法 JSON 返回 false（画布降级为 empty） */
 const loadDslText = (text: string): boolean => {
@@ -212,34 +332,19 @@ const loadDslText = (text: string): boolean => {
   }
 }
 
-/** 画布内 JSON 兜底整体替换后，把新对象接回页面事实源 */
-const onCanvasReplace = (dsl: EditorDsl) => {
-  dslObject.value = dsl
-  markDirty()
-  validateResult.value = undefined
-}
-
 /** 当前 DSL 原文：优先取画布（含坐标写回），画布不可用时退回表单字段 */
 const currentDslText = (): string => {
-  if (canvasReady.value && canvasRef.value?.getDslText) {
-    const text = canvasRef.value.getDslText()
+  if (canvasReady.value) {
+    const text = editor.getDslText()
     formData.value.dsl = text
     return text
   }
   return formData.value.dsl
 }
 
-const initCreate = () => {
-  isEdit.value = false
-  readonly.value = false
-  status.value = 'DRAFT'
-  formData.value = { id: undefined, code: '', name: '', dsl: DEFAULT_DSL, description: '', remark: '' }
-  loadDslText(DEFAULT_DSL)
-  dirty.value = false
-}
-
 const loadDef = async (id: number) => {
   loading.value = true
+  historyReady.value = false // 载入期间不记历史
   try {
     const data = await AgentWorkflowApi.getDef(id)
     isEdit.value = true
@@ -257,7 +362,10 @@ const loadDef = async (id: number) => {
     if (!loadDslText(formData.value.dsl || '{}')) {
       message.error('这条流程的配置数据损坏，无法打开画布编辑')
     }
+    // 等 description/remark 的 watch 因整体赋值触发、标脏一次后，再把 dirty 归零
+    await nextTick()
     dirty.value = false
+    resetHistory()
   } finally {
     loading.value = false
   }
@@ -268,7 +376,9 @@ onMounted(() => {
   if (route.query.id && Number.isFinite(id) && id > 0) {
     loadDef(id)
   } else {
-    initCreate()
+    // Req 2：新增走列表弹窗建草稿后带 id 进来；设计器不再凭空新建，无有效 id 直接回列表
+    message.warning('缺少流程标识，请从列表页「新增」或「设计」进入')
+    replace({ path: '/agent/workflow' })
   }
 })
 
@@ -304,17 +414,12 @@ const handleValidate = async () => {
 /** 顶栏字段级校验（无 el-form rules，手动查）：返回错误文案，通过返回 '' */
 const validateForm = (): string => {
   if (!formData.value.name?.trim()) return '请填写流程名称'
-  if (!isEdit.value) {
-    const code = formData.value.code?.trim() ?? ''
-    if (!code) return '请填写流程编码'
-    if (!CODE_PATTERN.test(code)) return '流程编码需小写字母开头，仅含小写字母/数字/下划线，长度 2~64'
-  }
   if (!currentDslText()?.trim()) return '流程内容为空，请先在画布上添加节点'
   return ''
 }
 
 /**
- * 保存（软门禁）：字段校验 → 后端双层校验（有阻断错误二次确认可存草稿）→ create/update。
+ * 保存（软门禁）：字段校验 → 后端双层校验（有阻断错误二次确认可存草稿）→ update/create。
  * publish=true 时保存成功后再发布（发布要求校验通过，故有 error 直接拦下不进发布）。
  */
 const handleSave = async (action: 'save' | 'publish') => {
@@ -343,15 +448,12 @@ const handleSave = async (action: 'save' | 'publish') => {
   savingAction.value = action
   try {
     const payload: AgentWorkflowDefSaveVO = { ...formData.value, dsl: currentDslText() }
-    // 🔴 先记住本次是不是「新建」：createDef 成功后会把 isEdit 翻成 true（URL 补 id、后续保存转 update），
-    //    若等到提示时再看 isEdit 就永远是 true，「新建成功」分支成了死代码、创建与更新提示无法区分。
     const wasCreate = !isEdit.value
     let id = payload.id
     if (isEdit.value && id) {
       await AgentWorkflowApi.updateDef(payload)
     } else {
       id = await AgentWorkflowApi.createDef(payload)
-      // 新建成功 → 切编辑态并把 id 补进 URL（防刷新重复新建）
       isEdit.value = true
       formData.value.id = id
       status.value = 'DRAFT'
@@ -387,31 +489,147 @@ const handleBack = async () => {
 }
 </script>
 
-<style scoped>
-.workflow-editor-page {
+<style lang="scss" scoped>
+.wf-editor {
   display: flex;
+  height: calc(100vh - var(--top-tool-height) - var(--tags-view-height) - var(--app-content-padding) * 2);
+  min-height: 640px;
   flex-direction: column;
-  height: calc(100vh - 84px);
+  overflow: hidden;
   background: var(--el-bg-color-page);
 }
-.editor-header {
-  flex-shrink: 0;
+
+.wf-editor__header {
+  display: flex;
+  min-height: 52px;
+  padding: 6px 14px;
   background: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color-light);
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  flex-shrink: 0;
 }
-/* 主体撑满剩余高度；画布组件内部自己 flex（VueFlow 容器要有显式高度） */
-.editor-body {
+
+.wf-editor__identity,
+.wf-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wf-editor__identity {
+  min-width: 0;
   flex: 1;
+}
+
+.wf-editor__actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.wf-editor__history {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  :deep(.el-button) {
+    margin-left: 0;
+  }
+}
+
+.wf-editor__meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.wf-editor__name {
+  width: 200px;
+}
+
+.wf-editor__code {
+  width: 170px;
+}
+
+.wf-editor__name :deep(.el-input__wrapper),
+.wf-editor__code :deep(.el-input__wrapper) {
+  padding: 0;
+  box-shadow: none;
+}
+
+.wf-editor__name :deep(input) {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--el-text-color-primary);
+}
+
+.wf-editor__code :deep(input) {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.wf-editor__ro {
+  font-size: 12px;
+  color: var(--el-color-warning);
+}
+
+.wf-editor__validate {
+  padding: 8px 14px 0;
+  flex-shrink: 0;
+}
+
+.wf-editor__validate-list {
+  margin: 2px 0 0;
+  padding-left: 18px;
+
+  li {
+    font-size: 12px;
+    line-height: 20px;
+  }
+}
+
+.wf-editor__body {
+  display: grid;
   min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  overflow: hidden;
+}
+
+.wf-editor__main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wf-editor__broken {
+  flex: 1;
+}
+
+.wf-editor__route-tip {
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--el-text-color-regular);
+}
+
+.wf-editor__route-group {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
-.editor-body > * {
-  flex: 1;
-  min-height: 0;
-}
-.editor-collapse :deep(.el-collapse-item__header) {
-  height: 36px;
-  line-height: 36px;
+
+@media (width <= 1100px) {
+  .wf-editor__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wf-panel {
+    display: none;
+  }
 }
 </style>

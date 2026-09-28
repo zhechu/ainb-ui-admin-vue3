@@ -1,4 +1,15 @@
 import request from '@/config/axios'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { getAccessToken, getTenantId } from '@/utils/auth'
+import { config } from '@/config/axios/config'
+import type { WorkflowEventVO } from '@/api/agent/planner'
+
+/**
+ * 沙箱/run-stream 事件（与后端 {@code AgentWorkflowExecutionService.WorkflowEvent} 一一对应）。
+ * 沙箱试跑与正式运行共用同一套事件模型，故直接复用 planner 导出的 {@code WorkflowEventVO}，
+ * 不再另立一份，避免「流里塞一份、别处查一份」的类型漂移。
+ */
+export type { WorkflowEventVO }
 
 /**
  * Workflow 定义（管理页列表/画布用）
@@ -165,5 +176,42 @@ export const AgentWorkflowApi = {
    * 同 code 至多一个主版本（后端先清后置）；目标须 PUBLISHED。
    */
   setPrimary: (id: number): Promise<boolean> =>
-    request.post({ url: '/agent/workflow-def/set-primary', params: { id } })
+    request.post({ url: '/agent/workflow-def/set-primary', params: { id } }),
+
+  /**
+   * 沙箱试跑「当前草稿 DSL」（流式），走 {@code POST /agent/workflow-def/sandbox-stream}。
+   *
+   * 🔴 与 {@link AgentPlannerApi.runWorkflowStream} 的差异：那个按 code 跑<b>已发布</b>流程，
+   * 这个把<b>设计器里尚未保存/发布的草稿 DSL 原文</b>直传后端试跑——作者改完立刻验证，不必先落库。
+   * 后端纪律（见 {@code AgentWorkflowSandboxServiceImpl}）：LLM 与只读工具<b>真跑</b>，
+   * 写/不可逆工具被 <b>mock</b>（返回 {@code __sandboxMock} 占位，无真实副作用）；
+   * 不落执行实例、不写节点 trace、不计配额；命中人工确认/等待节点即停（v1 不支持沙箱内 resume）。
+   *
+   * 同样用 fetchEventSource（能带 Authorization 头、能 POST body），权限 {@code agent:workflow:run}
+   * —— 因为真调大模型会消耗 token，属副作用面。
+   */
+  runSandboxStream: (
+    dsl: string,
+    input: Record<string, any>,
+    ctrl: AbortController,
+    onMessage: (event: any) => void,
+    onError: (err: any) => void,
+    onClose: () => void
+  ) => {
+    return fetchEventSource(`${config.base_url}/agent/workflow-def/sandbox-stream`, {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+        'tenant-id': `${getTenantId()}`
+      },
+      // 沙箱真跑 LLM 可能十几秒，用户切走再回来不该发现连接断了
+      openWhenHidden: true,
+      body: JSON.stringify({ dsl, input, mockWrites: true }),
+      onmessage: onMessage,
+      onerror: onError,
+      onclose: onClose,
+      signal: ctrl.signal
+    })
+  }
 }
