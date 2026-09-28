@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@vue-flow/core'
+import { NODE_TYPE_META, nodeHasRequiredGap, nodeTypeMeta, summarizeNode } from './nodeSummary'
 
 /**
  * DSL → Vue Flow 只读图的自动布局（增量8 / P4 第一刀）
@@ -11,11 +12,13 @@ import type { Edge, Node } from '@vue-flow/core'
  * 纯函数、不依赖 Vue 运行时，便于 vitest 单测（见 layout.spec.ts）。
  */
 
-/** DSL 节点（只取布局用得到的几项，其余 config/recovery 等画布不关心） */
+/** DSL 节点（透传 config：画布节点卡片要渲染「这个节点做什么」的一句话摘要，见 nodeSummary.ts） */
 export interface DslNode {
   id: string
   type?: string
   name?: string
+  config?: Record<string, any>
+  [k: string]: any
 }
 
 /** DSL 边。conditional 边用 cases（路由键→目标）+ default 展开成多条；普通边用 from→to */
@@ -45,14 +48,14 @@ const END_KEYWORD = 'END'
 const X_GAP = 240
 const Y_GAP = 120
 
-/** 节点类型 → el-tag 颜色。沿用 WorkflowDraftCard 的色映射；认不出的默认 info，不硬猜 */
+/** 节点类型 → el-tag 颜色。权威来源是 nodeSummary 的 NODE_TYPE_META（与聊天卡片/编辑器同色）；
+    目录外的未知类型按前缀兜底（condition→warning、hitl→danger），认不出的默认 info，不硬猜 */
 export type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
 export const nodeTagType = (type?: string): TagType => {
   if (!type) return 'info'
-  if (type === 'tool') return 'primary'
-  if (type === 'script') return 'primary'
-  if (type === 'llm') return 'success'
+  const meta = NODE_TYPE_META[type]
+  if (meta) return meta.tagType
   if (type.startsWith('condition')) return 'warning'
   if (type.startsWith('hitl')) return 'danger'
   return 'info'
@@ -78,12 +81,26 @@ export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
   const dslEdges = dsl?.edges ?? []
 
   // 1) 视觉节点集合：合成 START/END 两个端点 + 每个 DSL 节点
-  const nodeMeta = new Map<string, { label: string; nodeType: string }>()
+  const nodeMeta = new Map<
+    string,
+    { label: string; nodeType: string; config?: Record<string, any>; position?: { x: number; y: number } }
+  >()
   nodeMeta.set(START_ID, { label: '开始', nodeType: 'start' })
   nodeMeta.set(END_ID, { label: '结束', nodeType: 'end' })
   for (const n of dslNodes) {
     if (!n?.id) continue
-    nodeMeta.set(n.id, { label: n.name || n.id, nodeType: n.type ?? '' })
+    // 节点顶层的 position 是前端专属的持久化坐标（后端 @JsonIgnoreProperties 忽略，见 editorModel.applyPositionsToDsl）；
+    // 存过就直接用（用户上次拖的布局），没存过才走自动分层
+    const p = n.position
+    nodeMeta.set(n.id, {
+      label: n.name || n.id,
+      nodeType: n.type ?? '',
+      config: n.config,
+      position:
+        p && typeof p.x === 'number' && typeof p.y === 'number' && Number.isFinite(p.x) && Number.isFinite(p.y)
+          ? { x: p.x, y: p.y }
+          : undefined
+    })
   }
 
   // 2) 视觉边集合：条件边按 cases + default 展开成多条带 label 的边
@@ -157,11 +174,21 @@ export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
   for (const [l, bucket] of layerBuckets) {
     bucket.forEach((id, idx) => {
       const meta = nodeMeta.get(id)!
+      const isEndpoint = meta.nodeType === 'start' || meta.nodeType === 'end'
       nodes.push({
         id,
         type: 'dsl',
-        position: { x: l * X_GAP, y: idx * Y_GAP },
-        data: { label: meta.label, nodeType: meta.nodeType, tagType: nodeTagType(meta.nodeType) }
+        // 存过持久化坐标就用它，否则用自动分层坐标
+        position: meta.position ?? { x: l * X_GAP, y: idx * Y_GAP },
+        data: {
+          label: meta.label,
+          nodeType: meta.nodeType,
+          tagType: nodeTagType(meta.nodeType),
+          // 中文类型名 + 一句话摘要 + 必填缺口红点（合成端点 START/END 不需要）
+          typeLabel: isEndpoint ? '' : nodeTypeMeta(meta.nodeType).label,
+          summary: isEndpoint ? '' : summarizeNode({ type: meta.nodeType, config: meta.config }),
+          hasGap: isEndpoint ? false : nodeHasRequiredGap({ type: meta.nodeType, config: meta.config })
+        }
       })
     })
   }

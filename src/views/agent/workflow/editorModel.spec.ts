@@ -3,14 +3,23 @@ import {
   DEFAULT_ROUTE,
   addEdge,
   addNode,
+  addRuleBranch,
+  addRuleCondition,
+  applyPositionsToDsl,
+  branchUsesGroups,
   defaultConfig,
   ensureCompensation,
   genNodeId,
   getNodeRecovery,
   isNonCompensableType,
   nodeTypeLabel,
+  readPositionsFromDsl,
   removeEdge,
   removeNode,
+  removeRuleBranch,
+  removeRuleCondition,
+  setEdgeCase,
+  setEdgeDefault,
   setNodeRecovery,
   type EditorDsl,
   type EditorDslNode
@@ -226,5 +235,112 @@ describe('editorModel：Saga 补偿打标（缺口收口，设计方案「一之
       before_image: { recordId: '{{$.a_out.id}}' },
       idempotency_key: '{{$.execution.id}}:a'
     })
+  })
+})
+
+describe('editorModel：坐标持久化（AI助手 UX 修复）', () => {
+  it('applyPositionsToDsl：把 positions 写回节点顶层 position，只写有限数值', () => {
+    const dsl: EditorDsl = { nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
+    applyPositionsToDsl(dsl, { a: { x: 10, y: 20 }, b: { x: NaN, y: 0 } })
+    expect(dsl.nodes![0].position).toEqual({ x: 10, y: 20 })
+    expect(dsl.nodes![1].position).toBeUndefined() // NaN 被丢弃
+    expect(dsl.nodes![2].position).toBeUndefined() // 无坐标不动
+  })
+
+  it('readPositionsFromDsl：读回已持久化坐标，无坐标的节点不进 map', () => {
+    const dsl: EditorDsl = { nodes: [{ id: 'a', position: { x: 5, y: 6 } }, { id: 'b' }] }
+    expect(readPositionsFromDsl(dsl)).toEqual({ a: { x: 5, y: 6 } })
+  })
+
+  it('坐标往返：apply → read 得到同一份；且 trigger/variables 不受影响', () => {
+    const dsl: EditorDsl = {
+      trigger: { type: 'trigger.chat' },
+      nodes: [{ id: 'a' }],
+      edges: [{ from: 'START', to: 'a' }]
+    }
+    applyPositionsToDsl(dsl, { a: { x: 100, y: 40 } })
+    expect(readPositionsFromDsl(dsl)).toEqual({ a: { x: 100, y: 40 } })
+    expect(dsl.trigger).toEqual({ type: 'trigger.chat' })
+    expect(dsl.edges).toEqual([{ from: 'START', to: 'a' }])
+  })
+})
+
+describe('editorModel：条件边可视化编辑（问题4-②）', () => {
+  it('setEdgeCase：无 conditional 边时新建一条并写入 case', () => {
+    const dsl: EditorDsl = { nodes: [], edges: [] }
+    setEdgeCase(dsl, 'c', 'yes', 'a')
+    expect(dsl.edges).toHaveLength(1)
+    expect(dsl.edges![0]).toMatchObject({ from: 'c', type: 'conditional', cases: { yes: 'a' } })
+  })
+
+  it('setEdgeCase：复用同一条 conditional 边累加多个 case；to 为空则删该 case', () => {
+    const dsl: EditorDsl = { edges: [{ from: 'c', type: 'conditional', cases: { yes: 'a' } }] }
+    setEdgeCase(dsl, 'c', 'no', 'b')
+    expect(dsl.edges).toHaveLength(1)
+    expect(dsl.edges![0].cases).toEqual({ yes: 'a', no: 'b' })
+    setEdgeCase(dsl, 'c', 'yes', '')
+    expect(dsl.edges![0].cases).toEqual({ no: 'b' })
+  })
+
+  it('setEdgeDefault：写入/删除 default，且与 case 共用同一条边', () => {
+    const dsl: EditorDsl = { edges: [] }
+    setEdgeCase(dsl, 'c', 'yes', 'a')
+    setEdgeDefault(dsl, 'c', 'fb')
+    expect(dsl.edges).toHaveLength(1)
+    expect(dsl.edges![0]).toMatchObject({ cases: { yes: 'a' }, default: 'fb' })
+    setEdgeDefault(dsl, 'c', '')
+    expect(dsl.edges![0].default).toBeUndefined()
+  })
+
+  it('setEdgeCase 后 removeEdge 能对称删掉刚加的 case', () => {
+    const dsl: EditorDsl = { edges: [] }
+    setEdgeCase(dsl, 'c', 'yes', 'a')
+    removeEdge(dsl, 'c', 'a', 'yes')
+    expect(dsl.edges).toHaveLength(0)
+  })
+})
+
+describe('editorModel：condition.rule 分支可视化（问题4-③）', () => {
+  it('addRuleBranch/removeRuleBranch：增删分支，新分支自带一条 eq 空条件', () => {
+    const config: Record<string, any> = {}
+    addRuleBranch(config)
+    expect(config.branches).toEqual([{ target: '', conditions: [{ var: '', op: 'eq', value: '' }] }])
+    addRuleBranch(config)
+    expect(config.branches).toHaveLength(2)
+    removeRuleBranch(config, 0)
+    expect(config.branches).toHaveLength(1)
+  })
+
+  it('addRuleCondition/removeRuleCondition：在指定分支内增删 AND 条件', () => {
+    const config: Record<string, any> = { branches: [{ target: 'x', conditions: [] }] }
+    addRuleCondition(config, 0)
+    addRuleCondition(config, 0)
+    expect(config.branches[0].conditions).toHaveLength(2)
+    removeRuleCondition(config, 0, 1)
+    expect(config.branches[0].conditions).toHaveLength(1)
+    // 越界分支不崩
+    addRuleCondition(config, 9)
+    expect(config.branches).toHaveLength(1)
+  })
+
+  it('branchUsesGroups：识别 conditionGroups 嵌套写法（组件据此改走 JSON 提示）', () => {
+    expect(branchUsesGroups({ target: 'x', conditions: [] })).toBe(false)
+    expect(branchUsesGroups({ target: 'x', conditionGroups: [] })).toBe(true)
+    expect(branchUsesGroups(null)).toBe(false)
+  })
+})
+
+describe('editorModel：节点类型目录派生自 NODE_TYPE_META（13 种）', () => {
+  it('defaultConfig：3 种合成子图类型给出键齐全的骨架', () => {
+    expect(defaultConfig('agent_loop')).toEqual({ goal: '', tools: [], maxSteps: 5, outputVar: '' })
+    expect(defaultConfig('iteration')).toEqual({ itemsVar: '', itemVar: 'item', body: [] })
+    expect(defaultConfig('sub_workflow')).toEqual({ workflowId: '' })
+  })
+
+  it('nodeTypeLabel：新类型有中文名，未知类型回落原始 type', () => {
+    expect(nodeTypeLabel('agent_loop')).toBe('自主循环')
+    expect(nodeTypeLabel('iteration')).toBe('循环遍历')
+    expect(nodeTypeLabel('sub_workflow')).toBe('子流程')
+    expect(nodeTypeLabel('whatever')).toBe('whatever')
   })
 })

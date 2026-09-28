@@ -49,27 +49,85 @@
     </div>
 
     <!-- 只读节点预览：plan-as-workflow 产出的是一整份 DSL（DAG），这里列出节点顺序与类型。
-         刻意没有勾选框 —— 与线性 plan 的「逐项勾选执行」不同，Workflow 是一个整体，确认即整份运行 -->
+         刻意没有勾选框 —— 与线性 plan 的「逐项勾选执行」不同，Workflow 是一个整体，确认即整份运行。
+         AI助手 UX 修复：每个节点两行式（中文类型徽标 + 名称 + 完成勾 / 灰字一句话摘要），
+         点击展开 config 详情行，让用户看清「这个节点到底要做什么」，而不只是一个名字。 -->
     <div v-if="nodes?.length" class="divide-y divide-[var(--el-border-color-lighter)]">
       <div
         v-for="node in nodes"
         :key="node.id"
         data-testid="workflow-node"
-        class="px-16px py-10px flex items-center gap-10px"
+        class="px-16px py-10px"
       >
-        <el-tag size="small" effect="plain" :type="nodeTagType(node.type)" class="!text-11px flex-shrink-0">
-          {{ node.type }}
-        </el-tag>
-        <span class="text-14px break-words flex-1 min-w-0">{{ node.name || node.id }}</span>
-        <!-- 运行进度：该节点已完成则打勾（NODE 事件在节点完成时到达） -->
-        <el-icon v-if="isNodeDone(node.id)" class="text-[var(--el-color-success)] flex-shrink-0">
-          <CircleCheck />
-        </el-icon>
+        <div
+          class="flex items-center gap-10px cursor-pointer"
+          @click="toggle(node.id)"
+        >
+          <el-tag
+            size="small"
+            effect="plain"
+            :type="nodeTypeMeta(node.type).tagType"
+            class="!text-11px flex-shrink-0"
+          >
+            {{ nodeTypeMeta(node.type).label }}
+          </el-tag>
+          <div class="flex-1 min-w-0">
+            <div class="text-14px break-words">{{ node.name || node.id }}</div>
+            <div
+              v-if="node.summary"
+              class="text-12px text-[var(--el-text-color-secondary)] leading-18px mt-2px break-words"
+            >
+              {{ node.summary }}
+            </div>
+          </div>
+          <!-- 运行进度：该节点已完成则打勾（NODE 事件在节点完成时到达） -->
+          <el-icon v-if="isNodeDone(node.id)" class="text-[var(--el-color-success)] flex-shrink-0">
+            <CircleCheck />
+          </el-icon>
+          <!-- 有详情可展开时给个箭头指示 -->
+          <el-icon
+            v-if="node.details?.length"
+            class="text-[var(--el-text-color-placeholder)] flex-shrink-0 transition-transform"
+            :class="expanded.has(node.id) ? 'rotate-90' : ''"
+          >
+            <ArrowRight />
+          </el-icon>
+        </div>
+        <!-- 展开态：config 详情行（中文标签 → 值） -->
+        <div
+          v-if="expanded.has(node.id) && node.details?.length"
+          class="mt-8px ml-2px pl-10px border-l-2px border-l-solid border-[var(--el-border-color-lighter)]"
+        >
+          <div
+            v-for="(d, i) in node.details"
+            :key="i"
+            class="text-12px leading-20px flex gap-6px"
+          >
+            <span class="text-[var(--el-text-color-secondary)] flex-shrink-0">{{ d.label }}：</span>
+            <span class="text-[var(--el-text-color-regular)] break-words min-w-0">{{ d.value }}</span>
+          </div>
+        </div>
       </div>
     </div>
     <div v-else class="px-16px py-12px text-13px text-[var(--el-text-color-secondary)]">
       （未能解析出节点预览）
     </div>
+
+    <!-- 流程走向：把 edges 译成「A → B / A ⇒[路由] B」文本行，让用户看清节点如何串联 -->
+    <div
+      v-if="edgesText?.length"
+      class="px-16px py-10px bg-[var(--el-fill-color-blank)] border-t border-[var(--el-border-color-lighter)] border-t-solid"
+    >
+      <div class="text-12px font-600 text-[var(--el-text-color-secondary)] mb-6px">流程走向</div>
+      <div
+        v-for="(line, i) in edgesText"
+        :key="i"
+        class="text-12px text-[var(--el-text-color-regular)] leading-20px font-mono"
+      >
+        {{ line }}
+      </div>
+    </div>
+
 
     <!-- 运行中提示 -->
     <div
@@ -124,7 +182,7 @@
 </template>
 
 <script setup lang="ts">
-import type { WorkflowNodePreview } from '@/api/agent/planner'
+import { nodeTypeMeta, type SummaryNode } from '@/views/agent/workflow/nodeSummary'
 
 defineOptions({ name: 'WorkflowDraftCard' })
 
@@ -137,8 +195,10 @@ const props = defineProps<{
   summary?: string
   /** 校验器警告（后端不报错的静默改写） */
   warnings?: string[]
-  /** 只读节点预览（父组件 parse dsl 得到） */
-  nodes?: WorkflowNodePreview[]
+  /** 只读节点预览（父组件用 nodeSummary.buildSummaryNodes 从 dsl 组装，含一句话摘要与详情行） */
+  nodes?: SummaryNode[]
+  /** 流程走向文本行（父组件用 nodeSummary.flowStepsText 从 dsl.edges 组装） */
+  edgesText?: string[]
   /** 定义状态：DRAFT / PUBLISHED / DISABLED / CANCELLED（本地取消） */
   defStatus?: string
   /** 是否正在运行 */
@@ -157,6 +217,14 @@ defineEmits<{
   /** 确认并运行：父组件负责 publish → run-stream */
   confirm: []
 }>()
+
+/** 展开态：记录哪些节点 id 的 config 详情被展开（点击节点行切换） */
+const expanded = ref<Set<string>>(new Set())
+const toggle = (id: string) => {
+  const next = new Set(expanded.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  expanded.value = next
+}
 
 const isNodeDone = (nodeId: string) =>
   (props.runProgress ?? []).some((n) => n.nodeId === nodeId)
@@ -181,14 +249,5 @@ const statusLabel = computed(() => {
   if (props.runResult === 'interrupted') return '已挂起'
   return '已结束'
 })
-
-/** 节点类型 → 徽标颜色。类型有十几种且随版本增加，认不出的默认 info，不硬猜 */
-const nodeTagType = (type: string) => {
-  if (!type) return 'info'
-  if (type === 'tool') return 'primary'
-  if (type === 'llm') return 'success'
-  if (type.startsWith('condition')) return 'warning'
-  if (type.startsWith('hitl')) return 'danger'
-  return 'info'
-}
 </script>
+

@@ -25,7 +25,7 @@ describe('nodeConfigSchema', () => {
   })
 
   it('字段键唯一、kind 合法、select 必有选项来源（optionsFrom 或 options）', () => {
-    const kinds = new Set(['text', 'textarea', 'number', 'select', 'switch'])
+    const kinds = new Set(['text', 'textarea', 'number', 'select', 'switch', 'tags', 'kv'])
     for (const [type, fields] of Object.entries(NODE_CONFIG_SCHEMA)) {
       const keys = fields.map((f) => f.key)
       expect(new Set(keys).size, `${type} 字段键应唯一`).toBe(keys.length)
@@ -77,14 +77,30 @@ describe('nodeConfigSchema', () => {
     expect(isFieldVisible(duration, undefined)).toBe(false)
   })
 
-  it('jsonHintFor：复杂嵌套键的类型有 JSON 兜底提示，简单类型无', () => {
-    expect(jsonHintFor('tool')).toContain('args')
-    expect(jsonHintFor('condition.rule')).toContain('branches')
-    expect(jsonHintFor('condition.llm')).toContain('choices')
-    expect(jsonHintFor('parallel')).toContain('branches')
-    // llm / hitl / wait / knowledge_retrieval 无复杂嵌套键 → 无提示
+  it('jsonHintFor：结构化覆盖后仅 condition.rule 的嵌套条件组保留 JSON 提示', () => {
+    // args/choices/formVars 已有 kv/tags 结构化编辑器，parallel.branches 有可视化面板 → 不再提示走 JSON
+    expect(jsonHintFor('tool')).toBe('')
+    expect(jsonHintFor('condition.llm')).toBe('')
+    expect(jsonHintFor('hitl.bpm_approval')).toBe('')
+    expect(jsonHintFor('parallel')).toBe('')
+    // condition.rule 仅剩「嵌套 AND/OR conditionGroups」建议走 JSON
+    expect(jsonHintFor('condition.rule')).toContain('conditionGroups')
+    // llm / hitl.confirm 无复杂嵌套键 → 无提示
     expect(jsonHintFor('llm')).toBe('')
     expect(jsonHintFor('hitl.confirm')).toBe('')
+  })
+
+  it('3 种合成子图类型（agent_loop/iteration/sub_workflow）字段键对齐后端 GraphBuilder', () => {
+    const keysOf = (t: string) => fieldsFor(t).map((f) => f.key)
+    expect(keysOf('agent_loop')).toEqual(expect.arrayContaining(['goal', 'tools', 'maxSteps', 'outputVar']))
+    expect(keysOf('iteration')).toEqual(expect.arrayContaining(['itemsVar', 'itemVar', 'body']))
+    expect(keysOf('sub_workflow')).toEqual(expect.arrayContaining(['workflowId', 'version']))
+    // tool.args / condition.llm.choices / hitl.bpm_approval.formVars 已结构化
+    expect(fieldsFor('tool').find((f) => f.key === 'args')?.kind).toBe('kv')
+    expect(fieldsFor('condition.llm').find((f) => f.key === 'choices')?.kind).toBe('tags')
+    expect(fieldsFor('hitl.bpm_approval').find((f) => f.key === 'formVars')?.kind).toBe('kv')
+    // sub_workflow.workflowId 的 select 走已发布流程目录
+    expect(fieldsFor('sub_workflow').find((f) => f.key === 'workflowId')?.optionsFrom).toBe('workflow')
   })
 
   it('fieldsFor/jsonHintFor：认不出的类型 fail-soft 返回空', () => {

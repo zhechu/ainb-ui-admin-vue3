@@ -87,6 +87,43 @@ describe('layoutDsl', () => {
     })
     expect(edges).toHaveLength(1)
   })
+
+  it('节点存过 position 就用持久化坐标，不再自动分层（AI助手 UX 修复：坐标持久化读侧）', () => {
+    const { nodes } = layoutDsl({
+      nodes: [
+        { id: 'a', type: 'tool', position: { x: 999, y: 888 } },
+        { id: 'b', type: 'llm' }
+      ],
+      edges: [
+        { from: 'START', to: 'a' },
+        { from: 'a', to: 'b' }
+      ]
+    })
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
+    expect(byId['a'].position).toEqual({ x: 999, y: 888 })
+    // b 没存坐标 → 仍走自动分层（x = 层号*240）
+    expect(byId['b'].position.x).toBe(480)
+  })
+
+  it('节点 data 带中文类型名 + 一句话摘要 + 必填缺口标记（供画布节点卡片渲染）', () => {
+    const { nodes } = layoutDsl({
+      nodes: [
+        { id: 'a', type: 'tool', name: '查数据', config: { toolId: 'form_get' } },
+        { id: 'b', type: 'llm', config: {} }
+      ],
+      edges: [{ from: 'START', to: 'a' }]
+    })
+    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
+    expect(byId['a'].data.typeLabel).toBe('工具')
+    expect(byId['a'].data.summary).toContain('form_get')
+    expect(byId['a'].data.hasGap).toBe(false)
+    // llm 缺 prompt → 摘要说未配置、打缺口红点
+    expect(byId['b'].data.summary).toContain('未填写提示词')
+    expect(byId['b'].data.hasGap).toBe(true)
+    // 合成端点没有类型名/摘要
+    expect(byId['__start__'].data.typeLabel).toBe('')
+    expect(byId['__start__'].data.summary).toBe('')
+  })
 })
 
 describe('nodeTagType', () => {

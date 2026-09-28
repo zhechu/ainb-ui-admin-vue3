@@ -54,21 +54,21 @@
           <Icon icon="ep:refresh" class="mr-5px" />
           重置
         </el-button>
+        <!-- 操作按钮放搜索表单末尾，与 tenant 等列表页同款布局（AI助手 UX 修复：原先孤悬在列表区顶部） -->
+        <el-button
+          type="primary"
+          plain
+          @click="openEditor()"
+          v-hasPermi="['agent:workflow:create']"
+        >
+          <Icon icon="ep:plus" class="mr-5px" /> 新增流程
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-button
-      type="primary"
-      plain
-      class="mb-10px"
-      @click="openForm('create')"
-      v-hasPermi="['agent:workflow:create']"
-    >
-      <Icon icon="ep:plus" class="mr-5px" /> 新增流程
-    </el-button>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="80" />
       <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
@@ -124,7 +124,7 @@
             v-if="scope.row.status === 'DRAFT'"
             link
             type="primary"
-            @click="openForm('edit', scope.row)"
+            @click="openEditor(scope.row)"
             v-hasPermi="['agent:workflow:update']"
           >
             编辑
@@ -174,8 +174,6 @@
   <ExecutionHistoryDrawer ref="historyRef" />
   <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
   <WorkflowVersionDrawer ref="versionRef" @success="getList" />
-  <!-- 新建/编辑表单对话框 -->
-  <WorkflowDefFormDialog ref="formRef" @success="getList" />
 </template>
 
 <script lang="ts" setup>
@@ -184,11 +182,11 @@ import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
-import WorkflowDefFormDialog from './components/WorkflowDefFormDialog.vue'
 
 defineOptions({ name: 'AgentWorkflow' })
 
 const message = useMessage()
+const { push } = useRouter()
 
 const loading = ref(true)
 const total = ref(0)
@@ -265,10 +263,13 @@ const openVersions = (row: AgentWorkflowDefVO) => {
   versionRef.value.open(row.code, row.name || row.code)
 }
 
-/** 新建/编辑表单（编辑仅对 DRAFT 行开放，与后端 updateDef/deleteDef 的草稿守卫一致） */
-const formRef = ref()
-const openForm = (mode: 'create' | 'edit', row?: AgentWorkflowDefVO) => {
-  formRef.value.open(mode, row)
+/**
+ * 新建/编辑：跳整页设计器（隐藏路由 AgentWorkflowEditor，仿门户设计器）。
+ * AI助手 UX 修复：内容太多（DSL + 可视化画布 + 校验），弹窗套弹窗体验差，改为整页编辑。
+ * 编辑仅对 DRAFT 行开放（与后端 updateDef 草稿守卫一致）；带 id 走编辑态，不带走新建态。
+ */
+const openEditor = (row?: AgentWorkflowDefVO) => {
+  push({ name: 'AgentWorkflowEditor', query: row ? { id: String(row.id) } : {} })
 }
 
 /** 发布：DRAFT → PUBLISHED */
@@ -306,6 +307,16 @@ const handleDelete = async (row: AgentWorkflowDefVO) => {
 }
 
 onMounted(() => {
+  getList()
+})
+
+// 从整页设计器返回时刷新列表（页面被 keep-alive 缓存时 onMounted 不会重跑）；首次激活跳过，避免与 onMounted 重复请求
+let firstActivated = true
+onActivated(() => {
+  if (firstActivated) {
+    firstActivated = false
+    return
+  }
   getList()
 })
 </script>

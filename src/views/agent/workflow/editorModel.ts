@@ -10,12 +10,16 @@
  * （含条件边的对应 case），避免留下悬空引用让后端编译期报「边指向不存在的节点」。
  */
 
+import { NODE_TYPE_META, nodeTypeMeta, type SummaryTagType } from './nodeSummary'
+
 /** DSL 节点（编辑器关心 id/type/name/config，其余字段原样保留） */
 export interface EditorDslNode {
   id: string
   type?: string
   name?: string
   config?: Record<string, any>
+  /** 前端专属的持久化画布坐标（后端 NodeDTO @JsonIgnoreProperties 忽略未知字段，读写安全） */
+  position?: { x: number; y: number }
   [k: string]: any
 }
 
@@ -36,7 +40,7 @@ export interface EditorDsl {
   [k: string]: any
 }
 
-export type EditorTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
+export type EditorTagType = SummaryTagType
 
 export interface NodeTypeOption {
   value: string
@@ -46,31 +50,20 @@ export interface NodeTypeOption {
 
 /**
  * 可拖入的节点类型目录。
- * 🔴 逐字对齐后端 {@code NodeExecutorRegistry} 已注册的 10 种执行器 type（getType()）——
- * 目录里放一个后端没有执行器的 type，作者拖出来发布了也会在编译期报「找不到节点类型的执行器」。
- * 标签色沿用 layout.ts 的 nodeTagType 映射，保证画布预览与编辑器同色。
+ * 🔴 权威来源是 nodeSummary 的 {@link NODE_TYPE_META}（13 种 = 10 个 NodeExecutor + 3 个编译器合成子图类型），
+ * 这里派生成编辑器要的 {value,label,tagType} 形状，保证聊天卡片/画布/编辑器三处叫法与颜色一致。
+ * 目录里放一个后端没有执行器/编译器的 type，作者拖出来发布了也会在编译期报错——增删类型请改 NODE_TYPE_META。
  */
-export const NODE_TYPE_OPTIONS: NodeTypeOption[] = [
-  { value: 'tool', label: '工具', tagType: 'primary' },
-  { value: 'llm', label: '大模型', tagType: 'success' },
-  { value: 'condition.rule', label: '规则条件', tagType: 'warning' },
-  { value: 'condition.llm', label: 'LLM 条件', tagType: 'warning' },
-  { value: 'hitl.confirm', label: '人工确认', tagType: 'danger' },
-  { value: 'hitl.bpm_approval', label: 'BPM 审批', tagType: 'danger' },
-  { value: 'knowledge_retrieval', label: '知识检索', tagType: 'info' },
-  { value: 'parallel', label: '并行', tagType: 'info' },
-  { value: 'wait', label: '等待', tagType: 'info' },
-  { value: 'script', label: '脚本', tagType: 'primary' }
-]
+export const NODE_TYPE_OPTIONS: NodeTypeOption[] = Object.entries(NODE_TYPE_META).map(
+  ([value, meta]) => ({ value, label: meta.label, tagType: meta.tagType })
+)
 
 /** 条件边「默认分支」在渲染边 data.route 里的哨兵值（与 case 的路由键区分开） */
 export const DEFAULT_ROUTE = '__default__'
 
-export const nodeTypeLabel = (type?: string): string =>
-  NODE_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? (type || '节点')
+export const nodeTypeLabel = (type?: string): string => nodeTypeMeta(type).label
 
-export const nodeTypeTag = (type?: string): EditorTagType =>
-  NODE_TYPE_OPTIONS.find((o) => o.value === type)?.tagType ?? 'info'
+export const nodeTypeTag = (type?: string): EditorTagType => nodeTypeMeta(type).tagType
 
 /** 把 type 里的非字母数字（如 condition.llm 的点）换成下划线，作为 id 前缀 */
 const idPrefix = (type: string): string => type.replace(/[^a-z0-9]/gi, '_').toLowerCase()
@@ -89,8 +82,9 @@ export const genNodeId = (type: string, existing: string[]): string => {
 }
 
 /**
- * 新节点的默认 config。只给最常用的 tool/llm 一个骨架，其余留 outputVar 占位——
- * 🔴 刻意不臆造各类型的完整 config schema（猜错反而误导），作者可在配置面板/JSON 里补全。
+ * 新节点的默认 config。每种类型给一个「键齐全、值为空/安全默认」的骨架——
+ * 🔴 键逐字对齐后端各 NodeExecutor / GraphBuilder 实际读取的 config 键（见 nodeConfigSchema.ts 头注释），
+ * 不臆造额外键；具体值由作者在配置面板补全（缺必填时画布节点会打红点，见 nodeSummary.nodeHasRequiredGap）。
  */
 export const defaultConfig = (type: string): Record<string, any> => {
   if (type === 'tool') return { toolId: '', args: {}, outputVar: '' }
@@ -98,6 +92,15 @@ export const defaultConfig = (type: string): Record<string, any> => {
   if (type === 'hitl.bpm_approval')
     return { bpmProcessDefKey: '', approveVar: 'bpm_approved', statusVar: 'bpm_status', formVars: {} }
   if (type === 'script') return { code: '', language: 'javascript', timeoutMs: 2000, outputVar: '' }
+  if (type === 'condition.rule') return { branches: [], default: '' }
+  if (type === 'condition.llm') return { prompt: '', choices: [], default: '' }
+  if (type === 'knowledge_retrieval') return { knowledgeBaseId: undefined, query: '', topK: 5, outputVar: '' }
+  if (type === 'hitl.confirm') return { approveVar: 'hitl_approved' }
+  if (type === 'parallel') return { branches: [], join: 'all' }
+  if (type === 'wait') return { waitType: 'duration', duration: 30 }
+  if (type === 'agent_loop') return { goal: '', tools: [], maxSteps: 5, outputVar: '' }
+  if (type === 'iteration') return { itemsVar: '', itemVar: 'item', body: [] }
+  if (type === 'sub_workflow') return { workflowId: '' }
   return { outputVar: '' }
 }
 
@@ -213,3 +216,105 @@ export const removeEdge = (dsl: EditorDsl, from: string, to: string, route?: str
   const idx = edges.findIndex((e) => !isConditional(e) && e.from === from && e.to === to)
   if (idx >= 0) dsl.edges = edges.filter((_, i) => i !== idx)
 }
+
+/**
+ * 画布坐标持久化（AI助手 UX 修复）：坐标存在节点<b>顶层</b> position 字段上（与 config 平级）。
+ * 🔴 后端 NodeDTO/WorkflowDefDTO 均 @JsonIgnoreProperties(ignoreUnknown=true)、dsl 原样落库，
+ *    故 position 是前端专属字段：写进去后端不解析也不报错、读取时原样回来。零后端改动。
+ *    layout.ts 的 layoutDsl 会优先用节点存过的 position（无则自动分层），故重开编辑器布局与上次一致。
+ */
+
+/** 把编辑会话内的 positions（视觉 id → 坐标）写回 DSL 各节点的 position（START/END 合成端点不在 nodes 里，天然排除） */
+export const applyPositionsToDsl = (
+  dsl: EditorDsl,
+  positions: Record<string, { x: number; y: number }>
+): void => {
+  for (const n of dsl.nodes ?? []) {
+    const p = positions[n.id]
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) n.position = { x: p.x, y: p.y }
+  }
+}
+
+/** 从 DSL 各节点读回已持久化的 position（无坐标的节点不进 map，交给自动布局） */
+export const readPositionsFromDsl = (dsl: EditorDsl): Record<string, { x: number; y: number }> => {
+  const out: Record<string, { x: number; y: number }> = {}
+  for (const n of dsl.nodes ?? []) {
+    const p = n.position
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) out[n.id] = { x: p.x, y: p.y }
+  }
+  return out
+}
+
+/**
+ * 条件边可视化编辑（问题4-②）：一个 condition 节点的多个分支路由 cases 挂在<b>同一条</b> conditional 边上。
+ * setEdgeCase/setEdgeDefault 找到（或新建）该 from 的 conditional 边后就地增改，与 removeEdge 的删除对称。
+ */
+
+const ensureConditionalEdge = (dsl: EditorDsl, from: string): EditorDslEdge => {
+  if (!Array.isArray(dsl.edges)) dsl.edges = []
+  let e = dsl.edges.find((x) => x.from === from && isConditional(x))
+  if (!e) {
+    e = { from, type: 'conditional', cases: {} }
+    dsl.edges.push(e)
+  }
+  if (!e.cases || typeof e.cases !== 'object') e.cases = {}
+  return e
+}
+
+/** 设置/删除条件边某个路由键的目标（to 为空则删该 case） */
+export const setEdgeCase = (dsl: EditorDsl, from: string, routeKey: string, to: string): void => {
+  if (!from || !routeKey) return
+  const e = ensureConditionalEdge(dsl, from)
+  if (to) e.cases![routeKey] = to
+  else delete e.cases![routeKey]
+}
+
+/** 设置/删除条件边的 default 兜底目标（to 为空则删 default） */
+export const setEdgeDefault = (dsl: EditorDsl, from: string, to: string): void => {
+  if (!from) return
+  const e = ensureConditionalEdge(dsl, from)
+  if (to) e.default = to
+  else delete e.default
+}
+
+/**
+ * condition.rule 的分支可视化编辑（问题4-③）。branches 形状对齐后端 RuleConditionNodeExecutor 的<b>扁平</b>写法：
+ * `[{ target, conditions: [{var, op, value}] }]`（组内 AND）。🔴 若某分支用了新的 conditionGroups 嵌套写法，
+ * 这些函数只增删 conditions、不碰 conditionGroups；组件检测到 conditionGroups 时改提示走底部 JSON（避免破坏结构）。
+ */
+
+/** 规则条件的算子目录（逐字对齐后端 RuleConditionNodeExecutor.evaluateOne 的 switch 分支） */
+export const RULE_OPS = ['eq', 'ne', 'gt', 'ge', 'lt', 'le', 'contains', 'exists', 'is_true', 'is_false'] as const
+
+const ensureBranches = (config: Record<string, any>): any[] => {
+  if (!config || typeof config !== 'object') return []
+  if (!Array.isArray(config.branches)) config.branches = []
+  return config.branches
+}
+
+/** 新增一个分支：空 target + 一条空条件（op 默认 eq） */
+export const addRuleBranch = (config: Record<string, any>): void => {
+  ensureBranches(config).push({ target: '', conditions: [{ var: '', op: 'eq', value: '' }] })
+}
+
+export const removeRuleBranch = (config: Record<string, any>, index: number): void => {
+  ensureBranches(config).splice(index, 1)
+}
+
+/** 给某分支再加一条 AND 条件 */
+export const addRuleCondition = (config: Record<string, any>, branchIndex: number): void => {
+  const b = ensureBranches(config)[branchIndex]
+  if (!b) return
+  if (!Array.isArray(b.conditions)) b.conditions = []
+  b.conditions.push({ var: '', op: 'eq', value: '' })
+}
+
+export const removeRuleCondition = (config: Record<string, any>, branchIndex: number, condIndex: number): void => {
+  const b = ensureBranches(config)[branchIndex]
+  if (!b || !Array.isArray(b.conditions)) return
+  b.conditions.splice(condIndex, 1)
+}
+
+/** 某分支是否用了 conditionGroups 嵌套写法（组件据此决定「可视化编辑」还是「提示走 JSON」） */
+export const branchUsesGroups = (branch: any): boolean =>
+  !!branch && typeof branch === 'object' && branch.conditionGroups !== undefined

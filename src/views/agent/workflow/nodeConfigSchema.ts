@@ -20,11 +20,11 @@
  *   并用 {@link NODE_CONFIG_JSON_HINT} 明示作者——硬造一套嵌套结构可视化编辑器成本高且易与后端校验脱节。
  */
 
-/** 结构化字段的编辑器类型 */
-export type FieldKind = 'text' | 'textarea' | 'number' | 'select' | 'switch'
+/** 结构化字段的编辑器类型。tags=字符串数组的标签输入；kv=对象键值对编辑器（KeyValueEditor.vue） */
+export type FieldKind = 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'tags' | 'kv'
 
-/** select 的动态选项来源：运行期由组件注入（工具目录 / 模型列表 / 知识库列表） */
-export type OptionsSource = 'tool' | 'model' | 'kb'
+/** select 的动态选项来源：运行期由组件注入（工具目录 / 模型列表 / 知识库列表 / 已发布流程列表） */
+export type OptionsSource = 'tool' | 'model' | 'kb' | 'workflow'
 
 export interface ConfigFieldOption {
   label: string
@@ -64,6 +64,12 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'select',
       optionsFrom: 'tool',
       placeholder: '选择或输入工具键'
+    },
+    {
+      key: 'args',
+      label: '工具入参（args）',
+      kind: 'kv',
+      hint: '参数名 → 值；值支持 {{$.变量}} 或 {{$.变量.字段}} 引用前序节点写入的结果。'
     },
     { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '结果写入的 state 变量名' }
   ],
@@ -106,6 +112,13 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   ],
   'condition.llm': [
     { key: 'prompt', label: '判定提示词（prompt）', kind: 'textarea', placeholder: '支持 {{$.var}} 状态模板' },
+    {
+      key: 'choices',
+      label: '候选路由（choices）',
+      kind: 'tags',
+      placeholder: '输入一个候选按回车添加',
+      hint: '模型只能从这些候选里选一个作为路由键；需与条件边的 cases 键一一对应。'
+    },
     { key: 'modelId', label: '模型（modelId）', kind: 'select', optionsFrom: 'model', placeholder: '留空=动态默认' },
     { key: 'temperature', label: '温度（temperature）', kind: 'number', min: 0, max: 2, step: 0.1 },
     { key: 'maxTokens', label: '最大 tokens（maxTokens）', kind: 'number', min: 1, step: 1 },
@@ -142,6 +155,12 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'text',
       placeholder: '默认 bpm_status',
       hint: 'BPM 原始状态码（2 通过 / 3 驳回 / 4 取消）写入的 state 变量名，供审计或更细的分支判定。'
+    },
+    {
+      key: 'formVars',
+      label: '审批表单变量（formVars）',
+      kind: 'kv',
+      hint: '发起审批时传给 BPM 流程的变量（参数名 → 值）；值支持 {{$.变量}} 引用前序结果。'
     }
   ],
   wait: [
@@ -205,18 +224,60 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       hint: '缺省 2000，上限 10000；死循环到点被强制中断。'
     },
     { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '默认 script_result' }
+  ],
+  // 🔴 以下 3 种是编译器合成子图类型（WorkflowDslValidator.GRAPH_BUILDER_TYPES），非独立执行器。
+  //   字段键逐字对齐 DslToStateGraphCompiler 与各 GraphBuilder 读取的 config 键。
+  agent_loop: [
+    {
+      key: 'goal',
+      label: '目标（goal）',
+      kind: 'textarea',
+      placeholder: '要让模型自主完成什么，如「查清某客户最近 3 单的物流状态并汇总」',
+      hint: '模型会围绕这个目标自主决定调用哪些只读工具、调几轮，直到给出答案。'
+    },
+    {
+      key: 'tools',
+      label: '可用只读工具（tools）',
+      kind: 'tags',
+      placeholder: '输入工具键按回车添加',
+      hint: '🔴 只能放只读工具（查询类）；放写入类工具不会被执行且可能被后端校验拒绝。'
+    },
+    { key: 'maxSteps', label: '最大步数（maxSteps）', kind: 'number', min: 1, max: 20, step: 1, hint: '防止模型无限循环，缺省 5。' },
+    { key: 'outputVar', label: '输出变量（outputVar）', kind: 'text', placeholder: '最终答案写入的变量名' }
+  ],
+  iteration: [
+    { key: 'itemsVar', label: '列表变量（itemsVar）', kind: 'text', placeholder: '要遍历的数组变量名，如 orders' },
+    { key: 'itemVar', label: '单项变量（itemVar）', kind: 'text', placeholder: '每项写入的变量名，缺省 item', hint: '循环体节点用 {{$.itemVar}} 取当前项。' },
+    {
+      key: 'body',
+      label: '循环体节点（body）',
+      kind: 'tags',
+      placeholder: '输入循环体内的节点 id 按回车添加',
+      hint: '🔴 body 里的节点仍写在顶层 nodes[]，但<b>不要</b>把它们连进 edges[]（编译器自动接线）。'
+    }
+  ],
+  sub_workflow: [
+    {
+      key: 'workflowId',
+      label: '子流程（workflowId）',
+      kind: 'select',
+      optionsFrom: 'workflow',
+      placeholder: '选择一条已发布的流程',
+      hint: '只能内嵌「已发布」的流程；用其流程编码 code 调用。'
+    },
+    { key: 'version', label: '指定版本（version）', kind: 'number', min: 1, step: 1, hint: '留空=用该流程的主版本。' }
   ]
 }
 
 /**
  * 每种类型「哪些复杂键请走底部 JSON」的提示（结构化面板不覆盖的部分，明示作者，避免以为漏配）。
+ * 🔴 AI助手 UX 修复后大幅收窄：tool.args / condition.llm.choices / hitl.bpm_approval.formVars 已有结构化
+ *   编辑器（kv/tags），condition.rule.branches 的扁平条件与 parallel.branches 已有可视化面板，
+ *   故这些不再提示走 JSON。仅 condition.rule 的<b>嵌套 AND/OR（conditionGroups）</b>仍建议走 JSON。
  */
 export const NODE_CONFIG_JSON_HINT: Record<string, string> = {
-  tool: 'args（工具入参，对象）请用下方 DSL JSON 编辑。',
-  'condition.rule': 'branches（条件组 conditionGroups / 扁平 conditions）结构复杂，请用下方 DSL JSON 编辑。',
-  'condition.llm': 'choices（候选路由列表）请用下方 DSL JSON 编辑。',
-  'hitl.bpm_approval': 'formVars（发起审批时传给流程的变量，对象）请用下方 DSL JSON 编辑。',
-  parallel: 'branches（List<List<String>>，每个元素一条节点 id 链）请用下方 DSL JSON 编辑。'
+  'condition.rule':
+    '上方「分支」编辑的是单层 AND 条件；若某分支需要嵌套 AND/OR（conditionGroups），请用下方 DSL JSON 编辑。'
 }
 
 /** 取某节点类型的结构化字段（认不出的类型返回空数组 → 面板只剩裸 JSON 兜底） */

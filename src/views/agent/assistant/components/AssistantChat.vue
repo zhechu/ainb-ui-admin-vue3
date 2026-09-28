@@ -111,6 +111,7 @@
                 :summary="item.summary || item.content"
                 :warnings="item.warnings"
                 :nodes="item.nodes"
+                :edges-text="item.edgesText"
                 :def-status="item.defStatus"
                 :running="item.running"
                 :run-progress="item.runProgress"
@@ -249,8 +250,13 @@ import type {
 } from '@/api/agent/assistant'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
 import { AgentPlannerApi } from '@/api/agent/planner'
-import type { AgentWorkflowDraftVO, WorkflowNodePreview } from '@/api/agent/planner'
+import type { AgentWorkflowDraftVO } from '@/api/agent/planner'
 import { AgentWorkflowApi } from '@/api/agent/workflow'
+import {
+  buildSummaryNodes,
+  flowStepsText,
+  type SummaryNode
+} from '@/views/agent/workflow/nodeSummary'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
 import WorkflowDraftCard from './WorkflowDraftCard.vue'
@@ -519,21 +525,25 @@ const handleCopy = async (content: string) => {
 const focus = () => inputRef.value?.focus()
 
 /**
- * 从 DSL 原文抠出只读节点预览
+ * 从 DSL 原文抠出只读节点预览 + 流程走向
  *
- * DSL 是一整份 WorkflowDefDTO JSON，卡片只需要 nodes[] 的 {id,type,name}。
- * 解析失败（草稿 dsl 异常）返回空数组，卡片显示「未能解析出节点预览」而不是崩掉。
+ * DSL 是一整份 WorkflowDefDTO JSON。卡片需要 nodes[] 的中文摘要（buildSummaryNodes）与 edges[] 的
+ * 走向文本（flowStepsText）—— AI助手 UX 修复前只抠 {id,type,name}，config 里的 prompt/工具/分支全被丢弃，
+ * 用户看到的流程等于只有目录没有正文。这里改用 nodeSummary 的公共组装函数，与编辑器/只读画布同源。
+ * 解析失败（草稿 dsl 异常）返回空，卡片显示「未能解析出节点预览」而不是崩掉。
  */
-const parseNodes = (dsl?: string): WorkflowNodePreview[] => {
-  if (!dsl) return []
+const parseWorkflowPreview = (dsl?: string): { nodes: SummaryNode[]; edgesText: string[] } => {
+  if (!dsl) return { nodes: [], edgesText: [] }
   try {
-    const nodes = JSON.parse(dsl)?.nodes
-    if (!Array.isArray(nodes)) return []
-    return nodes.map((n: any) => ({ id: n.id, type: n.type, name: n.name }))
+    const parsed = JSON.parse(dsl)
+    const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : []
+    const edges = Array.isArray(parsed?.edges) ? parsed.edges : []
+    return { nodes: buildSummaryNodes(nodes), edgesText: flowStepsText(nodes, edges) }
   } catch {
-    return []
+    return { nodes: [], edgesText: [] }
   }
 }
+
 
 /**
  * 加载某个会话的消息
@@ -567,7 +577,9 @@ const loadMessages = async (conversationId: number) => {
           msg.workflowDefId = draft.defId
           msg.workflowCode = draft.code
           msg.workflowName = draft.name
-          msg.nodes = parseNodes(draft.dsl)
+          const preview = parseWorkflowPreview(draft.dsl)
+          msg.nodes = preview.nodes
+          msg.edgesText = preview.edgesText
           // 摘要优先用消息正文（appendDraftMessage 落库时写进了 content），拿不到再退回草稿名
           msg.summary = item.content || draft.name
           // 卡片状态按定义状态：DRAFT 待确认 / PUBLISHED 已发布可运行 / DISABLED 已结束
@@ -994,7 +1006,9 @@ const loadWorkflowDraft = async (item: any, defId: number) => {
   if (!defId) return
   try {
     const draft: AgentWorkflowDraftVO = await AgentPlannerApi.getWorkflowDraft(defId)
-    item.nodes = parseNodes(draft.dsl)
+    const preview = parseWorkflowPreview(draft.dsl)
+    item.nodes = preview.nodes
+    item.edgesText = preview.edgesText
     item.defStatus = draft.status
     item.cardStatus = draft.status === 'DRAFT' ? 'pending' : 'published'
     await scrollToBottom()

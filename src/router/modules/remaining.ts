@@ -151,6 +151,29 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/agent-workflow',
+    component: Layout,
+    name: 'AgentWorkflowCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'editor',
+        component: () => import('@/views/agent/workflow/editor/index.vue'),
+        name: 'AgentWorkflowEditor',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '流程编排设计器',
+          // 「流程编排」菜单在 /agent/workflow（DB 菜单驱动），设计器是它的隐藏整页子页
+          activeMenu: '/agent/workflow'
+        }
+      }
+    ]
+  },
+  {
     path: '/dict',
     component: Layout,
     name: 'dict',
