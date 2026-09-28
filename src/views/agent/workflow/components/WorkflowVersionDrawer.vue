@@ -103,11 +103,12 @@
     <div class="flex gap-12px">
       <div class="flex-1 min-w-0">
         <div class="mb-6px font-bold text-13px">v{{ compareALabel }}</div>
-        <pre class="dsl-pane">{{ compareAText }}</pre>
+        <!-- Req6：DSL 对比也用代码编辑器（只读），裸 pre 没有高亮，两个版本的差异全靠肉眼扫 -->
+        <CodeEditor :model-value="compareAText" language="json" readonly height="60vh" />
       </div>
       <div class="flex-1 min-w-0">
         <div class="mb-6px font-bold text-13px">v{{ compareBLabel }}</div>
-        <pre class="dsl-pane">{{ compareBText }}</pre>
+        <CodeEditor :model-value="compareBText" language="json" readonly height="60vh" />
       </div>
     </div>
   </el-dialog>
@@ -235,19 +236,3 @@ const handleSetPrimary = async (row: AgentWorkflowDefVO) => {
 
 defineExpose({ open })
 </script>
-
-<style scoped>
-.dsl-pane {
-  max-height: 60vh;
-  overflow: auto;
-  margin: 0;
-  padding: 10px 12px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre;
-}
-</style>

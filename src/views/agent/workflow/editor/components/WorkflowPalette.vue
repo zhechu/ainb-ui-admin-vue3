@@ -30,7 +30,10 @@
           </div>
         </el-tooltip>
       </template>
-      <div class="wf-palette__hint">点击即加入画布；也可拖到画布指定位置。</div>
+      <div class="wf-palette__hint">
+        点击即加入画布；也可拖到画布指定位置。<br />
+        想接在某一步后面？把鼠标移到那个节点上，点它右侧的「＋」更快。
+      </div>
     </el-scrollbar>
   </aside>
 </template>
@@ -45,6 +48,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 </script>
 
 <style lang="scss" scoped>
+/* Req4：字号走 --wf-fs-* 令牌（定义在 .wf-editor 上，见 editor/index.vue） */
 .wf-palette {
   display: flex;
   width: 168px;
@@ -56,7 +60,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 
 .wf-palette__title {
   padding: 10px 12px 6px;
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
@@ -69,7 +73,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 
 .wf-palette__group {
   margin: 8px 4px 4px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   font-weight: 600;
   color: var(--el-text-color-placeholder);
 }
@@ -105,7 +109,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 .wf-palette__hint {
   margin-top: 8px;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 16px;
   color: var(--el-text-color-placeholder);
 }

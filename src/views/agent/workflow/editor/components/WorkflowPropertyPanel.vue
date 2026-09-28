@@ -310,15 +310,17 @@
                   <div class="wf-panel__hint">指向执行「语义反做」的工具键，如 form_data_delete 撤销 form_data_create。</div>
                 </el-form-item>
                 <el-form-item label="补偿前像（before_image，JSON 对象）">
-                  <el-input
+                  <JsonCodeField
                     v-model="beforeImageText"
-                    type="textarea"
-                    :rows="3"
-                    class="wf-json-input"
+                    height="110px"
+                    :readonly="readonly"
                     :placeholder="BEFORE_IMAGE_PLACEHOLDER"
+                    test-id="node-before-image-status"
                     data-testid="node-before-image"
-                    @change="onBeforeImageChange"
                   />
+                  <el-button v-if="!readonly" size="small" class="mt-6px" @click="onBeforeImageChange">
+                    应用到补偿前像
+                  </el-button>
                   <div class="wf-panel__hint">
                     「参数名 → 模板」对象（模板形如双花括号包 $.变量路径）；补偿执行前把模板解析成工具入参。
                   </div>
@@ -341,12 +343,12 @@
             <el-divider content-position="left">config</el-divider>
             <el-form-item label="完整 config（JSON）">
               <div v-if="jsonHint" class="wf-panel__hint mb-4px">{{ jsonHint }}</div>
-              <el-input
+              <JsonCodeField
                 v-model="configText"
-                type="textarea"
-                :rows="6"
-                class="wf-json-input"
+                height="150px"
+                :readonly="readonly"
                 placeholder="节点 config，JSON 对象"
+                test-id="node-config-json-status"
               />
               <el-button v-if="!readonly" size="small" class="mt-6px" @click="applyConfig">
                 应用到节点 config
@@ -354,6 +356,23 @@
             </el-form-item>
           </template>
         </el-form>
+
+        <!--
+          Req4：删除节点从画布工具条搬到这里。
+          🔴 它只作用于「当前选中节点」，放在选中项旁边才是就近操作；工具条上那个按钮无论选没选都在，
+             既占地方又容易误点。Req2 取消了二次确认（顶栏撤销可兜底），所以按钮文案直接说明可找回。
+        -->
+        <el-button
+          v-if="!readonly"
+          size="small"
+          type="danger"
+          plain
+          class="mt-10px w-full"
+          data-testid="delete-node-btn"
+          @click="deleteNode"
+        >
+          删除此节点（可用顶栏「撤销」找回）
+        </el-button>
       </template>
 
       <!-- 选中连线 -->
@@ -430,8 +449,16 @@
             </div>
           </el-form>
         </template>
-        <el-button v-if="!readonly" size="small" type="danger" plain class="mt-10px w-full" @click="deleteEdge">
-          删除此连线
+        <el-button
+          v-if="!readonly"
+          size="small"
+          type="danger"
+          plain
+          class="mt-10px w-full"
+          data-testid="delete-edge-btn"
+          @click="deleteEdge"
+        >
+          删除此连线（可用顶栏「撤销」找回）
         </el-button>
       </template>
 
@@ -463,11 +490,12 @@
         <el-divider content-position="left">操作提示</el-divider>
         <ul class="wf-panel__empty-list">
           <li>左侧目录点击或拖拽新增节点</li>
+          <li>鼠标移到节点上，点它右侧的「＋」可直接接一个下一步</li>
           <li>拖动节点调整位置（保存后记住布局）</li>
           <li>从节点右侧圆点拉到另一节点左侧圆点连线</li>
           <li>从条件节点拉线时，会让你选择走哪条分支</li>
           <li>单击节点/连线在此编辑或删除</li>
-          <li>顶栏「撤销/重做」可回退误操作</li>
+          <li>删错了不要紧：顶栏「撤销」能一步步回退</li>
         </ul>
       </div>
     </el-scrollbar>
@@ -476,6 +504,7 @@
 
 <script lang="ts" setup>
 import KeyValueEditor from '../../components/KeyValueEditor.vue'
+import JsonCodeField from './JsonCodeField.vue'
 import VariableRefPicker from './VariableRefPicker.vue'
 import type { WorkflowEditorContext } from '../useWorkflowEditor'
 
@@ -547,12 +576,14 @@ const {
   onCaseRemove,
   onDefaultChange,
   onCaseAdd,
+  deleteNode,
   deleteEdge,
   DEFAULT_ROUTE
 } = props.editor
 </script>
 
 <style lang="scss" scoped>
+/* Req4：字号一律走 --wf-fs-* 令牌（定义在 .wf-editor 上，见 editor/index.vue），不再各处硬编码 */
 .wf-panel {
   display: flex;
   width: 320px;
@@ -568,10 +599,23 @@ const {
   padding: 10px 12px;
 }
 
+/* 表单标签与分组标题统一：原来标签是 Element 默认 14px、分组标题 12px，同一列里两种字号看着跳 */
+.wf-panel :deep(.el-form-item__label) {
+  font-size: var(--wf-fs-sm, 12px);
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.wf-panel :deep(.el-divider__text) {
+  font-size: var(--wf-fs-sm, 12px);
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
 .wf-panel__title {
   display: flex;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   font-weight: 600;
   align-items: center;
   gap: 6px;
@@ -579,20 +623,20 @@ const {
 
 .wf-panel__hint {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 16px;
   color: var(--el-text-color-placeholder);
 }
 
 .wf-panel__sub {
   margin-bottom: 4px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 16px;
   color: var(--el-text-color-placeholder);
 }
 
 .wf-panel__warn {
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 16px;
   color: var(--el-color-warning);
 }
@@ -600,7 +644,7 @@ const {
 .wf-panel__warn-list {
   margin: 0;
   padding-left: 16px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   line-height: 18px;
 }
 
@@ -622,7 +666,8 @@ const {
   padding: 0 4px;
   border-radius: 3px;
   background: var(--el-fill-color);
-  font-size: 10px;
+  // 10px 在 1080p 下几乎看不清，统一到最小档 11px
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 16px;
   color: var(--el-text-color-secondary);
 }
@@ -641,15 +686,15 @@ const {
   margin-bottom: 4px;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
 }
 
 .wf-io__var {
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--el-fill-color-light);
-  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
-  font-size: 11px;
+  font-family: var(--wf-mono, monospace);
+  font-size: var(--wf-fs-xs, 11px);
 }
 
 .wf-io__label {
@@ -671,7 +716,7 @@ const {
 }
 
 .wf-branch__name {
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   font-weight: 600;
 }
 
@@ -683,7 +728,7 @@ const {
 }
 
 .wf-panel__empty {
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   line-height: 20px;
   color: var(--el-text-color-secondary);
 }
@@ -696,11 +741,5 @@ const {
 .wf-panel__empty-list {
   margin: 0;
   padding-left: 16px;
-}
-
-.wf-json-input :deep(textarea) {
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
-  font-size: 12px;
-  line-height: 1.5;
 }
 </style>

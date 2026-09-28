@@ -60,6 +60,66 @@ test.describe('流程编排管理页', () => {
     await expect(dialog).toBeHidden({ timeout: 10000 })
   })
 
+  /**
+   * Req3：五种触发方式的经典案例
+   *
+   * 🔴 为什么非走浏览器不可：案例数据本身有 54 条单测守着（结构不变量 + 后端 error 规则复刻），
+   *   但「切触发方式时内联卡片真的跟着换」「五个页签真的都渲染出来」只在真实 DOM 里暴露——
+   *   computed 没接上、v-if 写错、页签 name 冲突，单测全绿而页面是空的。
+   * 同时顺带守 Req1：chat 触发下「驱动 Agent」是下拉而不是手填输入框。
+   */
+  test('触发案例：列表页参考手册五页签 + 新增弹窗内联卡片随触发方式切换（Req3/Req1）', async ({ page }) => {
+    await login(page)
+    await gotoWithAuth(page, '/agent/workflow')
+
+    // ① 列表页工具栏「触发案例」→ 参考手册弹窗，五个页签一个不缺
+    await page.getByTestId('trigger-case-btn').click()
+    const caseDialog = page.locator('.el-dialog').filter({ hasText: '触发方式经典案例' }).first()
+    await expect(caseDialog).toBeVisible({ timeout: 15000 })
+    const tabs = caseDialog.locator('.el-tabs__item')
+    await expect(tabs).toHaveCount(5, { timeout: 10000 })
+    for (const label of ['手动 / 接口', '对话驱动 Agent', '表单事件', '定时', 'Webhook']) {
+      await expect(tabs.filter({ hasText: label }).first()).toBeVisible()
+    }
+    // 默认停在第一个页签，案例正文渲染出来了（标题 + 流程走向 + 要点）
+    await expect(caseDialog.locator('.tcv__title').first()).toBeVisible({ timeout: 10000 })
+    await expect(caseDialog.getByText('流程走向').first()).toBeVisible()
+    // 切到 Webhook 页签：条件分支案例，走向里出现「按金额分流」
+    await tabs.filter({ hasText: 'Webhook' }).first().click()
+    await expect(caseDialog.locator('.tcv__row').filter({ hasText: '按金额分流' }).first()).toBeVisible({
+      timeout: 10000
+    })
+    await caseDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(caseDialog).toBeHidden({ timeout: 10000 })
+
+    // ② 新增弹窗内联案例卡：默认 chat → 「表单问答助手」
+    await page.getByRole('button', { name: '新增', exact: true }).first().click()
+    const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
+    await expect(dialog).toBeVisible({ timeout: 15000 })
+    const inline = dialog.getByTestId('trigger-case-inline')
+    await expect(inline.locator('.tcv__title').filter({ hasText: '表单问答助手' }).first()).toBeVisible({
+      timeout: 10000
+    })
+
+    // Req1：chat 触发下「驱动 Agent」是下拉（el-select）而不是手填 input
+    // 🔴 用 label 精确定位：hasText 会把「起步模板」项也匹配上（它的提示语里就写着"按下面选的触发方式…"）
+    const formItem = (label: string) =>
+      dialog.locator(`.el-form-item:has(.el-form-item__label:text-is("${label}"))`).first()
+    const agentItem = formItem('驱动 Agent')
+    await expect(agentItem.locator('.el-select').first()).toBeVisible({ timeout: 10000 })
+
+    // ③ 切到「定时」→ 内联卡片换成定时案例，且 cron 字段出现
+    await formItem('触发方式').locator('.el-select').click()
+    await page.locator('.el-select-dropdown__item:visible').filter({ hasText: '定时' }).first().click()
+    await expect(inline.locator('.tcv__title').filter({ hasText: '数据接口巡检' }).first()).toBeVisible({
+      timeout: 10000
+    })
+    await expect(dialog.getByText('Cron 表达式').first()).toBeVisible({ timeout: 10000 })
+
+    await dialog.getByRole('button', { name: /取消/ }).first().click()
+    await expect(dialog).toBeHidden({ timeout: 10000 })
+  })
+
   test('只读画布查看器渲染出 DSL 节点与连线（R1 回归守卫）', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/workflow')

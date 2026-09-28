@@ -69,6 +69,8 @@
               :placeholder="f.type === 'number' ? '如 100' : '请输入'"
               clearable
             />
+            <!-- Req6/Req10：填错就地报，别等到跑完才发现流程拿到的是字符串 -->
+            <div v-if="fieldError(f)" class="sbx__err">{{ fieldError(f) }}</div>
           </el-form-item>
         </el-form>
         <el-empty v-else :image-size="60" description="这条流程没有声明输入变量，可直接运行" />
@@ -76,13 +78,13 @@
 
       <!-- 高级 JSON 模式 -->
       <template v-else>
-        <el-input
+        <!-- Req6：JSON 一律走代码编辑器（高亮 + 实时格式校验），不再用裸 textarea -->
+        <JsonCodeField
           v-model="jsonText"
-          type="textarea"
-          :rows="6"
-          class="sbx__json"
-          spellcheck="false"
+          height="150px"
           placeholder="{&quot;input&quot;:&quot;你好&quot;}"
+          test-id="sandbox-json-status"
+          data-testid="sandbox-json"
         />
         <div v-if="jsonError" class="sbx__err">{{ jsonError }}</div>
       </template>
@@ -202,6 +204,7 @@
 
 <script lang="ts" setup>
 import { AgentWorkflowApi, type WorkflowEventVO } from '@/api/agent/workflow'
+import JsonCodeField from './JsonCodeField.vue'
 import type { EditorDsl } from '../../editorModel'
 import {
   buildSandboxInputFields,
@@ -211,6 +214,7 @@ import {
   parseSandboxInputText,
   reduceSandboxEvent,
   renderSandboxValue,
+  sandboxFieldJsonError,
   sandboxStatusMeta,
   type SandboxInputField,
   type SandboxNodeStatus,
@@ -245,6 +249,9 @@ let ctrl: AbortController | null = null
 const canRun = computed(() => (props.dsl.nodes ?? []).length > 0)
 const meta = (status: SandboxNodeStatus) => sandboxStatusMeta(status)
 const render = (v: any) => renderSandboxValue(v)
+
+/** 单个测试输入的格式错误（合法返回 ''）——见 sandboxModel.sandboxFieldJsonError 的 🔴 说明 */
+const fieldError = (f: FieldWithValue) => sandboxFieldJsonError(f.value, f.type)
 
 const interruptNodeName = computed(
   () => run.value.rows.find((r) => r.nodeId === run.value.interruptNodeId)?.name ?? '人工节点'
@@ -298,6 +305,11 @@ const resolveInput = (): Record<string, any> | null => {
   const missing = fields.value.find((f) => f.required && !String(f.value ?? '').trim())
   if (missing) {
     message.warning(`请填写必填的测试输入「${missing.key}」`)
+    return null
+  }
+  const bad = fields.value.find((f) => fieldError(f))
+  if (bad) {
+    message.warning(`测试输入「${bad.key}」${fieldError(bad)}`)
     return null
   }
   return collectSandboxInput(fields.value)
@@ -382,6 +394,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
+/* Req4：字号/等宽字族走 --wf-* 令牌（定义在 :root，见 editor/index.vue）——抽屉是 append-to-body，靠 :root 才继承得到 */
 .sbx {
   display: flex;
   height: 100%;
@@ -393,7 +406,7 @@ onBeforeUnmount(() => {
 
 .sbx__notice-body {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   line-height: 18px;
 }
 
@@ -411,13 +424,13 @@ onBeforeUnmount(() => {
 }
 
 .sbx__sec-title {
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
 .sbx__count {
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-text-color-secondary);
 }
 
@@ -425,7 +438,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-text-color-secondary);
 }
 
@@ -437,7 +450,8 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
+  font-family: var(--wf-mono, monospace);
 }
 
 .sbx__req {
@@ -445,18 +459,16 @@ onBeforeUnmount(() => {
 }
 
 .sbx__field-hint {
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   font-weight: 400;
+  font-family: inherit;
   color: var(--el-text-color-placeholder);
 }
 
-.sbx__json :deep(textarea) {
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
-  font-size: 12px;
-}
-
 .sbx__err {
-  font-size: 12px;
+  margin-top: 2px;
+  font-size: var(--wf-fs-sm, 12px);
+  line-height: 18px;
   color: var(--el-color-danger);
 }
 
@@ -468,7 +480,7 @@ onBeforeUnmount(() => {
 
 .sbx__dur {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-text-color-secondary);
 }
 
@@ -523,7 +535,7 @@ onBeforeUnmount(() => {
 
 .sbx__row-name {
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -531,12 +543,12 @@ onBeforeUnmount(() => {
 
 .sbx__row-dur {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   color: var(--el-text-color-placeholder);
 }
 
 .sbx__row-type {
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   color: var(--el-text-color-secondary);
 }
 
@@ -544,7 +556,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 10px;
   right: 8px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-text-color-placeholder);
 }
 
@@ -568,13 +580,13 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   margin-bottom: 3px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   color: var(--el-text-color-secondary);
 }
 
 .sbx__detail-err {
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-color-danger);
 }
 
@@ -583,8 +595,8 @@ onBeforeUnmount(() => {
   padding: 6px 8px;
   margin: 0;
   overflow: auto;
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
-  font-size: 11px;
+  font-family: var(--wf-mono, monospace);
+  font-size: var(--wf-fs-xs, 11px);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;

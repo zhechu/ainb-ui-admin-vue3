@@ -189,8 +189,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           noCache: true,
           hidden: true,
           canTo: true,
-          title: 'Agent 定义设计器',
-          // 「Agent 定义」菜单在 /agent/def（DB 菜单驱动），设计器是它的隐藏整页子页
+          title: '智能体设计器',
+          // 「智能体管理」菜单在 /agent/def（DB 菜单驱动），设计器是它的隐藏整页子页
           activeMenu: '/agent/def'
         }
       }

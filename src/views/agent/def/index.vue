@@ -16,10 +16,10 @@
   <!-- 搜索 -->
   <ContentWrap>
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="68px">
-      <el-form-item label="Agent 编码" prop="code">
+      <el-form-item label="编码" prop="code">
         <el-input
           v-model="queryParams.code"
-          placeholder="请输入 Agent 编码"
+          placeholder="请输入编码"
           clearable
           @keyup.enter="handleQuery"
           class="!w-240px"
@@ -60,7 +60,7 @@
           @click="openEditor()"
           v-hasPermi="['agent:def:create']"
         >
-          <Icon icon="ep:plus" class="mr-5px" /> 新增 Agent
+          <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
     </el-form>
@@ -69,8 +69,18 @@
   <!-- 列表 -->
   <ContentWrap>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <!-- 序号列：indexMethod 已配 auto-import（@/utils/table），按当前页码换算全局序号 -->
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" width="80" />
-      <el-table-column label="Agent 编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
+      <el-table-column label="编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
       <el-table-column label="名称" align="center" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column label="版本" align="center" prop="version" width="70" />
       <el-table-column label="状态" align="center" prop="status" width="150">

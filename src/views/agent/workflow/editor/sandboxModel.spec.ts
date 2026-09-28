@@ -10,7 +10,8 @@ import {
   diffState,
   isMockValue,
   parseSandboxInputText,
-  reduceSandboxEvent
+  reduceSandboxEvent,
+  sandboxFieldJsonError
 } from './sandboxModel'
 
 /**
@@ -213,21 +214,90 @@ describe('diffState', () => {
 })
 
 describe('buildSandboxInputFields', () => {
-  it('收 required、input 键、标量键；跳过纯 object/array 中间产物', () => {
+  it('没有节点产出它、也不是 required 的变量都算入参（不看类型）', () => {
     const dsl: EditorDsl = {
       nodes: [],
       edges: [],
       variables: [
         { key: 'input', type: 'string' },
-        { key: 'listOut', type: 'object' }, // 非 required、非 input、非标量 → 跳过
-        { key: 'amount', type: 'number', required: true }, // required → 收
-        { key: 'payload', type: 'object', required: true } // required → 收（即便 object）
+        { key: 'listOut', type: 'object' }, // 没有节点产出它 → 仍算入参（旧实现按类型把它藏了）
+        { key: 'amount', type: 'number', required: true },
+        { key: 'payload', type: 'object', required: true }
       ]
     }
     const fields = buildSandboxInputFields(dsl)
-    expect(fields.map((f) => f.key)).toEqual(['input', 'amount', 'payload'])
+    expect(fields.map((f) => f.key)).toEqual(['input', 'listOut', 'amount', 'payload'])
     expect(fields.find((f) => f.key === 'amount')!.required).toBe(true)
     expect(fields.find((f) => f.key === 'input')!.hint).toBe('文本')
+    expect(fields.find((f) => f.key === 'listOut')!.hint).toContain('JSON 对象')
+  })
+
+  it('节点自己产出的变量不当测试输入（哪怕它是标量）', () => {
+    // 🔴 回归：经典案例的 variables 里 report/formList 都是节点 outputVar 产出的，
+    //    旧实现按「标量就收」把 report 摆给作者填——填了也会被节点覆写，纯属误导。
+    const dsl: EditorDsl = {
+      nodes: [
+        { id: 'n1', type: 'tool', config: { toolId: 'form_list', outputVar: 'formList' } },
+        { id: 'n2', type: 'llm', config: { prompt: 'p', outputVar: 'report' } }
+      ],
+      edges: [],
+      variables: [
+        { key: 'input', type: 'string' },
+        { key: 'formList', type: 'object' },
+        { key: 'report', type: 'string' }
+      ]
+    }
+    expect(buildSandboxInputFields(dsl).map((f) => f.key)).toEqual(['input'])
+  })
+
+  it('required 优先于「被产出」判定：作者显式要外部给值就照收', () => {
+    const dsl: EditorDsl = {
+      nodes: [{ id: 'n1', type: 'llm', config: { outputVar: 'report' } }],
+      edges: [],
+      variables: [{ key: 'report', type: 'string', required: true }]
+    }
+    expect(buildSandboxInputFields(dsl).map((f) => f.key)).toEqual(['report'])
+  })
+
+  it('outputVar 前后带空格也能认出是同一个变量', () => {
+    const dsl: EditorDsl = {
+      nodes: [{ id: 'n1', type: 'llm', config: { outputVar: '  report  ' } }],
+      edges: [],
+      variables: [{ key: 'report', type: 'string' }]
+    }
+    expect(buildSandboxInputFields(dsl)).toEqual([])
+  })
+})
+
+describe('sandboxFieldJsonError', () => {
+  it('空值不报错（是否必填由必填校验负责，格式校验只管填了的）', () => {
+    expect(sandboxFieldJsonError('', 'object')).toBe('')
+    expect(sandboxFieldJsonError(undefined, 'array')).toBe('')
+    expect(sandboxFieldJsonError('   ', 'number')).toBe('')
+  })
+  it('number 填了非数字 → 报错', () => {
+    expect(sandboxFieldJsonError('100', 'number')).toBe('')
+    expect(sandboxFieldJsonError('abc', 'number')).toContain('数字')
+  })
+  it('object 填了数组 / 标量 / 非法 JSON → 报错', () => {
+    expect(sandboxFieldJsonError('{"a":1}', 'object')).toBe('')
+    expect(sandboxFieldJsonError('[1,2]', 'object')).toContain('JSON 对象')
+    expect(sandboxFieldJsonError('123', 'object')).toContain('JSON 对象')
+    expect(sandboxFieldJsonError('{a:1}', 'object')).toContain('JSON 格式错误')
+  })
+  it('array 填了对象 / 非法 JSON → 报错', () => {
+    expect(sandboxFieldJsonError('[1,2]', 'array')).toBe('')
+    expect(sandboxFieldJsonError('{"a":1}', 'array')).toContain('JSON 数组')
+    expect(sandboxFieldJsonError('[1,2', 'array')).toContain('JSON 格式错误')
+  })
+  it('any：看着像 JSON 才校验，普通文本放行', () => {
+    expect(sandboxFieldJsonError('你好', 'any')).toBe('')
+    expect(sandboxFieldJsonError('{"a":1}', 'any')).toBe('')
+    expect(sandboxFieldJsonError('{a:1}', 'any')).toContain('JSON 格式错误')
+  })
+  it('string / boolean 不做 JSON 校验', () => {
+    expect(sandboxFieldJsonError('{a:1}', 'string')).toBe('')
+    expect(sandboxFieldJsonError('{a:1}', 'boolean')).toBe('')
   })
 })
 

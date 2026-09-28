@@ -60,14 +60,24 @@ describe('buildStarterDsl', () => {
     ...over
   })
 
-  it('sample：产出合法 DSL，含演示节点、START/END 边、trigger 注入', () => {
-    const dsl = JSON.parse(buildStarterDsl('sample', meta({ type: 'chat', agentId: 'a1' })))
+  it('case：产出合法 DSL，含案例节点、START/END 边、trigger 注入', () => {
+    const dsl = JSON.parse(buildStarterDsl('case', meta({ type: 'chat', agentId: 'a1' })))
     expect(dsl.id).toBe('wf_new')
     expect(dsl.name).toBe('新流程')
     expect(dsl.trigger.type).toBe('trigger.chat')
+    expect(dsl.trigger.config.agentId).toBe('a1')
     expect(dsl.nodes.length).toBeGreaterThan(0)
     expect(dsl.edges.some((e: any) => e.from === 'START')).toBe(true)
     expect(dsl.edges.some((e: any) => e.to === 'END')).toBe(true)
+  })
+
+  it('case：图主体随触发方式变（chat 与 webhook 不是同一份）', () => {
+    const chat = JSON.parse(buildStarterDsl('case', meta({ type: 'chat' })))
+    const hook = JSON.parse(buildStarterDsl('case', meta({ type: 'webhook', path: 'p' })))
+    expect(chat.nodes.map((n: any) => n.id)).not.toEqual(hook.nodes.map((n: any) => n.id))
+    // webhook 案例带条件分支，chat 案例不带
+    expect(hook.edges.some((e: any) => e.type === 'conditional')).toBe(true)
+    expect(chat.edges.some((e: any) => e.type === 'conditional')).toBe(false)
   })
 
   it('blank：nodes/edges 皆空，但保留 input/output 变量（createDef 不做图校验，可建草稿）', () => {
@@ -102,14 +112,16 @@ describe('buildStarterDsl', () => {
     expect(dsl.trigger.type).toBe('trigger.webhook')
   })
 
-  it('copy 源非法：安全退化为 sample（不抛、仍产合法 DSL）', () => {
+  it('copy 源非法：安全退化为当前触发方式的案例（不抛、仍产合法且非空的 DSL）', () => {
     const dsl = JSON.parse(buildStarterDsl('copy', meta({ type: 'none' }, { copyDsl: 'not-json' })))
     expect(dsl.nodes.length).toBeGreaterThan(0)
   })
 
   it('产出物一定是合法 JSON 字符串', () => {
     expect(() => JSON.parse(buildStarterDsl('blank', meta({ type: 'none' })))).not.toThrow()
-    expect(() => JSON.parse(buildStarterDsl('sample', meta({ type: 'schedule', cron: '0 0 * * * ?' })))).not.toThrow()
+    expect(() =>
+      JSON.parse(buildStarterDsl('case', meta({ type: 'schedule', cron: '0 0 * * * ?' })))
+    ).not.toThrow()
   })
 })
 

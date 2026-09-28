@@ -433,10 +433,20 @@ const normalizeType = (raw?: string): SandboxInputType => {
 
 /**
  * 从 DSL variables 生成测试输入表单字段（非技术人员友好：按声明的键逐个填，标类型提示）。
- * 🔴 只收「可能是入参」的变量：required=true 的、或约定的输入键 input、或 type 非 object/array 的标量键。
- *    其余（如 output、中间产物 listOut）默认不列入表单，避免让作者填一堆无关字段；面板另给「高级：直接编辑 JSON」兜底。
+ *
+ * 🔴 排除「流程自己产出的变量」：某个节点的 config.outputVar 与之同名（如 report / formList / output），
+ *    说明它是跑出来的结果而不是入参。原先只按类型过滤，导致经典案例里的 report（string）被当成测试输入
+ *    摆给作者填——既莫名其妙，填了还会被节点覆写，属于「配了但不生效且无提示」的典型。
+ *    required=true 的仍然收（作者显式声明要外部给值，不与产出判定硬碰）。
+ * 🔴 其余非必填的标量键仍列出来（可能是分支条件要读的入参）；面板另给「高级：直接编辑 JSON」兜底。
  */
 export const buildSandboxInputFields = (dsl: EditorDsl): SandboxInputField[] => {
+  const produced = new Set<string>()
+  for (const n of asArray(dsl.nodes)) {
+    const ov = asObject(asObject(n).config).outputVar
+    if (typeof ov === 'string' && ov.trim()) produced.add(ov.trim())
+  }
+
   const vars = asArray(dsl.variables)
   const fields: SandboxInputField[] = []
   for (const v of vars) {
@@ -444,9 +454,7 @@ export const buildSandboxInputFields = (dsl: EditorDsl): SandboxInputField[] => 
     if (typeof key !== 'string' || !key) continue
     const type = normalizeType(asObject(v).type)
     const required = asObject(v).required === true
-    const isInputKey = key === 'input'
-    const isScalar = type === 'string' || type === 'number' || type === 'boolean' || type === 'any'
-    if (!required && !isInputKey && !isScalar) continue
+    if (produced.has(key) && !required) continue
     fields.push({
       key,
       type,
@@ -490,6 +498,40 @@ export const coerceInputValue = (raw: string, type: SandboxInputType): any => {
     }
     default:
       return text
+  }
+}
+
+/**
+ * 表单模式下逐字段的格式检查：返回人话错误文案，合法（或无需检查）返回 ''。
+ *
+ * 🔴 coerceInputValue 对填错的情况一律「回落原字符串」，那是为了让流程总能跑起来，但副作用是
+ *    作者把 `{a:1}`（少引号）填进 object 入参时，流程拿到的是字符串而不是对象，跑出来的结果莫名其妙，
+ *    界面上却一句提示都没有 —— 正是本模块的头号缺陷「配了但不生效且无提示」。所以运行前必须挡一道。
+ */
+export const sandboxFieldJsonError = (
+  raw: string | undefined,
+  type: SandboxInputType
+): string => {
+  const text = (raw ?? '').trim()
+  if (text === '') return ''
+  if (type === 'number') {
+    return Number.isFinite(Number(text)) ? '' : '这里要填数字，如 100'
+  }
+  if (type !== 'object' && type !== 'array' && type !== 'any') return ''
+  // any 类型只在「看着像 JSON」时才要求它合法，否则就是个普通字符串
+  if (type === 'any' && !/^[[{]/.test(text)) return ''
+  try {
+    const parsed = JSON.parse(text)
+    if (type === 'array' && !Array.isArray(parsed)) return '这里要填 JSON 数组，如 [1,2,3]'
+    if (
+      type === 'object' &&
+      (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
+    ) {
+      return '这里要填 JSON 对象，如 {"a":1}'
+    }
+    return ''
+  } catch (e: any) {
+    return `JSON 格式错误：${e?.message ?? '格式不正确'}`
   }
 }
 

@@ -54,6 +54,7 @@ import {
   type ReferenceWarning,
   type OutputDoc
 } from './ioReference'
+import { insertAfter, isConditionNode, isConditionalEdge, routeKeyCandidates } from './graphEdit'
 
 /**
  * 流程设计器的「共享编辑上下文」（增量8 / P4，Phase C）
@@ -204,9 +205,6 @@ export function useWorkflowEditor(
   const toDsl = (visualId: string): string =>
     visualId === START_VISUAL_ID ? START_KEYWORD : visualId === END_VISUAL_ID ? END_KEYWORD : visualId
 
-  const isConditionalEdge = (e: EditorDslEdge): boolean =>
-    (e.type ?? '').toLowerCase() === 'conditional' || (!!e.cases && Object.keys(e.cases).length > 0)
-
   const syncDslText = () => {
     dslText.value = JSON.stringify(dslObject.value, null, 2)
   }
@@ -228,7 +226,16 @@ export function useWorkflowEditor(
       const outVars = dslNode
         ? resolvedOutputsOf(dslNode).map((o) => ({ name: o.varName, color: dataTypeColor(o.dataType) }))
         : []
-      n.data = { ...(n.data ?? {}), dslId: isStart || isEnd ? null : n.id, isStart, isEnd, outVars }
+      n.data = {
+        ...(n.data ?? {}),
+        dslId: isStart || isEnd ? null : n.id,
+        // Req7：节点右侧「+」要知道自己接在谁后面。合成端点的 DSL 引用是保留字 START/END（不是 null），
+        // 这样「开始」节点也能挂「+」，一键把第一个节点插到 START 之后。
+        dslRef: isStart ? START_KEYWORD : isEnd ? END_KEYWORD : n.id,
+        isStart,
+        isEnd,
+        outVars
+      }
       const stored = positions.value[n.id]
       if (stored) n.position = { x: stored.x, y: stored.y }
     }
@@ -363,22 +370,6 @@ export function useWorkflowEditor(
     return n?.name || routeKey
   }
 
-  /** 条件节点的候选路由键：condition.llm 取 choices；condition.rule 取 branches[].target + default */
-  const routeKeyCandidates = (node: EditorDslNode): string[] => {
-    const config = node.config ?? {}
-    if (node.type === 'condition.llm') {
-      const keys = Array.isArray(config.choices) ? config.choices.map((c: any) => String(c)).filter(Boolean) : []
-      return config.default ? [...keys, String(config.default)] : keys
-    }
-    if (node.type === 'condition.rule') {
-      const keys = Array.isArray(config.branches)
-        ? config.branches.map((b: any) => (b && typeof b === 'object' ? String(b.target ?? '') : '')).filter(Boolean)
-        : []
-      return config.default ? [...keys, String(config.default)] : keys
-    }
-    return []
-  }
-
   /**
    * 🔴 C4 修复：拖动结束把新坐标写回对应 DSL 节点 position（原来只记 positions 覆盖层，不落 DSL、
    * 不标脏、逃过撤销）。写回后就地突变触发页面 deep-watch → 入撤销栈 + 标脏，使「移动节点」可撤销。
@@ -412,35 +403,71 @@ export function useWorkflowEditor(
     selectedEdge.value = null
   }
 
-  const deleteNode = async () => {
+  /**
+   * 删除选中节点（指向它的连线与条件分支 case 由 removeNode 一并清理）
+   *
+   * 🔴 不做二次确认：顶栏「撤销」就是这类误删的兜底，再弹一次确认只是把一次点击变成两次，
+   *    且确认框挡住的恰是画布——用户看不到自己删的是哪个节点，确认反而更容易点错。
+   */
+  const deleteNode = () => {
     if (!selectedNodeId.value || readonly.value) return
-    const node = selectedNode.value
-    try {
-      await message.delConfirm(`确认删除节点「${node?.name || node?.id}」？指向它的连线会一并清理。`)
-    } catch {
-      return
-    }
     removeNode(dslObject.value, selectedNodeId.value)
     delete positions.value[selectedNodeId.value]
     selectedNodeId.value = null
     mutate()
   }
 
-  const deleteEdge = async () => {
+  /** 删除选中连线（普通边整条删；条件边只删该 route 对应的 case/default）。同样不做二次确认，撤销兜底 */
+  const deleteEdge = () => {
     if (!selectedEdge.value || readonly.value) return
     const { from, to, route } = selectedEdge.value
-    try {
-      await message.delConfirm(
-        route
-          ? `确认删除分支「${route === DEFAULT_ROUTE ? 'default' : route}」的连线？`
-          : `确认删除连线「${from} → ${to}」？`
-      )
-    } catch {
-      return
-    }
     removeEdge(dslObject.value, from, to, route)
     selectedEdge.value = null
     mutate()
+  }
+
+  /**
+   * Req7：节点右侧「+」快捷加节点 —— 在 sourceRef（节点 id 或 START 保留字）之后插入新节点并自动接线。
+   *
+   * 🔴 接线语义交给 graphEdit.insertAfter（纯函数 + 单测）：起点只有一条普通出边就**插进连线中间**
+   *    （source→new→next），否则只加 source→new。绝不让普通节点留下两条出边——那在编译期就是歧义。
+   * 🔴 条件节点（condition.*）的出边挂在路由键上，必须先问清「走哪个分支」；还没配分支就直接提示去面板加。
+   *    顺序很要紧：**先问路由键、后建节点**，否则用户一取消就留下一个孤立节点（脏图，还得再删一次）。
+   * 🔴 落点基准取「当前渲染坐标」而不是 DSL 里的 position：没拖动过的节点 position 是空的，
+   *    坐标由 layoutDsl 现算，只有 flowNodes 里那份才是画布上真实看到的位置。
+   *    往右下各错开半格（layout 的 X_GAP/Y_GAP 是 240/120）：既不压住原节点，也不去挪动别的节点——
+   *    整体平移下游会连带改掉用户手工拖出来的布局，代价大于收益；要收拾整齐用顶栏「重新布局」。
+   */
+  const addNodeAfter = async (sourceRef: string, type: string): Promise<string | null> => {
+    if (readonly.value || !sourceRef || sourceRef === END_KEYWORD) return null
+    const src = (dslObject.value.nodes ?? []).find((n) => n.id === sourceRef)
+    if (sourceRef !== START_KEYWORD && !src) return null
+
+    let routeKey = ''
+    if (isConditionNode(src)) {
+      const candidates = routeKeyCandidates(src)
+      if (!candidates.length) {
+        message.warning('这个条件节点还没有配置分支：请先在右侧面板「添加分支」，再从分支上加节点')
+        return null
+      }
+      const picked = await openRouteDialog(candidates)
+      if (!picked) return null // 取消 = 什么都不做
+      routeKey = picked
+    }
+
+    const base = flowNodes.value.find((n) => n.id === toVisual(sourceRef))?.position ?? { x: 0, y: 0 }
+    const pos = { x: base.x + 120, y: base.y + 120 }
+
+    const id = addNode(dslObject.value, type)
+    const created = (dslObject.value.nodes ?? []).find((n) => n.id === id)
+    if (created) created.position = { ...pos }
+    positions.value[id] = { ...pos }
+    insertAfter(dslObject.value, { sourceRef, newId: id, routeKey: routeKey || undefined })
+
+    selectedNodeId.value = id
+    selectedEdge.value = null
+    mutate()
+    return id
   }
 
   /** 重新布局：清空会话坐标覆盖层，回到 layoutDsl 的自动分层坐标（持久化 position 也会被覆盖层清掉后重算） */
@@ -965,6 +992,7 @@ export function useWorkflowEditor(
     onDragOver,
     addNodeAt,
     addNodeByClick,
+    addNodeAfter,
     insertSample,
     onConnect,
     onNodeDragStop,

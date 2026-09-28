@@ -64,6 +64,10 @@
         >
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
+        <!-- Req 3：五种触发方式的经典案例，不建数据也不需要权限，纯粹给人参考 -->
+        <el-button plain @click="openCases" data-testid="trigger-case-btn">
+          <Icon icon="ep:reading" class="mr-5px" /> 触发案例
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -92,7 +96,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="触发方式" align="center" prop="triggerType" width="110">
+      <el-table-column label="触发方式" align="center" prop="triggerType" width="124">
         <template #default="scope">
           <span>{{ triggerLabel(scope.row.triggerType) }}</span>
         </template>
@@ -197,6 +201,8 @@
   <WorkflowVersionDrawer ref="versionRef" @success="getList" />
   <!-- Req 2：新增/编辑元信息弹窗（新增成功后跳整页设计器） -->
   <WorkflowForm ref="formRef" @success="handleFormSuccess" />
+  <!-- Req 3：五种触发方式的经典案例参考手册（只看不建，与新增弹窗里的内联卡片同源） -->
+  <TriggerCaseDialog ref="caseRef" />
 </template>
 
 <script lang="ts" setup>
@@ -206,6 +212,8 @@ import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
 import WorkflowForm from './components/WorkflowForm.vue'
+import TriggerCaseDialog from './editor/components/TriggerCaseDialog.vue'
+import { triggerTypeLabel } from './editor/triggerCases'
 
 defineOptions({ name: 'AgentWorkflow' })
 
@@ -238,14 +246,12 @@ const statusTagType = (status: string): 'info' | 'success' | 'warning' => {
   return 'info' // DRAFT 及未知
 }
 
-/** 触发方式本地 map（无数据字典）。与后端触发器 type 一致 */
-const TRIGGER_LABELS: Record<string, string> = {
-  form_event: '表单事件',
-  schedule: '定时',
-  chat: '对话',
-  webhook: 'Webhook'
-}
-const triggerLabel = (type?: string) => (type ? TRIGGER_LABELS[type] ?? type : '—')
+/**
+ * 触发方式中文名：统一取 triggerCases.ts 的 TRIGGER_TYPE_LABELS（无数据字典）。
+ * 🔴 原先这里存了一份本地 map（chat 叫「对话」），新增弹窗的下拉却叫「对话驱动 Agent」——
+ *    同一个 triggerType 在两处叫不同名字，用户对着列表找不到弹窗里那一项。收敛到单一来源。
+ */
+const triggerLabel = (type?: string) => (type ? triggerTypeLabel(type) : '—')
 
 /** 查询列表 */
 const getList = async () => {
@@ -309,6 +315,10 @@ const handleFormSuccess = async (id?: number, isCreate?: boolean) => {
   // 新增成功 → 直进整页设计器（对齐门户 handleFormSuccess）；编辑元信息只刷新列表
   if (isCreate && id) push({ name: 'AgentWorkflowEditor', query: { id: String(id) } })
 }
+
+/** Req 3：打开「触发方式经典案例」参考手册（只读，不建数据、不需要任何按钮权限） */
+const caseRef = ref()
+const openCases = () => caseRef.value?.open()
 
 /** 发布：DRAFT → PUBLISHED */
 const handlePublish = async (row: AgentWorkflowDefVO) => {

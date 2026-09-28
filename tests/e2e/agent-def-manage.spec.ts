@@ -2,13 +2,13 @@ import { test, expect, type Page } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
 
 /**
- * Agent 定义管理页 + 整页设计器 端到端验证
+ * 智能体管理页 + 整页设计器 端到端验证
  *
  * 🔴 为什么非要走浏览器
  * 后端 curl 已证 7 端点 + 状态机全通，但「菜单点开是空白页」「弹窗改整页后导航/回填是否正常」
  * 这类缺陷只在真实 DOM 里暴露。AI助手 UX 修复（问题3）把新建/编辑/查看从 760px 弹窗改成了
  * 隐藏路由整页设计器 /agent-def/editor，故本 spec 从「驱动 dialog」整体改为「驱动整页设计器」：
- *   列表点「新增 Agent」→ 跳整页设计器 → 填必填 → 保存草稿（URL 补 id）→ 返回列表 → 行状态机。
+ *   列表点「新增」→ 跳整页设计器 → 填必填 → 保存草稿（URL 补 id）→ 返回列表 → 行状态机。
  *
  * 🔴 尤其要守住的平台头号反模式：「配置保存成功但不生效」——工具多选（toolKeys CSV⇄数组适配器）
  *   往返若丢了，表现为「选了工具保存成功、重新打开却空了」，curl/单测全绿，只有浏览器走一遍才暴露。
@@ -19,9 +19,9 @@ import { login, gotoWithAuth } from './helpers/auth'
 
 const CODE = `e2e_def_${Date.now().toString().slice(-8)}`
 
-/** 列表页「新增 Agent」→ 整页设计器 → 填三个必填 → 保存草稿 → 断言落库 → 返回列表 */
+/** 列表页「新增」→ 整页设计器 → 填三个必填 → 保存草稿 → 断言落库 → 返回列表 */
 async function createDraftViaUi(page: Page, code: string, name: string, persona: string) {
-  await page.getByRole('button', { name: /新增 Agent/ }).first().click()
+  await page.getByRole('button', { name: '新增', exact: true }).first().click()
   await page.waitForURL(/\/agent-def\/editor/)
 
   await page.getByPlaceholder('请输入名称，如「订单客服」').fill(name)
@@ -41,15 +41,19 @@ async function createDraftViaUi(page: Page, code: string, name: string, persona:
   await page.waitForURL(/\/agent\/def$/)
 }
 
-test.describe('Agent 定义管理页', () => {
+test.describe('智能体管理页', () => {
   test.setTimeout(180_000)
 
   test('菜单非空白 + 新建 → 发布 → 停用 全生命周期', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/def')
 
-    // 页面非空白：搜索表单在
-    await expect(page.getByText('Agent 编码').first()).toBeVisible({ timeout: 20000 })
+    // 页面非空白：搜索表单在（Req 8：文案已从「Agent 编码」收敛为「编码」）
+    await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
+    // Req 8：列表首列是序号列（参考模型配置页）
+    await expect(
+      page.locator('.el-table__header th').filter({ hasText: '序号' }).first()
+    ).toBeVisible({ timeout: 15000 })
 
     await createDraftViaUi(page, CODE, 'E2E 测试助手', '你是一个用于端到端测试的助手，请友好地回答。')
 
@@ -130,10 +134,10 @@ test.describe('Agent 定义管理页', () => {
   test('工具多选绑定 → 保存 → 重新编辑仍选中（toolKeys 往返，0 token）', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/def')
-    await expect(page.getByText('Agent 编码').first()).toBeVisible({ timeout: 20000 })
+    await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
 
     const CODE3 = `e2e_tool_${Date.now().toString().slice(-8)}`
-    await page.getByRole('button', { name: /新增 Agent/ }).first().click()
+    await page.getByRole('button', { name: '新增', exact: true }).first().click()
     await page.waitForURL(/\/agent-def\/editor/)
 
     await page.getByPlaceholder('请输入名称，如「订单客服」').fill('E2E 工具助手')

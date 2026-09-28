@@ -2,8 +2,10 @@
   流程编排「新增 / 编辑元信息」弹窗 —— AI助手 流程编排优化 / Req 2（新增与设计分开）
 
   仿 views/infra/portal/PortalForm.vue 的 open(type,row?)/submitForm/emit('success') 约定。
-  · 新增：收集 名称 + 编码 + 触发方式 + 模板起步（空白/示例/复制已有）→ buildStarterDsl 产合法 DSL → createDef 建草稿，
+  · 新增：收集 名称 + 编码 + 触发方式 + 模板起步（经典案例/空白/复制已有）→ buildStarterDsl 产合法 DSL → createDef 建草稿，
     emit('success', id, true) 让列表页跳整页设计器（设计归设计器，弹窗只管元信息）。
+    Req 3：弹窗内联展示「当前触发方式的经典案例」（场景/走向/触发怎么填/要点 + 起步 DSL），
+    选「经典案例」模板时建出来的就是它；全部五种见列表页工具栏的「触发案例」按钮。
   · 编辑：只改元信息 + 触发方式（编码只读），画布节点原样保留——getDef 取完整 DSL 后 injectTrigger 只换 trigger 块，
     emit('success', id, false) 仅刷新列表（不跳设计器，那是「设计」按钮的事）。
 
@@ -35,12 +37,12 @@
       <!-- 模板起步：仅新增时出现 -->
       <el-form-item v-if="!isUpdate" label="起步模板" prop="template">
         <el-radio-group v-model="formData.template">
+          <el-radio value="case">经典案例</el-radio>
           <el-radio value="blank">空白</el-radio>
-          <el-radio value="sample">示例骨架</el-radio>
           <el-radio value="copy">复制已有</el-radio>
         </el-radio-group>
         <div class="form-tip">
-          空白：空画布从零开始；示例骨架：带一个只读工具演示节点、开箱可过体检；复制已有：以现有流程为起点。
+          经典案例：按下面选的触发方式生成一份完整可跑的流程（推荐，开箱可过体检）；空白：空画布从零开始；复制已有：以现有流程为起点。
         </div>
       </el-form-item>
       <el-form-item v-if="!isUpdate && formData.template === 'copy'" label="复制来源" prop="copySourceId">
@@ -72,9 +74,23 @@
         <div class="form-tip">{{ triggerHint }}</div>
       </el-form-item>
 
-      <!-- chat：绑定 Agent（选填） -->
+      <!-- chat：绑定 Agent（选填）。Req 1：手填 code 改下拉——手填既容易打错字，也让人不知道有哪些可填 -->
       <el-form-item v-if="formData.triggerType === 'chat'" label="驱动 Agent" prop="agentId">
-        <el-input v-model="formData.agentId" clearable placeholder="填已发布 Agent 的编码 code，留空=仅手动运行" />
+        <el-select
+          v-model="formData.agentId"
+          class="w-full"
+          filterable
+          clearable
+          allow-create
+          default-first-option
+          :loading="agentLoading"
+          placeholder="选择已发布的智能体；留空 = 仅手动运行"
+        >
+          <el-option v-for="item in agentOptions" :key="item.code" :label="item.label" :value="item.code" />
+        </el-select>
+        <div class="form-tip">
+          只列「已发布」的智能体——草稿/停用在对话入口本就选不到，绑了也不会生效。找不到目标请先到「智能体管理」发布它。
+        </div>
       </el-form-item>
 
       <!-- form_event：表单编码 + 事件类型（必填） -->
@@ -114,6 +130,19 @@
         </el-form-item>
       </template>
 
+      <!--
+        Req 3：当前触发方式的经典案例，内联展示（不套第二层弹窗——项目 Dialog 会把 appendToBody
+        从透传属性里删掉，嵌套弹窗层级不可控）。全部五种见列表页工具栏的「触发案例」按钮。
+      -->
+      <el-form-item v-if="currentCase" label="经典案例" class="!mb-8px">
+        <div class="case-box" data-testid="trigger-case-inline">
+          <TriggerCaseView :case-data="currentCase" :show-dsl="!isUpdate" />
+          <div class="form-tip case-box__foot">
+            全部五种触发方式的案例见列表页右上角「触发案例」按钮。
+          </div>
+        </div>
+      </el-form-item>
+
       <el-form-item label="描述" prop="description">
         <el-input
           v-model="formData.description"
@@ -144,6 +173,7 @@
 
 <script lang="ts" setup>
 import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
+import { AgentDefApi } from '@/api/agent/def'
 import { CODE_PATTERN } from '../editor/defaults'
 import {
   buildStarterDsl,
@@ -152,6 +182,8 @@ import {
   type WorkflowTriggerMeta,
   type WorkflowTriggerType
 } from '../editor/starterDsl'
+import { TRIGGER_CASE_ORDER, triggerCaseOf, TRIGGER_TYPE_LABELS } from '../editor/triggerCases'
+import TriggerCaseView from '../editor/components/TriggerCaseView.vue'
 
 defineOptions({ name: 'AgentWorkflowForm' })
 
@@ -164,13 +196,11 @@ const formRef = ref()
 
 const isUpdate = computed(() => formType.value === 'update')
 
-const TRIGGER_OPTIONS: { value: WorkflowTriggerType; label: string }[] = [
-  { value: 'none', label: '无（仅手动 / 接口运行）' },
-  { value: 'chat', label: '对话驱动 Agent' },
-  { value: 'form_event', label: '表单事件' },
-  { value: 'schedule', label: '定时' },
-  { value: 'webhook', label: 'Webhook' }
-]
+/** 触发方式下拉：中文名单一来源在 triggerCases.ts（列表页与案例弹窗共用同一份，不会各叫各的） */
+const TRIGGER_OPTIONS: { value: WorkflowTriggerType; label: string }[] = TRIGGER_CASE_ORDER.map((value) => ({
+  value,
+  label: TRIGGER_TYPE_LABELS[value]
+}))
 
 interface WorkflowFormData {
   id?: number
@@ -194,7 +224,8 @@ const defaultFormData = (): WorkflowFormData => ({
   id: undefined,
   name: '',
   code: '',
-  template: 'sample',
+  // 默认「经典案例」：新用户建出来的第一条流程就是完整可跑、能过体检的，而不是一张空画布
+  template: 'case',
   copySourceId: undefined,
   triggerType: 'chat',
   agentId: '',
@@ -209,10 +240,39 @@ const defaultFormData = (): WorkflowFormData => ({
 })
 const formData = ref<WorkflowFormData>(defaultFormData())
 
+/** 当前触发方式对应的经典案例（Req 3）；认不出的触发方式返回 undefined → 内联卡片整块不渲染 */
+const currentCase = computed(() => triggerCaseOf(formData.value.triggerType))
+
 /** 编辑态：缓存既有完整 DSL（列表分页不带 dsl），提交时只换 trigger 块、保留画布节点 */
 const existingDsl = ref('')
 /** 复制来源候选（新增 + copy 模板时用） */
 const copyOptions = ref<AgentWorkflowDefVO[]>([])
+/** 「驱动 Agent」下拉候选（Req 1）：已发布智能体，按 code 去重（同 code 多版本只该出现一次） */
+const agentOptions = ref<{ code: string; label: string }[]>([])
+const agentLoading = ref(false)
+
+/**
+ * 拉「已发布」智能体作为驱动 Agent 候选。
+ * 🔴 只取 PUBLISHED：草稿/停用在对话入口本就选不到，列出来只会让人绑一个不生效的 Agent。
+ * 🔴 fail-soft：拉不到就空列表，下拉仍可 allow-create 手填 code，不该挡住新建流程。
+ */
+const loadAgentOptions = async () => {
+  if (agentOptions.value.length) return
+  agentLoading.value = true
+  try {
+    const data = await AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100, status: 'PUBLISHED' })
+    const seen = new Set<string>()
+    agentOptions.value = (data.list ?? []).filter((a) => {
+      if (!a.code || seen.has(a.code)) return false
+      seen.add(a.code)
+      return true
+    }).map((a) => ({ code: a.code, label: `${a.name || a.code}（${a.code}）` }))
+  } catch {
+    agentOptions.value = []
+  } finally {
+    agentLoading.value = false
+  }
+}
 
 const triggerHint = computed(() => {
   switch (formData.value.triggerType) {
@@ -348,6 +408,8 @@ const open = async (type: 'create' | 'update', row?: AgentWorkflowDefVO) => {
   } else {
     loadCopyOptions()
   }
+  // 驱动 Agent 候选两态都拉：默认触发方式就是 chat，且编辑态也要能把已绑 code 显示成「名称（code）」
+  loadAgentOptions()
   dialogVisible.value = true
   nextTick(() => formRef.value?.clearValidate())
 }
@@ -413,5 +475,20 @@ const submitForm = async () => {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+
+/* 经典案例内联卡：与表单控件同宽，浅底 + 细边把它和输入项区分开，别让人误以为是必填字段 */
+.case-box {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+}
+
+.case-box__foot {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--el-border-color-lighter);
 }
 </style>

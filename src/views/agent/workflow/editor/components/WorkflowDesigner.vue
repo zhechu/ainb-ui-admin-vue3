@@ -1,56 +1,19 @@
 <!--
-  流程设计器 · 中栏画布（增量8 / P4，Phase C）
+  流程设计器 · 中栏画布（增量8 / P4，Phase C；本轮 Req 4/5/6/7 重构）
 
-  从 WorkflowEditorCanvas.vue 拆出的 VueFlow 段：工具条（缩放/适配/删节点/删连线/开发者模式）+ 画布
-  （自定义节点卡片、拖拽落点、连线、选中）+ 空画布引导 + 底部流程 JSON 兜底（开发者模式）。
-  本身不持有 DSL 状态，全部经 props.editor（useWorkflowEditor）读写；useVueFlow 的缩放/坐标 API 在本组件内取。
+  从 WorkflowEditorCanvas.vue 拆出的 VueFlow 段：画布（自定义节点卡片、拖拽落点、连线、选中）
+  + 空画布引导 + 底部流程 JSON 兜底（开发者模式）+ 节点右侧「＋」快捷加节点。
+  本身不持有 DSL 状态，全部经 props.editor（useWorkflowEditor）读写。
+
+  🔴 Req4：本组件**不再有工具条**。缩放（放大/缩小/适配）与开发者模式开关搬到了顶栏，和撤销/重做同一行——
+     原来那一行 34px 高的工具条挤了 5 个按钮 + 一句提示，画布白矮一截，而缩放/开发者模式本就是全局操作。
+     删除节点/删除连线也跟着搬进右侧属性面板（它们只作用于「当前选中项」，放面板里才是就近操作）。
+  🔴 Req5/6：底部流程 JSON 换成 Monaco 代码框（JsonCodeField），带语法高亮 + 实时格式检查，并可「放大」成弹窗
+     （弹窗本身还带项目 Dialog 的全屏切换，即「扩展弹窗的放大效果」）。
+  🔴 Req7：鼠标悬停节点 → 右侧浮出「＋」，点开直接选节点类型，自动串到原有连线上（graphEdit.insertAfter）。
 -->
 <template>
   <div class="wf-designer">
-    <div class="wf-designer__toolbar">
-      <el-button size="small" circle title="放大" @click="zoomIn()">
-        <Icon icon="ep:zoom-in" />
-      </el-button>
-      <el-button size="small" circle title="缩小" @click="zoomOut()">
-        <Icon icon="ep:zoom-out" />
-      </el-button>
-      <el-button size="small" circle title="适配画布" @click="fitView({ padding: 0.2 })">
-        <Icon icon="ep:full-screen" />
-      </el-button>
-      <el-divider direction="vertical" />
-      <el-button
-        v-if="!readonly"
-        size="small"
-        type="danger"
-        plain
-        :disabled="!selectedNodeId"
-        @click="deleteNode"
-      >
-        <Icon icon="ep:delete" class="mr-3px" />删除节点
-      </el-button>
-      <el-button
-        v-if="!readonly"
-        size="small"
-        type="danger"
-        plain
-        :disabled="!selectedEdge"
-        @click="deleteEdge"
-      >
-        <Icon icon="ep:delete" class="mr-3px" />删除连线
-      </el-button>
-      <span class="wf-designer__tip">从节点右侧圆点拉线到另一节点左侧圆点即连线</span>
-      <el-tooltip
-        content="打开后可直接编辑流程的 JSON 原文、配置失败恢复与补偿等高级项"
-        placement="bottom"
-        :show-after="300"
-      >
-        <div class="wf-designer__dev">
-          <span>开发者模式</span>
-          <el-switch v-model="devMode" size="small" data-testid="dev-mode-switch" />
-        </div>
-      </el-tooltip>
-    </div>
-
     <div
       class="wf-designer__canvas"
       @dragover.prevent="onDragOver"
@@ -128,6 +91,21 @@
               ● {{ sandboxCell(data.dslId)!.label }}
             </div>
             <Handle v-if="!data.isEnd" type="source" :position="Position.Right" />
+            <!--
+              Req7：悬停浮出的「＋」。放在卡片右侧、圆点（Handle）再往外一点，避免和拉线的手柄抢点击。
+              🔴 用 .wf-node:hover 控制显隐是安全的：按钮是 .wf-node 的 DOM 子元素，鼠标移到按钮上时
+                 父级 :hover 依然成立，不会「一移过去就消失」。nodrag/nopan 防止点它变成拖节点/平移画布。
+            -->
+            <button
+              v-if="!readonly && !data.isEnd"
+              type="button"
+              class="wf-node__plus nodrag nopan"
+              title="在这一步后面接一个节点"
+              data-testid="node-plus"
+              @click.stop="openQuickAdd(data)"
+            >
+              <Icon icon="ep:plus" />
+            </button>
           </div>
         </template>
       </VueFlow>
@@ -148,32 +126,93 @@
       </div>
     </div>
 
-    <!-- 底部：流程 JSON 兜底编辑（属开发者模式）——画布改动实时同步到此；也可直接改 JSON 后「应用到画布」 -->
-    <div v-if="devMode" class="wf-designer__json">
+    <!--
+      底部：流程 JSON 兜底编辑（属开发者模式）——画布改动实时同步到此；也可直接改 JSON 后「应用到画布」。
+      Req6：Monaco 代码框 + 常驻格式检查（写错标点当场报到行列，不用等点「应用」才报错）。
+      Req5：「放大」开弹窗编辑，弹窗内还能再切全屏。
+    -->
+    <div v-if="devMode" class="wf-designer__json" data-testid="dsl-json-panel">
       <div class="wf-designer__json-bar">
-        <span>流程 JSON（事实源）。画布改动实时同步到此；也可直接改 JSON 后「应用到画布」。</span>
-        <el-button v-if="!readonly" size="small" @click="applyJson">
-          <Icon icon="ep:refresh-right" class="mr-4px" />应用到画布
-        </el-button>
+        <span class="wf-designer__json-title">流程 JSON（事实源）</span>
+        <span class="wf-designer__json-tip">画布改动实时同步到此；也可直接改 JSON 后「应用到画布」。</span>
+        <div class="wf-designer__json-acts">
+          <el-button size="small" text type="primary" data-testid="dsl-json-enlarge" @click="jsonDialogVisible = true">
+            <Icon icon="radix-icons:enter-full-screen" class="mr-3px" />放大
+          </el-button>
+          <el-button v-if="!readonly" size="small" @click="applyJson">
+            <Icon icon="ep:refresh-right" class="mr-4px" />应用到画布
+          </el-button>
+        </div>
       </div>
-      <el-input
+      <JsonCodeField
         v-model="dslText"
-        type="textarea"
-        :rows="6"
-        class="wf-json-input"
-        spellcheck="false"
+        height="180px"
         :readonly="readonly"
+        :summarize="summarizeDsl"
+        test-id="dsl-json-status"
       />
     </div>
+
+    <!-- Req5：放大后的流程 JSON 编辑弹窗（项目 Dialog 自带全屏切换 = 「扩展弹窗的放大效果」） -->
+    <Dialog v-model="jsonDialogVisible" title="流程 JSON（事实源）" width="900px">
+      <div class="wf-json-dialog__tip">
+        这里改的是整条流程的原始定义。改完点「应用到画布」才会生效；格式不对时状态条会红字报到第几行第几列。
+      </div>
+      <JsonCodeField
+        v-model="dslText"
+        height="calc(100vh - 300px)"
+        :readonly="readonly"
+        :summarize="summarizeDsl"
+        test-id="dsl-json-status-lg"
+      />
+      <template #footer>
+        <el-button @click="jsonDialogVisible = false">关闭</el-button>
+        <el-button v-if="!readonly" type="primary" @click="applyJsonFromDialog">应用到画布</el-button>
+      </template>
+    </Dialog>
+
+    <!--
+      Req7：「＋」点开的快捷选节点弹窗。
+      🔴 用 el-dialog 而不是 el-popover：画布容器是 overflow:hidden，popover 贴着节点弹出会被裁掉；
+         append-to-body 的弹窗不受画布裁剪，且节点在屏幕任何位置都弹得出来。
+    -->
+    <el-dialog
+      v-model="quickAddVisible"
+      title="接一个节点"
+      width="460px"
+      append-to-body
+      data-testid="quick-add-dialog"
+    >
+      <div class="wf-quick__tip">
+        新节点会自动接在「{{ quickAddSource.name }}」后面{{ quickAddSource.hint }}。
+      </div>
+      <el-scrollbar max-height="420px">
+        <template v-for="g in paletteGroups" :key="g.name">
+          <div class="wf-quick__group">{{ g.name }}</div>
+          <div
+            v-for="item in g.items"
+            :key="item.value"
+            class="wf-quick__item"
+            @click="pickQuickAdd(item.value)"
+          >
+            <el-tag size="small" :type="item.tagType" effect="plain" class="wf-quick__tag">
+              {{ item.label }}
+            </el-tag>
+            <span class="wf-quick__desc">{{ item.description }}</span>
+          </div>
+        </template>
+      </el-scrollbar>
+    </el-dialog>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { VueFlow, Handle, Position, MarkerType, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
+import JsonCodeField from './JsonCodeField.vue'
 import type { WorkflowEditorContext } from '../useWorkflowEditor'
 
 defineOptions({ name: 'WorkflowDesigner' })
@@ -193,21 +232,62 @@ const {
   DND_MIME,
   onDragOver,
   addNodeAt,
+  addNodeAfter,
   onConnect,
   onNodeDragStop,
   onNodeClick,
   onEdgeClick,
   clearSelection,
-  deleteNode,
-  deleteEdge,
   insertSample,
   applyJson,
-  selectedNodeId,
-  selectedEdge,
+  paletteGroups,
   dslObject
 } = props.editor
 
-const { zoomIn, zoomOut, fitView, screenToFlowCoordinate } = useVueFlow(flowId)
+// 缩放 API 仍在本组件取（顶栏按钮由页面调 useVueFlow(同一个 flowId) 拿同一份 store）；
+// screenToFlowCoordinate 是拖拽落点换算，只有本组件用得到。
+const { fitView, screenToFlowCoordinate } = useVueFlow(flowId)
+
+/** Req5：放大弹窗可见性 */
+const jsonDialogVisible = ref(false)
+
+/** 状态条摘要：让「画布改动同步到 JSON」肉眼可验，也顺带告诉开发者这张图现在多大 */
+const summarizeDsl = (parsed: Record<string, any>): string => {
+  const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes.length : 0
+  const edges = Array.isArray(parsed?.edges) ? parsed.edges.length : 0
+  return `${nodes} 个节点 / ${edges} 条连线`
+}
+
+/** 放大弹窗里点「应用」：应用成功后关窗，别让弹窗挡住刚更新的画布 */
+const applyJsonFromDialog = () => {
+  applyJson()
+  jsonDialogVisible.value = false
+}
+
+// ---------- Req7：节点右侧「＋」快捷加节点 ----------
+
+const quickAddVisible = ref(false)
+const quickAddSource = ref<{ ref: string; name: string; hint: string }>({ ref: '', name: '', hint: '' })
+
+const openQuickAdd = (data: any) => {
+  const sourceRef = data?.dslRef
+  if (props.readonly || !sourceRef || sourceRef === 'END') return
+  const isStart = sourceRef === 'START'
+  quickAddSource.value = {
+    ref: sourceRef,
+    name: isStart ? '开始' : data.label || sourceRef,
+    hint: isStart ? '，成为流程的第一步' : '，插到它原有的下一步之前'
+  }
+  quickAddVisible.value = true
+}
+
+const pickQuickAdd = async (type: string) => {
+  const sourceRef = quickAddSource.value.ref
+  quickAddVisible.value = false
+  // 等快捷弹窗真的卸载再往下走：起点是条件节点时会紧接着弹「选择分支」，两个弹窗叠着会抢焦点
+  await nextTick()
+  await addNodeAfter(sourceRef, type)
+}
 
 /** 取某 DSL 节点当前的沙箱状态格（合成端点 dslId 为 null，天然不高亮） */
 const sandboxCell = (dslId: string | null | undefined) =>
@@ -246,30 +326,6 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
   flex-direction: column;
 }
 
-.wf-designer__toolbar {
-  display: flex;
-  flex-shrink: 0;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  align-items: center;
-  gap: 6px;
-}
-
-.wf-designer__tip {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--el-text-color-placeholder);
-}
-
-.wf-designer__dev {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-}
-
 .wf-designer__canvas {
   position: relative;
   min-height: 0;
@@ -300,14 +356,14 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
 
 .wf-designer__empty-title {
   margin-bottom: 10px;
-  font-size: 15px;
+  font-size: var(--wf-fs-lg, 15px);
   font-weight: 600;
 }
 
 .wf-designer__empty-steps {
   margin-bottom: 14px;
   padding-left: 18px;
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   line-height: 22px;
   color: var(--el-text-color-secondary);
   text-align: left;
@@ -322,15 +378,91 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
 .wf-designer__json-bar {
   display: flex;
   margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+}
+
+.wf-designer__json-title {
+  flex-shrink: 0;
+  font-size: var(--wf-fs-sm, 12px);
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.wf-designer__json-tip {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--wf-fs-xs, 11px);
+  color: var(--el-text-color-placeholder);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-designer__json-acts {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wf-json-dialog__tip {
+  margin-bottom: 8px;
+  font-size: var(--wf-fs-sm, 12px);
+  line-height: var(--wf-lh, 1.6);
+  color: var(--el-text-color-secondary);
+}
+
+/* Req7：「＋」快捷加节点弹窗 */
+.wf-quick__tip {
+  margin-bottom: 10px;
+  font-size: var(--wf-fs-sm, 12px);
+  line-height: var(--wf-lh, 1.6);
+  color: var(--el-text-color-secondary);
+}
+
+.wf-quick__group {
+  margin: 10px 0 4px;
+  font-size: var(--wf-fs-xs, 11px);
+  font-weight: 600;
+  color: var(--el-text-color-placeholder);
+}
+
+.wf-quick__item {
+  display: flex;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s;
+
+  &:hover {
+    border-color: var(--el-color-primary);
+    background: var(--el-color-primary-light-9);
+  }
+}
+
+.wf-quick__tag {
+  flex-shrink: 0;
+  min-width: 74px;
+  justify-content: center;
+}
+
+.wf-quick__desc {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--wf-fs-xs, 11px);
+  color: var(--el-text-color-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 画布节点卡片 */
 .wf-node {
+  position: relative;
   display: flex;
   min-width: 160px;
   max-width: 240px;
@@ -368,9 +500,41 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
   }
 }
 
+/* Req7：悬停才浮出的「＋」。right 取 -34px 是为了躲开拉线用的圆点手柄（它在 -4px 处、宽 10px） */
+.wf-node__plus {
+  position: absolute;
+  top: 50%;
+  right: -34px;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--el-color-primary);
+  border-radius: 50%;
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+  font-size: var(--wf-fs-sm, 12px);
+}
+
+.wf-node:hover .wf-node__plus,
+.wf-node__plus:focus-visible {
+  opacity: 1;
+}
+
+.wf-node__plus:hover {
+  background: var(--el-color-primary);
+  color: #fff;
+}
+
 .wf-node__sbx {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
   font-weight: 600;
   line-height: 15px;
 }
@@ -385,13 +549,14 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
 .wf-node__tag {
   flex-shrink: 0;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--wf-fs-xs, 11px);
 }
 
 .wf-node__label {
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   font-weight: 600;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -410,8 +575,8 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
   display: -webkit-box;
   width: 100%;
   overflow: hidden;
-  font-size: 11px;
-  line-height: 15px;
+  font-size: var(--wf-fs-sm, 12px);
+  line-height: 17px;
   color: var(--el-text-color-secondary);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -436,9 +601,9 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
   gap: 3px;
 
   code {
-    font-family: 'JetBrains Mono', Consolas, monospace;
-    font-size: 10px;
-    line-height: 14px;
+    font-family: var(--wf-mono, monospace);
+    font-size: var(--wf-fs-xs, 11px);
+    line-height: 15px;
     color: var(--el-text-color-regular);
   }
 }
@@ -448,12 +613,6 @@ watch(devMode, () => setTimeout(() => fitView({ padding: 0.2 }), 150))
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-}
-
-.wf-json-input :deep(textarea) {
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 :deep(.vue-flow__handle) {

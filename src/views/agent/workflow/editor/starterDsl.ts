@@ -18,13 +18,19 @@
  * 图是否合法留到设计器里「体检」与「发布」时校验（发布要求体检通过）。这正是「先建空白草稿 → 进设计器画」的预期体验。
  */
 
-import { DEFAULT_DSL } from './defaults'
+import { TRIGGER_CASES } from './triggerCases'
 
 /** 触发方式（与后端 WorkflowTriggerExtractor 归一化后的短名一致；none=不写 trigger 块） */
 export type WorkflowTriggerType = 'none' | 'chat' | 'form_event' | 'schedule' | 'webhook'
 
-/** 起步模板：空白 / 示例骨架 / 复制已有 */
-export type StarterTemplate = 'blank' | 'sample' | 'copy'
+/**
+ * 起步模板：空白 / 经典案例 / 复制已有
+ *
+ * 🔴 「经典案例」取代了原先的「示例骨架」：示例骨架是一份与触发方式无关的固定骨架，
+ *    而案例按**当前选的触发方式**给对应的完整流程（见 triggerCases.ts），
+ *    既示范了该触发方式的载荷怎么取，也示范了这类流程通常长什么样。
+ */
+export type StarterTemplate = 'blank' | 'case' | 'copy'
 
 /** 触发方式的配置元信息（按 type 取用对应字段；无关字段忽略） */
 export interface WorkflowTriggerMeta {
@@ -89,8 +95,29 @@ export function buildTriggerBlock(trigger: WorkflowTriggerMeta): Record<string, 
   }
 }
 
-/** 示例骨架：直接复用已验证可过体检的 DEFAULT_DSL（START→tool→END），深拷贝后改元信息 */
-const sampleBase = (): Record<string, any> => JSON.parse(DEFAULT_DSL)
+/**
+ * 经典案例骨架：取**当前触发方式**对应的案例图主体（见 triggerCases.ts）。
+ *
+ * 🔴 案例只提供 variables/nodes/edges（「流程长什么样」），trigger 块仍由 {@link buildTriggerBlock}
+ *    独家组装（「怎么被触发」）——两者分工明确，不会出现「案例里的 trigger 与实际选的不一致」。
+ * 🔴 body() 每次返回全新对象：editorModel 的变更是就地突变，共享字面量会被上一次用脏。
+ */
+const caseBase = (type: WorkflowTriggerType): Record<string, any> => {
+  const body = TRIGGER_CASES[type]?.body()
+  return {
+    dslVersion: '1.0',
+    id: '',
+    name: '',
+    description: '',
+    variables: body?.variables ?? [
+      { key: 'input', type: 'string', merge: 'replace', required: false },
+      { key: 'output', type: 'string', merge: 'replace' }
+    ],
+    nodes: body?.nodes ?? [],
+    edges: body?.edges ?? [],
+    settings: { recovery: 'forward', executionTimeoutSeconds: 120 }
+  }
+}
 
 /** 空白骨架：只有 input/output 变量，nodes/edges 皆空，交给设计器画（createDef 不做图校验，可建草稿） */
 const blankBase = (): Record<string, any> => ({
@@ -108,24 +135,24 @@ const blankBase = (): Record<string, any> => ({
 })
 
 /**
- * 构造起步 DSL 原文（JSON 字符串，2 空格缩进，与 DEFAULT_DSL 风格一致）。
+ * 构造起步 DSL 原文（JSON 字符串，2 空格缩进）。
  *
  * - blank：空画布起步；
- * - sample：示例骨架（含一个只读工具演示节点，开箱可过体检）；
+ * - case：当前触发方式的经典案例（完整可跑、开箱可过体检）；
  * - copy：深拷贝 {@code meta.copyDsl} 的结构（nodes/edges/variables/settings），重置 id/name/description。
  *
  * 三种模板都会：写入 code/name/description、按触发方式注入 trigger 块（none 则删除 trigger）。
- * copy 模板若 copyDsl 缺失或非法，安全退化为 sample（不因复制源损坏而挡住新建）。
+ * copy 模板若 copyDsl 缺失或非法，退化为**当前触发方式的经典案例**——仍是一份能过体检的完整流程，
+ * 而不是悄悄给个空画布让人误以为复制成功了。
  */
 export function buildStarterDsl(template: StarterTemplate, meta: StarterMeta): string {
   let base: Record<string, any>
   if (template === 'copy') {
-    const parsed = tryParse(meta.copyDsl)
-    base = parsed ?? sampleBase()
+    base = tryParse(meta.copyDsl) ?? caseBase(meta.trigger.type)
   } else if (template === 'blank') {
     base = blankBase()
   } else {
-    base = sampleBase()
+    base = caseBase(meta.trigger.type)
   }
 
   base.dslVersion = base.dslVersion || '1.0'

@@ -74,7 +74,7 @@
                     @input="markDirty"
                   />
                 </el-form-item>
-                <el-form-item label="Agent 编码" prop="code" class="!mb-0">
+                <el-form-item label="编码" prop="code" class="!mb-0">
                   <el-input
                     v-model="formData.code"
                     :disabled="isEdit || readonly"
@@ -107,21 +107,10 @@
               </el-card>
 
               <el-card shadow="never">
-                <template #header><span class="card-title">描述与备注</span></template>
-                <el-form-item label="描述" prop="description">
+                <template #header><span class="card-title">描述</span></template>
+                <el-form-item prop="description" class="!mb-0">
                   <el-input
                     v-model="formData.description"
-                    type="textarea"
-                    :rows="2"
-                    maxlength="500"
-                    show-word-limit
-                    placeholder="选填"
-                    @input="markDirty"
-                  />
-                </el-form-item>
-                <el-form-item label="备注" prop="remark" class="!mb-0">
-                  <el-input
-                    v-model="formData.remark"
                     type="textarea"
                     :rows="2"
                     maxlength="500"
@@ -240,8 +229,7 @@ const emptyForm = (): AgentDefSaveVO => ({
   modelId: undefined,
   knowledgeId: undefined,
   toolKeys: '',
-  description: '',
-  remark: ''
+  description: ''
 })
 const formData = ref<AgentDefSaveVO>(emptyForm())
 
@@ -295,7 +283,7 @@ const selectedTools = computed<string[]>({
 
 const formRules = reactive({
   code: [
-    { required: true, message: 'Agent 编码不能为空', trigger: 'blur' },
+    { required: true, message: '编码不能为空', trigger: 'blur' },
     {
       pattern: /^[a-z][a-z0-9_]{1,63}$/,
       message: '小写字母开头，仅含小写字母/数字/下划线，长度 2~64',
@@ -313,7 +301,7 @@ const statusTagType = computed<'info' | 'success' | 'warning'>(() =>
   status.value === 'PUBLISHED' ? 'success' : status.value === 'DISABLED' ? 'warning' : 'info'
 )
 const pageTitle = computed(() =>
-  isEdit.value ? formData.value.name || 'Agent 定义' : '新建 Agent 定义'
+  isEdit.value ? formData.value.name || '智能体' : '新建智能体'
 )
 
 const markDirty = () => {
@@ -341,8 +329,7 @@ const loadDef = async (id: number) => {
       modelId: data.modelId ?? undefined,
       knowledgeId: data.knowledgeId ?? undefined,
       toolKeys: data.toolKeys ?? '',
-      description: data.description ?? '',
-      remark: data.remark ?? ''
+      description: data.description ?? ''
     }
     dirty.value = false
   } finally {

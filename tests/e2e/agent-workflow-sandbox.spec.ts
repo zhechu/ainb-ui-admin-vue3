@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
+import { monacoOf, setMonacoText } from './helpers/monaco'
 
 /**
  * 流程设计器「沙箱测试」端到端验证（6 项优化 Req4b / Phase D）
@@ -55,7 +56,7 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
     await login(page)
     await gotoWithAuth(page, '/agent/workflow')
 
-    // 新增 → 示例骨架草稿 → 跳设计器
+    // 新增 → 经典案例草稿（默认模板）→ 跳设计器；随后整份 DSL 会被替换成沙箱专用链，模板内容不影响断言
     await page.getByRole('button', { name: '新增', exact: true }).click()
     const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
     await expect(dialog).toBeVisible({ timeout: 10000 })
@@ -63,7 +64,7 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
     const code = `wf_sbx_${stamp}`
     await dialog.locator('input[placeholder="请输入流程名称"]').fill(`沙箱测试${stamp}`)
     await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
-    await dialog.getByText('示例骨架', { exact: true }).click()
+    await dialog.locator('.el-radio').filter({ hasText: '经典案例' }).first().click()
     await dialog.getByRole('button', { name: '确定', exact: true }).click()
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
@@ -71,10 +72,16 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
 
     // 开发者模式 → 注入「只读→写」两节点链
     await page.locator('[data-testid="dev-mode-switch"]').click()
-    const dslTextarea = page.locator('.wf-designer__json textarea').last()
-    await expect(dslTextarea).toBeVisible({ timeout: 10000 })
-    await dslTextarea.fill(JSON.stringify(SANDBOX_DSL, null, 2))
-    await page.getByRole('button', { name: '应用到画布' }).click()
+    const jsonPanel = page.locator('[data-testid="dsl-json-panel"]')
+    await expect(jsonPanel).toBeVisible({ timeout: 10000 })
+    // 🔴 Req6：底部流程 JSON 已是 Monaco 代码框，不能用 fill()（真实内容在 Monaco 的 model 里，
+    //   DOM 上那个 textarea 只承载正在输入的一行）——统一走 helpers/monaco 的 全选+删除+insertText
+    await setMonacoText(page, monacoOf(jsonPanel), JSON.stringify(SANDBOX_DSL, null, 2))
+    await expect(jsonPanel.locator('[data-testid="dsl-json-status"]')).toContainText(
+      'JSON 格式正确',
+      { timeout: 10000 }
+    )
+    await jsonPanel.getByRole('button', { name: '应用到画布' }).click()
 
     // 打开沙箱抽屉
     await page.getByRole('button', { name: '沙箱测试' }).click()

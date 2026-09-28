@@ -33,6 +33,11 @@
         </div>
       </div>
       <div class="wf-editor__actions">
+        <!--
+          Req4：画布工具条整行取消，缩放与开发者模式搬到这里，和撤销/重做同一行。
+          🔴 缩放 API 靠 useVueFlow(editor.flowId) 拿：Vue Flow 的 store 以 id 为键全局注入，
+             父页与 Designer 传同一个 flowId 就是同一份 store，所以顶栏按钮能驱动子组件里的画布。
+        -->
         <div class="wf-editor__history">
           <el-tooltip content="撤销 (回退上一步)" placement="bottom">
             <el-button circle :disabled="!canUndo || saving" aria-label="撤销" @click="handleUndo">
@@ -44,10 +49,36 @@
               <Icon icon="ep:refresh-right" />
             </el-button>
           </el-tooltip>
+          <el-divider direction="vertical" class="wf-editor__sep" />
           <el-tooltip content="重新布局 (自动分层排列节点)" placement="bottom">
             <el-button circle :disabled="readonly || saving" aria-label="重新布局" @click="handleRelayout">
               <Icon icon="ep:share" />
             </el-button>
+          </el-tooltip>
+          <el-tooltip content="放大画布" placement="bottom">
+            <el-button circle :disabled="!canvasReady" aria-label="放大" @click="zoomIn()">
+              <Icon icon="ep:zoom-in" />
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="缩小画布" placement="bottom">
+            <el-button circle :disabled="!canvasReady" aria-label="缩小" @click="zoomOut()">
+              <Icon icon="ep:zoom-out" />
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="适配画布 (让全部节点正好显示在可视区)" placement="bottom">
+            <el-button circle :disabled="!canvasReady" aria-label="适配画布" @click="fitView({ padding: 0.2 })">
+              <Icon icon="ep:full-screen" />
+            </el-button>
+          </el-tooltip>
+          <el-divider direction="vertical" class="wf-editor__sep" />
+          <el-tooltip placement="bottom" :show-after="300">
+            <template #content>
+              开发者模式：在画布下方展开「流程 JSON（事实源）」，可直接改 JSON 并应用到画布
+            </template>
+            <div class="wf-editor__dev">
+              <span class="wf-editor__dev-label">开发者</span>
+              <el-switch v-model="devMode" size="small" data-testid="dev-mode-switch" />
+            </div>
           </el-tooltip>
         </div>
         <el-button
@@ -192,6 +223,7 @@
 
 <script lang="ts" setup>
 import { cloneDeep } from 'lodash-es'
+import { useVueFlow } from '@vue-flow/core'
 import {
   AgentWorkflowApi,
   type AgentWorkflowDefSaveVO,
@@ -254,8 +286,13 @@ const {
   routeDialogSelected,
   confirmRouteDialog,
   cancelRouteDialog,
-  routeTargetName
+  routeTargetName,
+  // Req4：开发者模式开关（localStorage 持久化）从画布工具条搬到了顶栏
+  devMode
 } = editor
+
+// Req4：画布缩放。store 以 flowId 为键，与 Designer 里的 useVueFlow(flowId) 是同一份
+const { zoomIn, zoomOut, fitView } = useVueFlow(editor.flowId)
 
 // ---------- 撤销 / 重做（editorHistory 快照栈 + deep watch 捕获就地突变） ----------
 const history = createHistory<EditorDsl>()
@@ -300,7 +337,12 @@ const handleRedo = () => {
   syncHistoryFlags()
   markDirty()
 }
-const handleRelayout = () => editor.relayout()
+// 重新布局后顺手适配视野：自动分层可能把节点摊得比原来宽/高，不适配的话右边一截会跑到可视区外。
+// 等 DOM 更新且 VueFlow 量到新尺寸再 fitView，setTimeout 比 nextTick 稳（同 Designer 里 devMode 的处理）。
+const handleRelayout = () => {
+  editor.relayout()
+  setTimeout(() => fitView({ padding: 0.2 }), 150)
+}
 const resetHistory = () => {
   history.reset(cloneDeep(dslObject.value))
   historyReady.value = true
@@ -489,6 +531,26 @@ const handleBack = async () => {
 }
 </script>
 
+<style lang="scss">
+/*
+  Req4：流程设计器的字号 / 字族令牌。
+  🔴 之前各处字号是硬编码的 10/11/12/13/14/15px 混着来，同类信息（节点名、字段标签、提示语）在不同面板里
+     大小不一，看着就"参差不齐"。收敛成 4 档 + 一个等宽字族后，改一处即全局生效。
+  🔴 挂在 :root 而不是 .wf-editor 上，是因为设计器里有三处 append-to-body 的浮层（沙箱抽屉、JSON 放大弹窗、
+     分支选择弹窗）——它们被 teleport 到 body 下，挂在 .wf-editor 上的变量继承不过去，那些面板就会退回浏览器
+     默认 16px。命名带 --wf- 前缀，不会与 Element / 全站变量撞。
+  这块刻意不 scoped：scoped 的 :root 会被编译成 :root[data-v-xxx]，永远匹配不上。
+*/
+:root {
+  --wf-fs-xs: 11px;
+  --wf-fs-sm: 12px;
+  --wf-fs-md: 13px;
+  --wf-fs-lg: 15px;
+  --wf-mono: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, 'Courier New', monospace;
+  --wf-lh: 1.6;
+}
+</style>
+
 <style lang="scss" scoped>
 .wf-editor {
   display: flex;
@@ -507,8 +569,16 @@ const handleBack = async () => {
   border-bottom: 1px solid var(--el-border-color-light);
   align-items: center;
   gap: 12px;
+  row-gap: 6px;
   justify-content: space-between;
   flex-shrink: 0;
+  /*
+   * 🔴 Req4 把缩放/开发者模式搬上顶栏后，动作区在 1280px 下约 1000px 宽。
+   *   若顶栏不许换行，flex 会把身份区（名称/编码输入框）压到 0 宽——输入框肉眼直接消失，
+   *   而 toHaveValue 这类断言不要求可见，会静默放过。所以这里允许换行，并给身份区一个
+   *   不可压缩的下限：窄屏时动作区整体掉到第二行，而不是吃掉输入框。
+   */
+  flex-wrap: wrap;
 }
 
 .wf-editor__identity,
@@ -519,12 +589,12 @@ const handleBack = async () => {
 }
 
 .wf-editor__identity {
-  min-width: 0;
-  flex: 1;
+  min-width: 480px;
+  flex: 1 1 480px;
 }
 
 .wf-editor__actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -537,6 +607,24 @@ const handleBack = async () => {
   :deep(.el-button) {
     margin-left: 0;
   }
+}
+
+.wf-editor__sep {
+  height: 20px;
+  margin: 0 4px;
+}
+
+.wf-editor__dev {
+  display: flex;
+  padding: 0 4px;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-editor__dev-label {
+  font-size: var(--wf-fs-sm, 12px);
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 
 .wf-editor__meta {
@@ -561,18 +649,20 @@ const handleBack = async () => {
 }
 
 .wf-editor__name :deep(input) {
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--wf-fs-lg, 15px);
+  // 650 是非法字重（浏览器会就近取 700），与全站标题的 600 不一致，故统一到 600
+  font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
 .wf-editor__code :deep(input) {
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
+  font-family: var(--wf-mono, monospace);
   color: var(--el-text-color-secondary);
 }
 
 .wf-editor__ro {
-  font-size: 12px;
+  font-size: var(--wf-fs-sm, 12px);
   color: var(--el-color-warning);
 }
 
@@ -586,7 +676,7 @@ const handleBack = async () => {
   padding-left: 18px;
 
   li {
-    font-size: 12px;
+    font-size: var(--wf-fs-sm, 12px);
     line-height: 20px;
   }
 }
@@ -611,7 +701,7 @@ const handleBack = async () => {
 
 .wf-editor__route-tip {
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: var(--wf-fs-md, 13px);
   line-height: 20px;
   color: var(--el-text-color-regular);
 }

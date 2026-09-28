@@ -116,22 +116,32 @@ test.describe('聊天入口按 Agent 路由', () => {
     expect(body.agentDefId ?? null, `默认助手不该带 agentDefId：${JSON.stringify(body)}`).toBeNull()
   })
 
-  test('Agent 定义表单有「模型」与「知识库」下拉（E3：模型/知识库绑定入口）', async ({ page }) => {
+  test('智能体设计器有「模型」与「知识库」下拉（E3：模型/知识库绑定入口）', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/def')
-    await expect(page.getByText('Agent 编码').first()).toBeVisible({ timeout: 20000 })
+    await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
 
-    await page.getByRole('button', { name: /新增 Agent/ }).first().click()
-    const dialog = page.locator('.el-dialog').filter({ hasText: '新建 Agent 定义' }).first()
-    await expect(dialog).toBeVisible({ timeout: 15000 })
+    // 🔴 新建/编辑早已从 760px 弹窗改成整页设计器（/agent-def/editor）。本用例原先还在等
+    //    一个 hasText:'新建 Agent 定义' 的 .el-dialog，那个弹窗已经不存在了，永远超时——改为驱动整页。
+    await page.getByRole('button', { name: '新增', exact: true }).first().click()
+    await page.waitForURL(/\/agent-def\/editor/)
+
+    const cardOf = (title: string) =>
+      page
+        .locator('.el-card')
+        .filter({ has: page.locator('.card-title', { hasText: title }) })
+        .first()
+
     // 「模型」字段在（可空，占位「默认（动态选择）」）——只验结构，不依赖是否有启用的模型数据
-    const modelItem = dialog.locator('.el-form-item:has-text("模型")').first()
-    await expect(modelItem).toBeVisible({ timeout: 10000 })
-    await expect(modelItem.locator('.el-select').first()).toBeVisible()
-    // 增量11（slice-3a）：「知识库」字段在（可空，占位「不绑定（无知识库检索）」）——同弹窗内、只验结构，不依赖 KB 数据
-    const knowledgeItem = dialog.locator('.el-form-item:has-text("知识库")').first()
-    await expect(knowledgeItem).toBeVisible({ timeout: 10000 })
-    await expect(knowledgeItem.locator('.el-select').first()).toBeVisible()
-    await dialog.getByRole('button', { name: /取消/ }).first().click()
+    const modelCard = cardOf('模型')
+    await expect(modelCard).toBeVisible({ timeout: 15000 })
+    await expect(modelCard.locator('.el-select').first()).toBeVisible()
+    // 增量11（slice-3a）：「知识库」字段在（可空，占位「不绑定（无知识库检索）」）——同纪律，不依赖 KB 数据
+    const knowledgeCard = cardOf('知识库')
+    await expect(knowledgeCard).toBeVisible({ timeout: 10000 })
+    await expect(knowledgeCard.locator('.el-select').first()).toBeVisible()
+
+    await page.locator('button[title="返回列表"]').click()
+    await page.waitForURL(/\/agent\/def$/)
   })
 })

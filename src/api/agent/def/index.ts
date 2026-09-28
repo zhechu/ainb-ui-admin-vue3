@@ -39,7 +39,6 @@ export interface AgentDefVO {
    */
   workflowDriven?: boolean
   description?: string
-  remark?: string
   version: number
   /** DRAFT 草稿 / PUBLISHED 已发布 / DISABLED 已停用 */
   status: string
@@ -70,7 +69,6 @@ export interface AgentDefSaveVO {
   /** 绑定只读工具键，逗号分隔；空=不启用工具循环。见 {@link AgentDefVO.toolKeys} */
   toolKeys?: string | null
   description?: string
-  remark?: string
 }
 
 export const AgentDefApi = {

@@ -1,44 +1,47 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
+import { monacoOf, setMonacoText, expectMonacoVisible } from './helpers/monaco'
 
 /**
- * 流程编排「新增弹窗 → 整页设计器」端到端验证（6 项优化 Phase A/B/C/D 重构后）
- *
- * 🔴 为什么重写：本模块原先是「列表『新增流程』按钮直跳整页设计器（内嵌 1515 行巨型画布）」。
- *   6 项优化后改为：列表『新增』→ 元信息弹窗（名称/编码/触发/模板）→ 建草稿 → 跳门户式三栏设计器
- *   （左目录 / 中画布 / 右属性面板 + 顶栏撤销/重做/沙箱测试）。旧断言（『新增流程』直跳、.editor-json、
- *   .palette-item）已随重构失效，故整篇按新 UI 重写。
+ * 流程编排「新增弹窗 → 整页设计器」端到端验证
  *
  * 🔴 为什么非要走浏览器：接口/单测证不了「弹窗真能建草稿并跳设计器、三栏真渲染、VueFlow 不 0 高塌陷、
- *   点目录真加节点、撤销/重做真回退、沙箱抽屉真能打开」——这些只有真实 DOM 才暴露（本模块头号缺陷
- *   正是「配了/点了但不生效且无提示」）。
+ *   顶栏缩放/开发者模式真能驱动画布、JSON 面板真是代码编辑器且能放大、点节点上的『＋』真能接线、
+ *   删除真不弹二次确认、撤销/重做真回退」——这些只有真实 DOM 才暴露（本模块头号缺陷正是
+ *   「配了/点了但不生效且无提示」）。
  *
- * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。
+ * 覆盖的用户要求：
+ *   Req2 删除节点/连线不二次确认（撤销兜底）
+ *   Req4 画布工具条取消，缩放 + 开发者模式上顶栏与撤销重做同行；字号统一
+ *   Req5 开发者模式下的流程 JSON 可放大成弹窗
+ *   Req6 JSON 面板换成代码编辑器（高亮 + 实时格式校验）
+ *   Req7 鼠标移到节点上出现「＋」，点它直接选节点接到后面
+ *
+ * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。DSL 里不放大模型节点以外的真实调用，
+ * 「大模型」节点只是加进画布并不运行，故不消耗额度。
  * 数据自净：新建的草稿在最后回列表删除（用唯一 code 定位）。
- *
- * 判据：序号列在 → 『新增』弹窗 → 填名称/编码/示例骨架 → 确定 → 跳设计器 → 画布 ≥3 节点且非 0 高 →
- *       左目录在 → 开发者模式出底部 JSON → 点『大模型』节点 +1 且属性面板出结构化字段 →
- *       撤销节点回落 / 重做恢复 → 沙箱抽屉可开 → 回列表删除草稿。
  */
 
 const LIST_URL = /\/agent\/workflow$/
 const EDITOR_URL = /\/agent-workflow\/editor/
 
 test.describe('流程编排：新增弹窗 → 整页设计器', () => {
-  test.setTimeout(150_000)
+  test.setTimeout(180_000)
 
-  test('序号列 + 新增弹窗建草稿 → 三栏设计器 → 加节点/撤销重做 → 沙箱抽屉', async ({ page }) => {
+  test('新增建草稿 → 三栏设计器 → 顶栏缩放/开发者模式 → JSON 放大 → ＋加节点 → 删除免确认 → 撤销重做', async ({
+    page
+  }) => {
     await login(page)
     await gotoWithAuth(page, '/agent/workflow')
 
-    // Req1：序号列（参考模型配置页）+「新增」按钮（不再是「新增流程」直跳设计器）
+    // Req1（上一轮）：序号列 +「新增」按钮（不再是「新增流程」直跳设计器）
     await expect(page.getByRole('columnheader', { name: '序号' }).first()).toBeVisible({
       timeout: 20000
     })
     const addBtn = page.getByRole('button', { name: '新增', exact: true })
     await expect(addBtn).toBeVisible()
 
-    // Req2：点「新增」→ 元信息弹窗（新增与设计分开）
+    // 点「新增」→ 元信息弹窗（新增与设计分开）
     await addBtn.click()
     const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
     await expect(dialog).toBeVisible({ timeout: 10000 })
@@ -47,13 +50,16 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     const code = `wf_e2e_${stamp}`
     await dialog.locator('input[placeholder="请输入流程名称"]').fill(`E2E测试流程${stamp}`)
     await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
-    await dialog.getByText('示例骨架', { exact: true }).click()
+    // 起步模板默认「经典案例」（按当前触发方式 chat 生成完整流程）。
+    // 🔴 用 .el-radio 容器定位而不是 getByText：弹窗内联的案例卡与 form-tip 里也出现「经典案例」四个字，
+    //    getByText 会撞严格模式（多匹配）而失败。
+    await dialog.locator('.el-radio').filter({ hasText: '经典案例' }).first().click()
     await dialog.getByRole('button', { name: '确定', exact: true }).click()
 
     // 建草稿后跳整页设计器
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
-    // Phase C：三栏设计器渲染。示例骨架 START→tool→END ≥3 节点，VueFlow 非 0 高（R1 回归守卫）
+    // 三栏设计器渲染。chat 案例 START→查表单→回答→END ≥3 节点，VueFlow 非 0 高（R1 回归守卫）
     const flowNodes = page.locator('.vue-flow__node')
     await expect(flowNodes.first()).toBeVisible({ timeout: 20000 })
     const initialCount = await flowNodes.count()
@@ -63,28 +69,114 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     // 左目录在
     await expect(page.locator('.wf-palette__item').first()).toBeVisible({ timeout: 10000 })
 
-    // 开发者模式 → 底部流程 JSON 可见（新类名 .wf-designer__json）
-    await page.locator('[data-testid="dev-mode-switch"]').click()
-    const dslTextarea = page.locator('.wf-designer__json textarea').last()
-    await expect(dslTextarea).toBeVisible({ timeout: 10000 })
+    // Req4：画布内不再有工具条那一行（缩放/删除/开发者模式全搬走了），画布因此吃满高度
+    await expect(page.locator('.wf-designer__toolbar')).toHaveCount(0)
+    // 缩放与开发者模式在顶栏，和撤销/重做同一行
+    const historyBar = page.locator('.wf-editor__history')
+    await expect(historyBar.getByRole('button', { name: '撤销' })).toBeVisible({ timeout: 10000 })
+    await expect(historyBar.getByRole('button', { name: '放大' })).toBeVisible()
+    await expect(historyBar.getByRole('button', { name: '缩小' })).toBeVisible()
+    await expect(historyBar.getByRole('button', { name: '适配画布' })).toBeVisible()
+    await expect(historyBar.locator('[data-testid="dev-mode-switch"]')).toBeVisible()
+
+    // 缩放按钮真能驱动画布：记下当前视口变换，点「放大」后必须变
+    // 🔴 变换写在 .vue-flow__transformationpane 上（VueFlow 1.48 的 Viewport 内部结构），
+    //   不是 .vue-flow__viewport —— 后者是外层容器，本身不带 transform，读它永远是 "none"
+    const viewport = page.locator('.vue-flow__transformationpane').first()
+    const readTransform = () => viewport.evaluate((el) => getComputedStyle(el).transform)
+    const transformBefore = await readTransform()
+    expect(transformBefore).not.toBe('none')
+    await historyBar.getByRole('button', { name: '放大' }).click()
+    await expect.poll(readTransform, { timeout: 5000 }).not.toBe(transformBefore)
+    await historyBar.getByRole('button', { name: '适配画布' }).click()
+
+    // Req4 + Req6：开发者模式 → 底部流程 JSON 面板是代码编辑器（Monaco）+ 实时格式校验状态条
+    await historyBar.locator('[data-testid="dev-mode-switch"]').click()
+    const jsonPanel = page.locator('[data-testid="dsl-json-panel"]')
+    await expect(jsonPanel).toBeVisible({ timeout: 10000 })
+    const dslEditor = monacoOf(jsonPanel)
+    await expectMonacoVisible(dslEditor)
+    const jsonStatus = page.locator('[data-testid="dsl-json-status"]')
+    await expect(jsonStatus).toContainText('JSON 格式正确', { timeout: 10000 })
+    // 状态条带节点/连线摘要：既能证明画布改动同步回了事实源 JSON，也是下面断言的抓手
+    // 🔴 不去断言 Monaco 的文本内容——它只渲染视口内的行（虚拟滚动），长 JSON 根本读不全
+    const readNodeCount = async () =>
+      Number(((await jsonStatus.textContent()) ?? '').match(/(\d+)\s*个节点/)?.[1] ?? -1)
+    const nodesBefore = await readNodeCount()
+    expect(nodesBefore).toBeGreaterThan(0)
+
+    // Req6：格式检查真的会报错（在编辑器里把 JSON 改坏，状态条立刻指出第几行）
+    // 🔴 故意用「键忘了加引号」这种坏法：不含引号/括号，就算 Monaco 的自动补全插了字符也照样非法，
+    //   断言不会因为补全而假通过（写 '{"nodes": [}' 一旦被补成 '{"nodes": []}' 反而变成合法 JSON）
+    await setMonacoText(page, dslEditor, '{ nodes: [] }')
+    await expect(jsonStatus).toContainText('JSON 格式错误', { timeout: 10000 })
+    // 还原：手改 JSON 只动 dslText、不动事实源 dslObject，所以「重新布局」重算时会把原文重新写回文本框
+    await page.getByRole('button', { name: '重新布局' }).click()
+    await expect(jsonStatus).toContainText('JSON 格式正确', { timeout: 10000 })
+
+    // Req5：JSON 面板可放大成弹窗（复用全站 Dialog，标题栏自带全屏切换）
+    await page.locator('[data-testid="dsl-json-enlarge"]').click()
+    const lgDialog = page.locator('.el-dialog').filter({ hasText: '流程 JSON（事实源）' }).first()
+    await expect(lgDialog).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('[data-testid="dsl-json-status-lg"]')).toContainText(
+      'JSON 格式正确',
+      { timeout: 10000 }
+    )
+    // 放大后的编辑器比面板里那个高（真的变大了，不是换了个壳）
+    const lgBox = await monacoOf(lgDialog).boundingBox()
+    const smBox = await dslEditor.boundingBox()
+    expect(lgBox?.height ?? 0).toBeGreaterThan((smBox?.height ?? 0) + 50)
+    await lgDialog.getByRole('button', { name: '关闭' }).click()
+    await expect(lgDialog).toBeHidden({ timeout: 10000 })
 
     // 目录点「大模型」→ 节点 +1，属性面板自动选中并出结构化字段（提示词/模型）
     await page.locator('.wf-palette__item').filter({ hasText: '大模型' }).first().click()
-    await expect(page.locator('.vue-flow__node')).toHaveCount(initialCount + 1, { timeout: 10000 })
+    await expect(flowNodes).toHaveCount(initialCount + 1, { timeout: 10000 })
     await expect(page.getByText('节点配置').first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('提示词', { exact: true }).first()).toBeVisible({ timeout: 10000 })
-    // 画布改动同步回底部流程 JSON（事实源）
-    await expect(dslTextarea).toHaveValue(/"type":\s*"llm"/, { timeout: 10000 })
+    // 画布改动同步回底部流程 JSON（事实源）：状态条摘要里的节点数 +1
+    await expect.poll(readNodeCount, { timeout: 10000 }).toBe(nodesBefore + 1)
 
-    // Phase C：撤销 → 节点数回落；重做 → 恢复
-    await page.getByRole('button', { name: '撤销' }).click()
-    await expect(page.locator('.vue-flow__node')).toHaveCount(initialCount, { timeout: 10000 })
-    await page.getByRole('button', { name: '重做' }).click()
-    await expect(page.locator('.vue-flow__node')).toHaveCount(initialCount + 1, { timeout: 10000 })
+    // 撤销 → 节点数回落；重做 → 恢复
+    await historyBar.getByRole('button', { name: '撤销' }).click()
+    await expect(flowNodes).toHaveCount(initialCount, { timeout: 10000 })
+    await historyBar.getByRole('button', { name: '重做' }).click()
+    await expect(flowNodes).toHaveCount(initialCount + 1, { timeout: 10000 })
 
-    // Phase D：沙箱测试抽屉能打开（不实际跑，避免消耗 token；运行链路由后端接口测试覆盖）
+    // Req7：鼠标移到节点上出现「＋」，点它直接从弹窗选一个节点接到后面
+    const lookup = flowNodes.filter({ hasText: '按问题查表单' }).first()
+    await lookup.hover()
+    const plus = lookup.locator('[data-testid="node-plus"]')
+    // 🔴 用 toHaveCSS 而不是 toBeVisible：按钮平时是 opacity:0，而 Playwright 认为 opacity:0 也算「可见」
+    await expect(plus).toHaveCSS('opacity', '1', { timeout: 5000 })
+    await plus.click()
+    const quick = page.locator('[data-testid="quick-add-dialog"]')
+    await expect(quick).toBeVisible({ timeout: 10000 })
+    await expect(quick).toContainText('按问题查表单')
+    const countBeforeQuick = await flowNodes.count()
+    // 🔴 必须用「知识检索」这个唯一标签：快捷弹窗每项同时渲染 标签+描述，
+    //   「知识库」只出现在描述里（可能命中多项），「大模型」更是同时是 大模型 的标签和 LLM 条件 的描述
+    await quick.locator('.wf-quick__item').filter({ hasText: '知识检索' }).first().click()
+    await expect(quick).toBeHidden({ timeout: 10000 })
+    await expect(flowNodes).toHaveCount(countBeforeQuick + 1, { timeout: 10000 })
+    // 新节点被自动选中，属性面板跟着切过去
+    await expect(page.getByText('节点配置').first()).toBeVisible({ timeout: 10000 })
+
+    // Req2：删除节点不弹二次确认（撤销能兜底）。删除按钮已搬到右侧属性面板（就近操作）
+    const delNodeBtn = page.locator('[data-testid="delete-node-btn"]')
+    await expect(delNodeBtn).toBeVisible({ timeout: 10000 })
+    await delNodeBtn.click()
+    // 立刻掉一个节点，且没有任何确认弹窗插进来
+    await expect(flowNodes).toHaveCount(countBeforeQuick, { timeout: 10000 })
+    await expect(page.locator('.el-message-box')).toHaveCount(0)
+    // 撤销把它找回来
+    await historyBar.getByRole('button', { name: '撤销' }).click()
+    await expect(flowNodes).toHaveCount(countBeforeQuick + 1, { timeout: 10000 })
+
+    // 沙箱测试抽屉能打开（不实际跑，避免消耗 token；运行链路由 agent-workflow-sandbox 覆盖）
     await page.getByRole('button', { name: '沙箱测试' }).click()
     await expect(page.locator('[data-testid="sandbox-drawer"]')).toBeVisible({ timeout: 10000 })
+    // 不关抽屉：下面走 page.goto 硬跳，Vue Router 的未保存守卫拦不到，也就没必要跟关闭按钮较劲
 
     // 清理：硬跳回列表（绕过未保存改动守卫）→ 删除刚建的草稿（数据自净）
     await gotoWithAuth(page, '/agent/workflow')
