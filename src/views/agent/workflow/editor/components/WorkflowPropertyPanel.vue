@@ -462,7 +462,7 @@
         </el-button>
       </template>
 
-      <!-- 未选中：流程信息（描述/备注）+ 操作提示 -->
+      <!-- 未选中：流程信息（描述）+ 操作提示 -->
       <div v-else class="wf-panel__empty">
         <div class="wf-panel__title">流程信息</div>
         <el-form label-position="top" size="small" :disabled="readonly">
@@ -472,16 +472,6 @@
               type="textarea"
               :rows="2"
               placeholder="这条流程做什么（选填）"
-              maxlength="500"
-              show-word-limit
-            />
-          </el-form-item>
-          <el-form-item label="备注">
-            <el-input
-              v-model="remark"
-              type="textarea"
-              :rows="2"
-              placeholder="给协作者的说明（选填）"
               maxlength="500"
               show-word-limit
             />
@@ -510,9 +500,8 @@ import type { WorkflowEditorContext } from '../useWorkflowEditor'
 
 defineOptions({ name: 'WorkflowPropertyPanel' })
 
-/** 流程元信息（描述/备注）双向绑定：由页面 v-model 下发，编辑即回写 formData（页面 watch 标脏） */
+/** 流程元信息（描述）双向绑定：由页面 v-model 下发，编辑即回写 formData（页面 watch 标脏） */
 const description = defineModel<string>('description')
-const remark = defineModel<string>('remark')
 
 const props = defineProps<{ editor: WorkflowEditorContext; readonly: boolean }>()
 const {

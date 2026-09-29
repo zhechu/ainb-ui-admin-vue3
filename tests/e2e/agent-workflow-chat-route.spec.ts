@@ -114,7 +114,7 @@ test.describe('工作流驱动的 Agent（对话触发跑指定 workflow）', ()
   }) => {
     // 🔴 不拦截 send-stream：本用例正是要真跑工作流（tool 节点只读，全链路 0 LLM token）。
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     // 选择器出现，选中绑定 chatflow 的 Agent
     const picker = page.getByTestId('agent-picker')

@@ -52,7 +52,7 @@ test.describe('AI 助手配额 - Agent/工作流维度', () => {
 
   test('表单渲染 4 维度；工作流禁用金额；Agent 下拉加载选项；保存后表格出现', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/config')
+    await gotoWithAuth(page, '/ai/agent/config')
     await expect(page.getByText('用量配额')).toBeVisible({ timeout: 20_000 })
 
     // 打开新增表单

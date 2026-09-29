@@ -167,8 +167,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '流程编排设计器',
-          // 「流程编排」菜单在 /agent/workflow（DB 菜单驱动），设计器是它的隐藏整页子页
-          activeMenu: '/agent/workflow'
+          // 「流程编排」菜单在 /ai/agent/workflow（DB 菜单驱动，2026-09-29 起挂在「AI」下），设计器是它的隐藏整页子页
+          activeMenu: '/ai/agent/workflow'
         }
       }
     ]
@@ -190,8 +190,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '智能体设计器',
-          // 「智能体管理」菜单在 /agent/def（DB 菜单驱动），设计器是它的隐藏整页子页
-          activeMenu: '/agent/def'
+          // 「智能体管理」菜单在 /ai/agent/def（DB 菜单驱动，2026-09-29 起挂在「AI」下），设计器是它的隐藏整页子页
+          activeMenu: '/ai/agent/def'
         }
       }
     ]

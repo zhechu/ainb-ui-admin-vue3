@@ -107,7 +107,7 @@ test.describe('AI 助手 · 全局悬浮入口', () => {
 
   test('🔴 助手独立页上整块不渲染 —— 否则页面与浮层里各有一个对话组件', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
     await expect(page.getByText('我是平台助手').first()).toBeVisible({ timeout: 20000 })
 
     await expect(page.locator('[data-testid="agent-dock-ball"]')).toHaveCount(0)

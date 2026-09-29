@@ -150,17 +150,7 @@
           :rows="2"
           maxlength="500"
           show-word-limit
-          placeholder="选填"
-        />
-      </el-form-item>
-      <el-form-item label="备注" prop="remark">
-        <el-input
-          v-model="formData.remark"
-          type="textarea"
-          :rows="2"
-          maxlength="500"
-          show-word-limit
-          placeholder="选填"
+          placeholder="选填，写清这条流程解决什么问题、由什么触发"
         />
       </el-form-item>
     </el-form>
@@ -217,7 +207,6 @@ interface WorkflowFormData {
   authType: string
   secret: string
   description: string
-  remark: string
 }
 
 const defaultFormData = (): WorkflowFormData => ({
@@ -235,8 +224,7 @@ const defaultFormData = (): WorkflowFormData => ({
   path: '',
   authType: 'none',
   secret: '',
-  description: '',
-  remark: ''
+  description: ''
 })
 const formData = ref<WorkflowFormData>(defaultFormData())
 
@@ -254,6 +242,8 @@ const agentLoading = ref(false)
 /**
  * 拉「已发布」智能体作为驱动 Agent 候选。
  * 🔴 只取 PUBLISHED：草稿/停用在对话入口本就选不到，列出来只会让人绑一个不生效的 Agent。
+ * 🔴 需求10：还要剔掉系统内置行（默认平台助手）。chatflow 反查只在「选了 Agent」时才按 agentCode 跑，
+ *    未选 Agent 的对话压根不查这张表——把流程绑到 platform_assistant 上，它永远不会被触发。
  * 🔴 fail-soft：拉不到就空列表，下拉仍可 allow-create 手填 code，不该挡住新建流程。
  */
 const loadAgentOptions = async () => {
@@ -263,7 +253,7 @@ const loadAgentOptions = async () => {
     const data = await AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100, status: 'PUBLISHED' })
     const seen = new Set<string>()
     agentOptions.value = (data.list ?? []).filter((a) => {
-      if (!a.code || seen.has(a.code)) return false
+      if (a.builtin || !a.code || seen.has(a.code)) return false
       seen.add(a.code)
       return true
     }).map((a) => ({ code: a.code, label: `${a.name || a.code}（${a.code}）` }))
@@ -398,8 +388,7 @@ const open = async (type: 'create' | 'update', row?: AgentWorkflowDefVO) => {
         id: full.id,
         name: full.name,
         code: full.code,
-        description: full.description ?? '',
-        remark: full.remark ?? ''
+        description: full.description ?? ''
       }
       applyTriggerFromDsl(existingDsl.value)
     } finally {
@@ -431,8 +420,7 @@ const submitForm = async () => {
         code: d.code,
         name: d.name,
         dsl,
-        description: d.description,
-        remark: d.remark
+        description: d.description
       })
       message.success('保存成功')
       dialogVisible.value = false
@@ -457,8 +445,7 @@ const submitForm = async () => {
       code: d.code,
       name: d.name,
       dsl: starterDsl,
-      description: d.description,
-      remark: d.remark
+      description: d.description
     })
     message.success('新建成功（草稿）')
     dialogVisible.value = false

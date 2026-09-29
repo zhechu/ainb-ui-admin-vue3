@@ -107,7 +107,7 @@ test.describe('聊天内 HITL 确认/恢复（工作流驱动的 Agent）', () =
     page
   }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     // 选中绑定 chatflow 的 Agent
     const picker = page.getByTestId('agent-picker')

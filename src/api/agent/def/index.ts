@@ -15,6 +15,18 @@ import request from '@/config/axios'
 export interface AgentDefVO {
   id: number
   code: string
+  /**
+   * 是否系统内置（需求10）。当前只有「默认平台助手」一行为 true。
+   *
+   * 🔴 内置行是<b>单例配置</b>而非业务 Agent，前端据此有四处不同：
+   * 1. 列表打「系统内置」标签；
+   * 2. 不出「删除 / 停用 / 发布」按钮（后端会抛 AGENT_DEF_BUILTIN_READONLY）；
+   * 3. 编辑器只渲染「名称 / 人设 / 描述」——模型、知识库、工具三列在「未选 Agent」这条路上根本不被读取，
+   *    放出来就是「配了但不生效」（本平台头号缺陷）；
+   * 4. 聊天页的 Agent 选择器要把它排除：选择器已有一个 value=0 的「默认平台助手」哨兵项，
+   *    再列一次真行会让用户选中它 → 走自定义 Agent 路径 → 悄悄丢掉手册检索与追问建议。
+   */
+  builtin?: boolean
   name: string
   /** 人设=系统提示词原文；仅 get?id 返回，分页为 null */
   persona?: string | null
@@ -55,7 +67,9 @@ export interface AgentDefPageReqVO extends PageParam {
 /**
  * 新建/修改定义的入参，对应后端 {@code AgentDefSaveReqVO}。
  * 🔴 新建时 id 为空、code 必填且可编辑；修改时 id 必填、code 只读（改 code 等于换一个 Agent，后端不支持）。
- * 后端 update 仅对 DRAFT 生效，非草稿抛 AGENT_DEF_NOT_DRAFT。
+ * 🔴 update 只对 DRAFT 生效（非草稿抛 AGENT_DEF_NOT_DRAFT），<b>唯一例外</b>是系统内置行：
+ *    它虽为 PUBLISHED 也允许就地改，但后端只认 name/persona/description 三列，
+ *    这里的 modelId/knowledgeId/toolKeys 会被<b>静默忽略</b>（故编辑器对内置行不渲染这三列）。
  */
 export interface AgentDefSaveVO {
   id?: number
@@ -71,6 +85,17 @@ export interface AgentDefSaveVO {
   description?: string
 }
 
+/**
+ * 复制成一个新智能体的入参，对应后端 {@code AgentDefCopyReqVO}。
+ * 🔴 只需给新 code + 新 name：人设/模型/知识库/工具/描述由后端从源定义整份搬过来。
+ *    刻意不让前端回传这些字段——少传一个就会静默生成一个「配置不全」的 Agent。
+ */
+export interface AgentDefCopyVO {
+  id: number
+  code: string
+  name: string
+}
+
 export const AgentDefApi = {
   /** 定义分页（列表不带 persona 正文） */
   getDefPage: (params: AgentDefPageReqVO): Promise<PageResult<AgentDefVO[]>> =>
@@ -84,11 +109,22 @@ export const AgentDefApi = {
   createDef: (data: AgentDefSaveVO): Promise<number> =>
     request.post({ url: '/agent/def/create', data }),
 
-  /** 修改定义（仅 DRAFT 可改；后端 update 对非草稿抛 AGENT_DEF_NOT_DRAFT） */
+  /** 修改定义（仅 DRAFT 可改；系统内置行也可改但只认三列） */
   updateDef: (data: AgentDefSaveVO): Promise<boolean> =>
     request.put({ url: '/agent/def/update', data }),
 
-  /** 删除定义（仅 DRAFT 可删） */
+  /**
+   * 基于已有定义派生一个新草稿版本（同 code、version+1），返回新版本 id。
+   * 🔴 需求11：已发布/已停用行不可就地改，点「编辑」时先派生再进编辑器。后端对内置行抛 AGENT_DEF_BUILTIN_READONLY。
+   */
+  deriveDef: (id: number): Promise<number> =>
+    request.post({ url: '/agent/def/derive', params: { id } }),
+
+  /** 复制成一个新智能体（新 code、version 从 1 起，配置整份搬过来），返回新定义 id */
+  copyDef: (data: AgentDefCopyVO): Promise<number> =>
+    request.post({ url: '/agent/def/copy', data }),
+
+  /** 删除定义（草稿与已停用可删；已发布须先停用；内置行不可删） */
   deleteDef: (id: number): Promise<boolean> =>
     request.delete({ url: '/agent/def/delete', params: { id } }),
 
@@ -96,7 +132,7 @@ export const AgentDefApi = {
   publishDef: (id: number): Promise<number> =>
     request.post({ url: '/agent/def/publish', params: { id } }),
 
-  /** 停用：PUBLISHED → DISABLED（幂等） */
+  /** 停用：PUBLISHED → DISABLED（幂等；内置行不可停用） */
   disableDef: (id: number): Promise<boolean> =>
     request.post({ url: '/agent/def/disable', params: { id } })
 }

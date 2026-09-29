@@ -24,16 +24,16 @@ import { login, gotoWithAuth } from './helpers/auth'
  *       → 「设计」再进设计器 → 删除清理。
  */
 
-// 编辑器隐藏路由是 /agent-workflow/editor（连字符），列表页是 /agent/workflow（斜杠），别混
+// 编辑器隐藏路由是 /agent-workflow/editor（连字符），列表页是 /ai/agent/workflow（斜杠），别混
 const EDITOR_URL = /\/agent-workflow\/editor/
-const LIST_URL = /\/agent\/workflow$/
+const LIST_URL = /\/ai\/agent\/workflow$/
 
 test.describe('流程定义：新增弹窗-体检-保存-编辑-设计-删除', () => {
   test.setTimeout(150_000)
 
   test('全生命周期', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 唯一 code，匹配 ^[a-z][a-z0-9_]{1,63}$
     const code = `wf_e2e_${Date.now().toString(36)}`
@@ -43,6 +43,11 @@ test.describe('流程定义：新增弹窗-体检-保存-编辑-设计-删除', 
     await page.getByRole('button', { name: '新增', exact: true }).click()
     const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
     await expect(dialog).toBeVisible({ timeout: 15000 })
+    // 需求6：元信息里只留「描述」，不能再有「备注」。
+    // 🔴 两个字段语义完全重叠，留着用户就得猜「这句该写哪儿」，两处都写又会各自漂移；
+    //    后端 AgentWorkflowDefDO.remark 已随 xpy-2026-09-29-agent-workflow-def-drop-remark.sql 一并删掉
+    await expect(dialog.locator('.el-form-item__label').filter({ hasText: '描述' })).toHaveCount(1)
+    await expect(dialog.locator('.el-form-item__label').filter({ hasText: '备注' })).toHaveCount(0)
     await dialog.locator('input[placeholder="请输入流程名称"]').fill(name)
     await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
     // 起步模板选「经典案例」：按当前触发方式生成一条完整可过双层校验的骨架

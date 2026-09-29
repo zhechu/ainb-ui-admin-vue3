@@ -51,7 +51,7 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
 
   test('属性面板产出区 + 引用上游变量选择器写入 {{$.var}}', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板；触发方式默认 chat → 「表单问答助手」案例）→ 跳设计器
     await page.getByRole('button', { name: '新增', exact: true }).click()
@@ -115,7 +115,7 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
     })
 
     // 清理：硬跳回列表删除草稿
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
     const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()

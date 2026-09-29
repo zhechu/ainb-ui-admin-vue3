@@ -22,7 +22,7 @@ import { monacoOf, setMonacoText, expectMonacoVisible } from './helpers/monaco'
  * 数据自净：新建的草稿在最后回列表删除（用唯一 code 定位）。
  */
 
-const LIST_URL = /\/agent\/workflow$/
+const LIST_URL = /\/ai\/agent\/workflow$/
 const EDITOR_URL = /\/agent-workflow\/editor/
 
 test.describe('流程编排：新增弹窗 → 整页设计器', () => {
@@ -32,7 +32,7 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     page
   }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // Req1（上一轮）：序号列 +「新增」按钮（不再是「新增流程」直跳设计器）
     await expect(page.getByRole('columnheader', { name: '序号' }).first()).toBeVisible({
@@ -179,7 +179,7 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     // 不关抽屉：下面走 page.goto 硬跳，Vue Router 的未保存守卫拦不到，也就没必要跟关闭按钮较劲
 
     // 清理：硬跳回列表（绕过未保存改动守卫）→ 删除刚建的草稿（数据自净）
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
     const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()

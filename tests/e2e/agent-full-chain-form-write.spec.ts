@@ -61,7 +61,7 @@ test.describe('全链路：拆解 → 编排 → 执行 → 落表单', () => {
     try {
       // ============ 拆解：BUILD 意图 → DSL 草稿卡片 ============
       await login(page)
-      await gotoWithAuth(page, '/agent/assistant')
+      await gotoWithAuth(page, '/ai/agent/assistant')
       await page.locator('textarea').fill(QUESTION)
       await page.getByRole('button', { name: /发送/ }).click()
 

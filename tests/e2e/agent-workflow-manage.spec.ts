@@ -22,7 +22,7 @@ test.describe('流程编排管理页', () => {
 
   test('列表渲染：序号列 + 「新增」按钮 + 至少一行真实数据', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 页面非空白：搜索表单 + 列表表格都在
     await expect(page.getByText('流程编码').first()).toBeVisible({ timeout: 20000 })
@@ -45,7 +45,7 @@ test.describe('流程编排管理页', () => {
 
   test('「新增」弹出元信息弹窗（Req2：新增与设计分开）', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     await page.getByRole('button', { name: '新增', exact: true }).first().click()
 
@@ -70,7 +70,7 @@ test.describe('流程编排管理页', () => {
    */
   test('触发案例：列表页参考手册五页签 + 新增弹窗内联卡片随触发方式切换（Req3/Req1）', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // ① 列表页工具栏「触发案例」→ 参考手册弹窗，五个页签一个不缺
     await page.getByTestId('trigger-case-btn').click()
@@ -122,7 +122,7 @@ test.describe('流程编排管理页', () => {
 
   test('只读画布查看器渲染出 DSL 节点与连线（R1 回归守卫）', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     const firstRow = page.locator('.el-table__body tr').first()
     await expect(firstRow).toBeVisible({ timeout: 20000 })
@@ -148,7 +148,7 @@ test.describe('流程编排管理页', () => {
 
   test('执行历史抽屉能打开（只读，不依赖播种执行行）', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     const firstRow = page.locator('.el-table__body tr').first()
     await expect(firstRow).toBeVisible({ timeout: 20000 })

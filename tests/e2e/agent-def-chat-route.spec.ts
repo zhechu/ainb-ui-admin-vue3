@@ -61,7 +61,7 @@ test.describe('聊天入口按 Agent 路由', () => {
     await page.route('**/agent/assistant/send-stream', (route) => route.abort())
 
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     // 选择器出现
     const picker = page.getByTestId('agent-picker')
@@ -98,7 +98,7 @@ test.describe('聊天入口按 Agent 路由', () => {
   test('默认助手选项值为空（不选 Agent 时 send-stream 不带 agentDefId）', async ({ page }) => {
     await page.route('**/agent/assistant/send-stream', (route) => route.abort())
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     const picker = page.getByTestId('agent-picker')
     await expect(picker).toBeVisible({ timeout: 20000 })
@@ -118,7 +118,7 @@ test.describe('聊天入口按 Agent 路由', () => {
 
   test('智能体设计器有「模型」与「知识库」下拉（E3：模型/知识库绑定入口）', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/def')
+    await gotoWithAuth(page, '/ai/agent/def')
     await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
 
     // 🔴 新建/编辑早已从 760px 弹窗改成整页设计器（/agent-def/editor）。本用例原先还在等

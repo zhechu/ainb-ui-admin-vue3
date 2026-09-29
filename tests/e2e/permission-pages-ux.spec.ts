@@ -1,6 +1,22 @@
 import { expect, test, type Page } from '@playwright/test'
 
 /** 权限模块几个管理页的体验修复验证 */
+
+/**
+ * 权限模块各页的前端路由。
+ *
+ * 🔴 比菜单名多出两层：2026-09-19 的菜单重构把规则/资源/诊断挂进了
+ * 「系统管理 → 组织权限 → 权限管理」，而前端路由是**菜单 path 逐级拼接**出来的，
+ * {@code /system/rule} 因此变成 {@code /system/org-permission/perm/rule}。
+ * 旧写法不匹配任何路由，页面全空白（{@code bottomGap} 返回哨兵值 9999），
+ * 断言看着像「表格塌了」，其实是**根本没进那个页面**。
+ *
+ * <p>⚠️ 只有前端路由变了，后端接口路径原样（{@code /system/rule/create} 等），别跟着改。
+ */
+const RULE_PAGE = '/system/org-permission/perm/rule'
+const RESOURCE_PAGE = '/system/org-permission/perm/resource'
+const DIAG_PAGE = '/system/org-permission/perm/permission-diag'
+
 async function login(page: Page): Promise<void> {
   await page.goto('/login')
   const form = page.locator('form.login-form').filter({ has: page.getByPlaceholder('请输入用户名') })
@@ -46,7 +62,7 @@ test.describe('权限模块页面体验', () => {
     })
     expect(created.ok(), '预置规则失败').toBeTruthy()
 
-    await page.goto('/system/rule')
+    await page.goto(RULE_PAGE)
     await page.waitForLoadState('networkidle')
     const table = page.locator('.el-table').first()
     await expect(table).toBeVisible({ timeout: 20_000 })
@@ -79,7 +95,7 @@ test.describe('权限模块页面体验', () => {
 
   test('权限诊断：权限标识与用户都可下拉选择', async ({ page }) => {
     await login(page)
-    await page.goto('/system/permission-diag')
+    await page.goto(DIAG_PAGE)
     await page.waitForLoadState('networkidle')
 
     // ⚠️ el-select 的 placeholder 渲染成 span，不是 input 属性，getByPlaceholder 定位不到。
@@ -113,8 +129,8 @@ test.describe('权限模块页面体验', () => {
     await login(page)
 
     for (const [path, label, searchSel, kw] of [
-      ['/system/resource', '权限资源', '支持模糊搜索，如 system:user', 'system:user:query'],
-      ['/system/rule', '规则管理', '请输入规则名称', '仅自己的数据']
+      [RESOURCE_PAGE, '权限资源', '支持模糊搜索，如 system:user', 'system:user:query'],
+      [RULE_PAGE, '规则管理', '请输入规则名称', '仅自己的数据']
     ] as const) {
       await page.goto(path)
       await page.waitForLoadState('networkidle')
@@ -134,7 +150,7 @@ test.describe('权限模块页面体验', () => {
     }
 
     // 诊断页：未诊断时本就无内容，不做撑满，但要有引导而不是纯空白
-    await page.goto('/system/permission-diag')
+    await page.goto(DIAG_PAGE)
     await page.waitForLoadState('networkidle')
     await expect(page.getByText(/这个人为什么有/)).toBeVisible({ timeout: 15_000 })
   })

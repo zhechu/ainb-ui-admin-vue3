@@ -10,7 +10,7 @@ test('截图：助手回答完成态', async ({ page }) => {
     await page.getByRole('button', { name: /登录|登 录/ }).click()
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30000 })
   }
-  await page.goto('/agent/assistant')
+  await page.goto('/ai/agent/assistant')
   await expect(page.getByText('我是平台助手')).toBeVisible({ timeout: 20000 })
   await page
     .locator('.el-tag__content')

@@ -1,34 +1,5 @@
 <template>
   <div class="flex flex-col min-w-0 h-full">
-    <!-- Agent 选择器：增量10（slice-2）——选中一个已发布 Agent，它的人设即成系统提示词、
-         绑定模型即固定问答模型。🔴 会话一旦建立（innerConversationId 有值）就锁定：
-         D4「创建时定、之后以会话为准」，防一轮对话中途换 Agent 导致历史里混两套人设。
-         新建对话（未落库）时可自由选。compact（悬浮球）下收窄但不隐藏，否则悬浮球无法选 Agent。 -->
-    <div
-      class="flex items-center gap-8px border-b border-[var(--el-border-color-lighter)] border-b-solid flex-shrink-0"
-      :class="compact ? 'px-14px py-8px' : 'px-24px py-10px'"
-    >
-      <span class="text-13px text-[var(--el-text-color-secondary)] flex-shrink-0">Agent</span>
-      <el-select
-        v-model="agentSelectorModel"
-        data-testid="agent-picker"
-        :disabled="isAgentLocked"
-        :size="compact ? 'small' : 'default'"
-        :class="compact ? 'w-130px' : 'w-220px'"
-        placeholder="默认平台助手"
-      >
-        <el-option label="默认平台助手" :value="0" />
-        <el-option v-for="a in agentDefList" :key="a.id" :label="a.name" :value="a.id" />
-      </el-select>
-      <el-tooltip
-        v-if="isAgentLocked"
-        content="会话已绑定 Agent，不可中途更换；点「新对话」可重新选择"
-        placement="top"
-      >
-        <Icon icon="ep:lock" class="text-[var(--el-text-color-secondary)] flex-shrink-0" />
-      </el-tooltip>
-    </div>
-
     <!-- 滚动区与「回到底部」按钮同处一个相对定位容器，按钮才能贴着滚动区底部，
          而不是去猜输入区有多高（compact 与非 compact 的输入区高度不一样） -->
     <div class="relative flex-1 min-h-0">
@@ -213,17 +184,95 @@
         type="textarea"
         :rows="compact ? 2 : 3"
         resize="none"
-        maxlength="2000"
+        :maxlength="INPUT_MAX_LENGTH"
         show-word-limit
         placeholder="问点什么吧，Enter 发送 / Shift+Enter 换行"
         @keydown.enter="handleEnter"
       />
-      <div class="flex justify-between items-center mt-10px">
-        <span v-if="!compact" class="text-12px text-[var(--el-text-color-secondary)]">
-          {{ effectiveAgentDefId ? '回答由所选 Agent 的人设驱动' : '回答依据平台手册，若手册未覆盖会如实说明' }}
+      <!-- 需求8：Agent 选择器与发送按钮同处一行（原来独占一行、白占 40px 竖向空间）。
+           🔴 会话一旦建立（innerConversationId 有值）就锁定：D4「创建时定、之后以会话为准」，
+           防一轮对话中途换 Agent 导致历史里混两套人设。新建对话（未落库）时可自由选。
+           compact（悬浮球）下收窄但不隐藏，否则悬浮球无法选 Agent。 -->
+      <div class="flex items-center gap-8px mt-10px">
+        <!-- 需求7：提示词模板。放在最左边——它是「往输入框里放字」的动作，与右侧的「发出去」相对。
+             🔴 用 popover 而不是 el-select：模板项要显示名称+说明两行，select 的选项行装不下，
+             而只显示名称的话用户分不清两条相似的模板该选哪条。 -->
+        <el-popover
+          :visible="templatePopoverVisible"
+          placement="top-start"
+          :width="compact ? 300 : 420"
+          trigger="click"
+          popper-class="agent-tpl-popover"
+        >
+          <template #reference>
+            <el-button
+              data-testid="template-picker"
+              :size="compact ? 'small' : 'default'"
+              :disabled="streaming"
+              @click="openTemplatePopover"
+            >
+              <Icon icon="ep:collection" class="mr-4px" /> 模板
+            </el-button>
+          </template>
+          <div v-loading="templateLoading" class="agent-tpl-body">
+            <el-input
+              v-model="templateKeyword"
+              size="small"
+              clearable
+              placeholder="搜名称 / 正文 / 分类"
+              class="mb-8px"
+            >
+              <template #prefix>
+                <Icon icon="ep:search" />
+              </template>
+            </el-input>
+            <el-scrollbar max-height="320px">
+              <div v-if="!groupedTemplates.length" class="agent-tpl-empty">
+                {{ templateList.length ? '没有匹配的模板' : '还没有可用的模板，管理员可在「提示词模板」页新建' }}
+              </div>
+              <div v-for="g in groupedTemplates" :key="g.category" class="agent-tpl-group">
+                <div class="agent-tpl-group-title">{{ g.category }}</div>
+                <div
+                  v-for="t in g.items"
+                  :key="t.id"
+                  class="agent-tpl-item"
+                  @click="applyTemplate(t)"
+                >
+                  <div class="agent-tpl-item-name">{{ t.name }}</div>
+                  <div v-if="t.description" class="agent-tpl-item-desc">{{ t.description }}</div>
+                </div>
+              </div>
+            </el-scrollbar>
+            <div class="agent-tpl-foot">点一条模板即插入到输入框，占位符替换后再发送</div>
+          </div>
+        </el-popover>
+        <span class="text-12px text-[var(--el-text-color-secondary)] flex-shrink-0">Agent</span>
+        <el-select
+          v-model="agentSelectorModel"
+          data-testid="agent-picker"
+          :disabled="isAgentLocked"
+          :size="compact ? 'small' : 'default'"
+          :class="compact ? 'w-120px' : 'w-180px'"
+          class="flex-shrink-0"
+          placeholder="默认平台助手"
+        >
+          <el-option label="默认平台助手" :value="0" />
+          <el-option v-for="a in agentDefList" :key="a.id" :label="a.name" :value="a.id" />
+        </el-select>
+        <el-tooltip
+          v-if="isAgentLocked"
+          content="会话已绑定 Agent，不可中途更换；点「新对话」可重新选择"
+          placement="top"
+        >
+          <Icon icon="ep:lock" class="text-[var(--el-text-color-secondary)] flex-shrink-0" />
+        </el-tooltip>
+        <!-- 这句提示原来单独占一行。flex-1 + truncate 让它把按钮顶到最右，
+             窄屏（悬浮球）下先被截断而不是把「发送」挤出去；compact 下直接不显示文字，
+             但仍保留这个占位元素，否则按钮会贴到选择器右边 -->
+        <span class="flex-1 min-w-0 truncate text-12px text-[var(--el-text-color-secondary)]">
+          {{ compact ? '' : agentHint }}
         </span>
-        <span v-else></span>
-        <div>
+        <div class="flex-shrink-0">
           <el-button v-if="streaming" :size="compact ? 'small' : 'default'" @click="handleStop">
             <Icon icon="ep:video-pause" class="mr-4px" /> 停止
           </el-button>
@@ -251,6 +300,12 @@ import type {
   AgentSuggestionVO
 } from '@/api/agent/assistant'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
+import {
+  AgentPromptTemplateApi,
+  placeholdersOf,
+  UNCATEGORIZED,
+  type AgentPromptTemplateVO
+} from '@/api/agent/promptTemplate'
 import { AgentPlannerApi } from '@/api/agent/planner'
 import type { AgentWorkflowDraftVO } from '@/api/agent/planner'
 import { AgentWorkflowApi } from '@/api/agent/workflow'
@@ -364,12 +419,133 @@ const agentDefList = ref<AgentDefVO[]>([])
 const loadAgentDefs = async () => {
   try {
     const page = await AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100, status: 'PUBLISHED' })
-    agentDefList.value = page?.list ?? []
+    // 🔴 需求10：把系统内置行（默认平台助手）剔出去。它现在也是 PUBLISHED，不剔的话选择器里会出现
+    //    两个「默认平台助手」——一个是下面硬编码的 value=0 哨兵项，一个是它的真 id。
+    //    用户选中真 id 那个，后端就会按「选了自定义 Agent」路由：检索从平台内置手册切到它并不存在的
+    //    知识库、追问建议消失、模型改用绑定值。不报错，只是答得越来越飘 —— 最难查的那类 bug。
+    agentDefList.value = (page?.list ?? []).filter((a) => !a.builtin)
   } catch {
     agentDefList.value = [] // 拉不到目录不阻断对话：仍可走默认平台助手
   }
 }
 onMounted(loadAgentDefs)
+
+// ==================== 提示词模板（需求7）====================
+
+/**
+ * 输入框字数上限。模板正文在库里最长可到 8000 字，远超这里，
+ * 故插入前必须比一次 —— 见 {@link applyTemplate}。
+ * 🔴 与模板里 el-input 的 :maxlength 共用这一个常量：写两处迟早会漂，
+ * 漂了的表现是「明明没超上限却插不进去」或「插进去被截断半句」。
+ */
+const INPUT_MAX_LENGTH = 2000
+
+const templatePopoverVisible = ref(false)
+const templateLoading = ref(false)
+const templateKeyword = ref('')
+const templateList = ref<AgentPromptTemplateVO[]>([])
+
+const loadTemplates = async () => {
+  templateLoading.value = true
+  try {
+    templateList.value = (await AgentPromptTemplateApi.getSimplePromptTemplateList()) ?? []
+  } catch {
+    // 🔴 静默失败并【保留旧列表】。这个端点用的是 hasAnyPermissions('agent:assistant:use',
+    //    'agent:prompt-template:query')，能进这个页的人都有前者，所以走到这一支多半是网络抖动
+    //    或后端还没重启（新端点未注册）。两种情况都不该弹错打断对话——模板只是便利品。
+    //    刻意不清空：清空后按钮点开是「暂无模板」，用户会以为模板被谁删了。
+  } finally {
+    templateLoading.value = false
+  }
+}
+
+onMounted(loadTemplates)
+
+/**
+ * 每次展开都重取一遍
+ *
+ * <p>🔴 不能只在 onMounted 拉：管理员常在另一个标签页存完模板就切回来点按钮，
+ * 缓存着旧列表的表现是「刚存的模板在这里找不到」——他不知道要刷新整页，只会以为没存上。
+ * 这张表就几十行，重取的代价可以忽略；加载期间旧列表仍在，不会闪成空白。
+ */
+const openTemplatePopover = () => {
+  templatePopoverVisible.value = true
+  templateKeyword.value = ''
+  loadTemplates()
+}
+
+/**
+ * 按分类分组（后端已按 category + sort 排好序，Map 的插入顺序即分类顺序）
+ * 🔴 分类为空归入「未分类」并排在最后：不这么做的话空分类会插在最前面，
+ * 而它其实是「管理员没填」而不是一个真的类别。
+ */
+const groupedTemplates = computed(() => {
+  const kw = templateKeyword.value.trim().toLowerCase()
+  const filtered = kw
+    ? templateList.value.filter(
+        (t) =>
+          (t.name ?? '').toLowerCase().includes(kw) ||
+          (t.content ?? '').toLowerCase().includes(kw) ||
+          (t.description ?? '').toLowerCase().includes(kw) ||
+          (t.category ?? '').toLowerCase().includes(kw)
+      )
+    : templateList.value
+  const named = new Map<string, AgentPromptTemplateVO[]>()
+  let uncategorized: AgentPromptTemplateVO[] = []
+  for (const t of filtered) {
+    const key = t.category?.trim()
+    if (!key) {
+      uncategorized.push(t)
+      continue
+    }
+    if (!named.has(key)) named.set(key, [])
+    named.get(key)!.push(t)
+  }
+  const groups = [...named.entries()].map(([category, items]) => ({ category, items }))
+  if (uncategorized.length) groups.push({ category: UNCATEGORIZED, items: uncategorized })
+  return groups
+})
+
+/**
+ * 把模板正文插入输入框（不发送）
+ *
+ * <p>🔴 追加而不是覆盖：用户可能已经打了一半，直接赋值会把他的字吃掉。
+ * <p>🔴 插完只聚焦、不发送：模板里的 {{占位符}} 需要用户替换，替他发出去等于让模型
+ * 照字面量回答「{{订单号}}」——不报错，只是答非所问，是最难查的那类问题。
+ */
+const applyTemplate = (tpl: AgentPromptTemplateVO) => {
+  const text = tpl.content ?? ''
+  if (!text.trim()) {
+    message.warning('这条模板的正文是空的，请到「提示词模板」里补上')
+    return
+  }
+  const current = inputText.value ?? ''
+  const merged = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${text}` : text
+  if (merged.length > INPUT_MAX_LENGTH) {
+    message.warning(
+      `插入后会达到 ${merged.length} 字，超过输入框 ${INPUT_MAX_LENGTH} 字上限。` +
+        `请先清空输入框，或到「提示词模板」里精简这条模板`
+    )
+    return
+  }
+  inputText.value = merged
+  templatePopoverVisible.value = false
+  nextTick(() => {
+    const el = inputRef.value?.textarea as HTMLTextAreaElement | undefined
+    if (el) {
+      el.focus()
+      // 光标落到末尾：占位符通常在正文中间，但落末尾比落开头更符合「刚打完字」的直觉
+      el.setSelectionRange(el.value.length, el.value.length)
+    }
+  })
+  const phs = placeholdersOf(text)
+  if (phs.length) {
+    const shown = phs.slice(0, 3).join('、')
+    message.info(
+      `已插入，还有 ${phs.length} 处占位符要替换：${shown}${phs.length > 3 ? ' 等' : ''}`
+    )
+  }
+}
 
 /** 新对话时用户自由选择的 Agent；null=默认平台助手 */
 const selectedAgentDefId = ref<number | null>(null)
@@ -414,6 +590,19 @@ const activeAgentInfo = computed(() => {
     subtitle: '表单设计、数据建模、权限配置的问题都可以问我，回答会标注手册出处'
   }
 })
+
+/**
+ * 输入区那句「回答依据什么」的提示
+ *
+ * 独立出来是因为需求8 把它从单独一行挪进了选择器/发送按钮那一行，模板里再写三元就太长了。
+ * 默认助手那句刻意带上「若手册未覆盖会如实说明」——它是在替模型的行为兜底预期，
+ * 少了这句，用户会把「手册里没有」的老实回答当成助手能力不行。
+ */
+const agentHint = computed(() =>
+  effectiveAgentDefId.value
+    ? '回答由所选 Agent 的人设驱动'
+    : '回答依据平台手册，若手册未覆盖会如实说明'
+)
 
 /** 中断控制器：用户点「停止」或切换会话时要能真的把连接掐掉 */
 let abortController: AbortController | null = null
@@ -1142,3 +1331,64 @@ defineExpose({
   isEmpty: computed(() => messageList.value.length === 0)
 })
 </script>
+
+<style lang="scss" scoped>
+/* 模板下拉的内容。popover 会被 teleport 到 body，但这些元素是在本组件模板里声明的，
+   带 data-v 属性，故 scoped 规则照样命中；只有 popper 外壳（.agent-tpl-popover）不带，
+   所以下面不去 styling 外壳本身。 */
+.agent-tpl-body {
+  min-height: 60px;
+}
+
+.agent-tpl-group + .agent-tpl-group {
+  margin-top: 10px;
+}
+
+.agent-tpl-group-title {
+  padding: 2px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.agent-tpl-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--el-fill-color-light);
+  }
+}
+
+.agent-tpl-item-name {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--el-text-color-primary);
+}
+
+.agent-tpl-item-desc {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-tpl-empty {
+  padding: 16px 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  text-align: center;
+}
+
+.agent-tpl-foot {
+  padding-top: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+</style>

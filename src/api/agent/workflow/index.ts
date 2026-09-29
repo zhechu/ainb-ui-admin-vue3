@@ -29,7 +29,6 @@ export interface AgentWorkflowDefVO {
   description?: string
   /** DSL JSON 原文；仅 get?id 返回，分页为 null */
   dsl?: string | null
-  remark?: string
   /** form_event / schedule / chat / webhook / 空（无触发器） */
   triggerType?: string
   triggerKey?: string
@@ -56,8 +55,8 @@ export interface AgentWorkflowDefSaveVO {
   code: string
   name: string
   dsl: string
+  /** 🔴 没有 remark：description 已承担说明职责，两个近义字段只会让人不知道填哪个（列已从表里删除） */
   description?: string
-  remark?: string
 }
 
 /** DSL 校验结果，对应后端 {@code AgentWorkflowDefValidateRespVO} */

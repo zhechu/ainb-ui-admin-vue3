@@ -21,7 +21,7 @@ test.describe('AI 助手', () => {
 
   test('问答全流程：流式打字、手册引用、对话后建议可点', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     // 1. 空态要给引导问题 —— 空白输入框会让用户不知道能问什么
     await expect(page.getByText('我是平台助手')).toBeVisible({ timeout: 20000 })
@@ -74,7 +74,7 @@ test.describe('AI 助手', () => {
 
   test('会话管理：新建、切换、删除', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     await page.getByRole('button', { name: /新建对话/ }).click()
     // 新建后回到空态
@@ -120,7 +120,7 @@ test.describe('AI 助手', () => {
   test('AI · 长答案：往上翻不被打字机拽回底部，答案可整段复制', async ({ page }) => {
     test.setTimeout(300_000) // 一轮详细回答实测 20~60 秒，加上两次页面加载要留足
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     // 🔴 把视口压矮，让「答案超出一屏」成为<b>确定</b>前提。
     //    否则这条用例灵不灵取决于模型这次答得多长 —— 实测同一问题有时溢出 370px、

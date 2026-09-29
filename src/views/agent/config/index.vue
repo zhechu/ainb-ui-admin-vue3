@@ -390,13 +390,17 @@ function uniqueByCode<T extends { code: string; name: string }>(list: T[]): { co
 /**
  * 加载可绑定的 Agent / 工作流下拉选项。任一失败都回落空数组 ——
  * 配额管理不该因为定义列表拉取失败而整页打不开（fail-soft）。
+ *
+ * 🔴 需求10：剔掉系统内置行（默认平台助手）。「未选 Agent」这条路上 checkAgentQuota 收到的是空 code
+ *    并直接放行，所以给它配一条 AGENT 级配额是<b>配了但永远不触发</b>——本平台头号缺陷的原样复刻。
+ *    要限平台助手的用量请用 TENANT / USER 级配额（那两级与是否选 Agent 无关，照样生效）。
  */
 const loadTargetOptions = async () => {
   const [agents, workflows] = await Promise.all([
     AgentDefApi.getDefPage({ pageNo: 1, pageSize: 100 }).catch(() => ({ list: [] })),
     AgentWorkflowApi.getDefPage({ pageNo: 1, pageSize: 100 }).catch(() => ({ list: [] }))
   ])
-  agentOptions.value = uniqueByCode((agents as any).list ?? [])
+  agentOptions.value = uniqueByCode(((agents as any).list ?? []).filter((a: any) => !a.builtin))
   workflowOptions.value = uniqueByCode((workflows as any).list ?? [])
 }
 

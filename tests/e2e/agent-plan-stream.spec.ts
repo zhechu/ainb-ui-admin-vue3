@@ -44,7 +44,7 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
     page.on('pageerror', (err) => pageErrors.push(String(err)))
 
     await login(page)
-    await gotoWithAuth(page, '/agent/assistant')
+    await gotoWithAuth(page, '/ai/agent/assistant')
 
     await page.locator('textarea').fill(QUESTION)
     await page.getByRole('button', { name: /发送/ }).click()

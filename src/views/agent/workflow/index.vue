@@ -305,7 +305,7 @@ const openEditor = (row: AgentWorkflowDefVO) => {
 /**
  * 新增/编辑元信息弹窗（Req 2）。
  * · openCreate：弹「新增流程」——填 名称/编码/触发/模板，建草稿后由 handleFormSuccess 跳设计器；
- * · openFormEdit：弹「编辑流程信息」——只改 名称/描述/备注/触发（编码只读），画布节点原样保留。
+ * · openFormEdit：弹「编辑流程信息」——只改 名称/描述/触发（编码只读），画布节点原样保留。
  */
 const formRef = ref()
 const openCreate = () => formRef.value?.open('create')

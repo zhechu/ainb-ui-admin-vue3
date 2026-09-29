@@ -5,7 +5,7 @@
   替代旧「顶栏 + 折叠基本信息 + 内嵌 1515 行巨型画布」：
     - 事实源 dslObject 由本页持有，三栏拆分为 WorkflowPalette / WorkflowDesigner / WorkflowPropertyPanel，
       共享一份 useWorkflowEditor 上下文（editorModel/layout/nodeConfigSchema/nodeSummary 纯模块逐字节复用）；
-    - 顶栏加撤销/重做（editorHistory 快照栈）+ 重新布局；描述/备注移入右栏「流程信息」，让画布吃满高度；
+    - 顶栏加撤销/重做（editorHistory 快照栈）+ 重新布局；描述移入右栏「流程信息」，让画布吃满高度；
     - Req 2：新增走列表弹窗建草稿后带 id 进来，本页无有效 id 直接回列表（不再凭空新建）。
 
   🔴 撤销/重做：本页 watch(dslObject,{deep}) 捕获「就地突变」自动入栈；undo/redo 用 cloneDeep 整体换引用，
@@ -166,7 +166,6 @@
       <WorkflowPropertyPanel
         v-if="canvasReady"
         v-model:description="formData.description"
-        v-model:remark="formData.remark"
         :editor="editor"
         :readonly="readonly"
       />
@@ -261,8 +260,7 @@ const formData = ref<AgentWorkflowDefSaveVO>({
   code: '',
   name: '',
   dsl: '',
-  description: '',
-  remark: ''
+  description: ''
 })
 
 /** 画布事实源：解析后的 DSL 对象（canvasReady=false 表示 DSL 非法 JSON，画布不渲染） */
@@ -349,9 +347,8 @@ const resetHistory = () => {
   syncHistoryFlags()
 }
 
-// 描述/备注经右栏 v-model 回写 formData，这里监听标脏
+// 描述经右栏 v-model 回写 formData，这里监听标脏
 watch(() => formData.value.description, markDirty)
-watch(() => formData.value.remark, markDirty)
 
 const statusLabel = computed(() =>
   status.value === 'PUBLISHED' ? '已发布' : status.value === 'DISABLED' ? '已停用' : '草稿'
@@ -398,13 +395,12 @@ const loadDef = async (id: number) => {
       code: data.code,
       name: data.name,
       dsl: data.dsl ?? '',
-      description: data.description ?? '',
-      remark: data.remark ?? ''
+      description: data.description ?? ''
     }
     if (!loadDslText(formData.value.dsl || '{}')) {
       message.error('这条流程的配置数据损坏，无法打开画布编辑')
     }
-    // 等 description/remark 的 watch 因整体赋值触发、标脏一次后，再把 dirty 归零
+    // 等 description 的 watch 因整体赋值触发、标脏一次后，再把 dirty 归零
     await nextTick()
     dirty.value = false
     resetHistory()
@@ -420,7 +416,7 @@ onMounted(() => {
   } else {
     // Req 2：新增走列表弹窗建草稿后带 id 进来；设计器不再凭空新建，无有效 id 直接回列表
     message.warning('缺少流程标识，请从列表页「新增」或「设计」进入')
-    replace({ path: '/agent/workflow' })
+    replace({ path: '/ai/agent/workflow' })
   }
 })
 
@@ -527,7 +523,7 @@ const handleBack = async () => {
       return
     }
   }
-  push({ path: '/agent/workflow' })
+  push({ path: '/ai/agent/workflow' })
 }
 </script>
 

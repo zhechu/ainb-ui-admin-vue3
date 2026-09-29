@@ -174,9 +174,9 @@ const triggerHint = '点击唤起'
 /** 手机上 480px 会超出屏宽，抽屉直接铺满 */
 const drawerSize = computed(() => (appStore.getMobile ? '100%' : 480))
 
-/** 当前是不是助手独立页 */
+/** 当前是不是助手独立页（2026-09-29 起菜单挂在「AI」下，路径是 /ai/agent/assistant） */
 const inAssistantPage = computed(
-  () => route.name === 'AgentAssistant' || route.path.startsWith('/agent/assistant')
+  () => route.name === 'AgentAssistant' || route.path.startsWith('/ai/agent/assistant')
 )
 
 /**
@@ -306,7 +306,7 @@ const handleExpand = () => {
   drawerVisible.value = false
   // 独立页读的是同一份本地记忆，当前会话已经由下面的 watch 写进去了，
   // 所以跳过去会自动接上同一句对话
-  router.push({ path: '/agent/assistant' })
+  router.push({ path: '/ai/agent/assistant' })
 }
 
 // 会话一变就记下来。刷新页面、关掉抽屉再打开、跳到独立页，都靠它接上

@@ -36,7 +36,7 @@ test.describe('AI 助手用量看板', () => {
     })
 
     await login(page)
-    await gotoWithAuth(page, '/agent/usage')
+    await gotoWithAuth(page, '/ai/agent/usage')
 
     // 1. 默认按场景下钻，表格要有数据。
     //    ⚠️ 必须限定到第一张表：页面下方还有「调用明细」表，
@@ -66,7 +66,7 @@ test.describe('AI 助手用量看板', () => {
 
   test('调用明细区渲染出输入原文', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/usage')
+    await gotoWithAuth(page, '/ai/agent/usage')
     // 超管有 agent:usage:detail，这一段应当可见
     await expect(page.getByText('最近的调用明细')).toBeVisible({ timeout: 20000 })
     await expect(page.getByText('输入原文')).toBeVisible()

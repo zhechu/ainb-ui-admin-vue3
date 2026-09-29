@@ -84,8 +84,7 @@ test.describe('节点级执行回放画布（增量15）', () => {
       code,
       name: code,
       dsl: dsl(code),
-      description: '增量15 e2e',
-      remark: ''
+      description: '增量15 e2e'
     })) as any
     const mkBody = await mk.json()
     if (mkBody.code !== 0) throw new Error('create workflow failed: ' + JSON.stringify(mkBody))
@@ -115,7 +114,7 @@ test.describe('节点级执行回放画布（增量15）', () => {
 
   test('执行历史 → 画布回放：节点按执行态染色 + 点节点看尝试详情', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 按 code 搜索（回车触发 handleQuery）
     const search = page.locator('input[placeholder="请输入流程编码"]')

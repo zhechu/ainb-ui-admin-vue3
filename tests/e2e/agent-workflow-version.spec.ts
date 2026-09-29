@@ -75,7 +75,7 @@ test.describe('流程版本管理抽屉（14b）', () => {
     if (!token) throw new Error('seed login failed: ' + JSON.stringify(lr))
 
     code = 'wf_ver_e2e_' + Date.now().toString(36)
-    const mk = (tag: string) => ({ code, name: code, dsl: dsl(code, tag), description: tag, remark: '' })
+    const mk = (tag: string) => ({ code, name: code, dsl: dsl(code, tag), description: tag })
     const id1 = (await api('/agent/workflow-def/create', 'POST', mk('v1')))?.data
     await api('/agent/workflow-def/publish?id=' + id1, 'POST')
     const id2 = (await api('/agent/workflow-def/create', 'POST', mk('v2')))?.data
@@ -93,7 +93,7 @@ test.describe('流程版本管理抽屉（14b）', () => {
 
   test('抽屉打开 + 多版本列表 + 主版本徽标 + perm 门控按钮可见', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 按 code 搜索（回车触发 handleQuery，避开按钮名猜测）
     const search = page.locator('input[placeholder="请输入流程编码"]')

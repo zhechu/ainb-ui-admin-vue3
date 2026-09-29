@@ -54,7 +54,7 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
 
   test('运行沙箱：只读工具真跑、写工具被 mock、逐节点时间线渲染', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板）→ 跳设计器；随后整份 DSL 会被替换成沙箱专用链，模板内容不影响断言
     await page.getByRole('button', { name: '新增', exact: true }).click()
@@ -115,7 +115,7 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
     ).toBeVisible({ timeout: 10000 })
 
     // 清理：硬跳回列表删除草稿
-    await gotoWithAuth(page, '/agent/workflow')
+    await gotoWithAuth(page, '/ai/agent/workflow')
     const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()

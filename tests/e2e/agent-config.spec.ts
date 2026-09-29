@@ -20,7 +20,7 @@ test.describe('AI 助手管理员配置', () => {
 
   test('三块内容都渲染得出来，工具清单是只读的', async ({ page }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/config')
+    await gotoWithAuth(page, '/ai/agent/config')
 
     await expect(page.getByText('总开关')).toBeVisible({ timeout: 20000 })
     await expect(page.getByText('用量配额')).toBeVisible()
@@ -43,7 +43,7 @@ test.describe('AI 助手管理员配置', () => {
 
   test('🔴 总开关关掉之后，助手真的会拒绝提问', async ({ page, request }) => {
     await login(page)
-    await gotoWithAuth(page, '/agent/config')
+    await gotoWithAuth(page, '/ai/agent/config')
     await expect(page.getByText('总开关')).toBeVisible({ timeout: 20000 })
 
     const toggle = page.locator('.el-switch').first()
