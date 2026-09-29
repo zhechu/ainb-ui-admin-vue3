@@ -53,6 +53,16 @@
           <Icon class="mr-5px" icon="ep:plus" />
           新增
         </el-button>
+        <el-button
+          v-hasPermi="['system:menu:delete']"
+          plain
+          type="danger"
+          :disabled="checkedIds.length === 0"
+          @click="handleDeleteBatch"
+        >
+          <Icon class="mr-5px" icon="ep:delete" />
+          批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
+        </el-button>
         <el-button plain type="danger" @click="toggleExpandAll">
           <Icon class="mr-5px" icon="ep:sort" />
           展开/折叠
@@ -73,7 +83,7 @@
           v-model:expanded-row-keys="expandedRowKeys"
           :columns="columns"
           :data="list"
-          :expand-column-key="String(columns[0].key)"
+          expand-column-key="name"
           :height="1000"
           :width="width"
           fixed
@@ -94,7 +104,7 @@ import { MenuVO } from '@/api/system/menu'
 import MenuForm from './MenuForm.vue'
 import DictTag from '@/components/DictTag/src/DictTag.vue'
 import { Icon } from '@/components/Icon'
-import { ElButton, TableV2FixedDir, ElSwitch, type Column } from 'element-plus'
+import { ElButton, ElCheckbox, TableV2FixedDir, ElSwitch, type Column } from 'element-plus'
 import { checkPermi } from '@/utils/permission'
 import { CommonStatusEnum } from '@/utils/constants'
 import { CACHE_KEY, useCache } from '@/hooks/web/useCache'
@@ -102,117 +112,148 @@ import { CACHE_KEY, useCache } from '@/hooks/web/useCache'
 defineOptions({ name: 'SystemMenu' })
 
 // 虚拟列表表格
-const columns: Column<MenuVO>[] = [
-  {
-    key: 'name',
-    title: '菜单名称',
-    dataKey: 'name',
-    width: 250,
-    fixed: TableV2FixedDir.LEFT
-  },
-  {
-    key: 'icon',
-    title: '图标',
-    dataKey: 'icon',
-    width: 100,
-    align: 'center',
-    cellRenderer: ({ cellData: icon }) => <Icon icon={icon} />
-  },
-  {
-    key: 'sort',
-    title: '排序',
-    dataKey: 'sort',
-    width: 60
-  },
-  {
-    key: 'permission',
-    title: '权限标识',
-    dataKey: 'permission',
-    width: 300
-  },
-  {
-    key: 'component',
-    title: '组件路径',
-    dataKey: 'component',
-    width: 500
-  },
-  {
-    key: 'componentName',
-    title: '组件名称',
-    dataKey: 'componentName',
-    width: 200
-  },
-  {
-    key: 'status',
-    title: '状态',
-    dataKey: 'status',
-    width: 60,
-    fixed: TableV2FixedDir.RIGHT,
-    cellRenderer: ({ rowData }) => {
-      // 检查权限
-      if (!checkPermi(['system:menu:update'])) {
-        return <DictTag type={DICT_TYPE.COMMON_STATUS} value={rowData.status} />
-      }
-
-      // 如果有权限，渲染 ElSwitch
-      return (
-        <ElSwitch
-          v-model={rowData.status}
-          active-value={CommonStatusEnum.ENABLE}
-          inactive-value={CommonStatusEnum.DISABLE}
-          loading={menuStatusUpdating[rowData.id]}
-          class="ml-4px"
-          onChange={(val) => handleStatusChanged(rowData, val)}
+// 🔴 用 computed 而不是常量数组：多选列的勾选态存在 checkedIds 里，而 el-table-v2 的单元格是它自己
+//    虚拟滚动时渲染的，光靠 cellRenderer 里读 ref 不保证会重画（内部有 cell 缓存）。让 columns 依赖
+//    checkedIds 后，勾选态一变就产出一个新的列定义数组，表格必然整表重渲染。
+const columns = computed<Column<MenuVO>[]>(() => {
+  const checked = checkedIds.value
+  const all = allFlatIds.value
+  const allChecked = all.length > 0 && all.every((id) => checked.includes(id))
+  const indeterminate = checked.length > 0 && !allChecked
+  return [
+    {
+      key: 'checkbox',
+      title: '',
+      width: 40,
+      align: 'center',
+      fixed: TableV2FixedDir.LEFT,
+      headerCellRenderer: () => (
+        <ElCheckbox
+          modelValue={allChecked}
+          indeterminate={indeterminate}
+          aria-label="全选当前列表"
+          onChange={(val) => toggleCheckAll(!!val)}
+        />
+      ),
+      cellRenderer: ({ rowData }) => (
+        <ElCheckbox
+          modelValue={checked.includes(rowData.id)}
+          aria-label={`选择菜单 ${rowData.name}`}
+          onChange={(val) => toggleCheck(rowData.id, !!val)}
         />
       )
-    }
-  },
-  {
-    key: 'operations',
-    title: '操作',
-    align: 'center',
-    width: 160,
-    fixed: TableV2FixedDir.RIGHT,
-    cellRenderer: ({ rowData }) => {
-      // 定义按钮列表
-      const buttons: InstanceType<typeof ElButton>[] = []
+    },
+    {
+      key: 'name',
+      title: '菜单名称',
+      dataKey: 'name',
+      width: 250,
+      fixed: TableV2FixedDir.LEFT
+    },
+    {
+      key: 'icon',
+      title: '图标',
+      dataKey: 'icon',
+      width: 100,
+      align: 'center',
+      cellRenderer: ({ cellData: icon }) => <Icon icon={icon} />
+    },
+    {
+      key: 'sort',
+      title: '排序',
+      dataKey: 'sort',
+      width: 60
+    },
+    {
+      key: 'permission',
+      title: '权限标识',
+      dataKey: 'permission',
+      width: 300
+    },
+    {
+      key: 'component',
+      title: '组件路径',
+      dataKey: 'component',
+      width: 500
+    },
+    {
+      key: 'componentName',
+      title: '组件名称',
+      dataKey: 'componentName',
+      width: 200
+    },
+    {
+      key: 'status',
+      title: '状态',
+      dataKey: 'status',
+      width: 60,
+      fixed: TableV2FixedDir.RIGHT,
+      cellRenderer: ({ rowData }) => {
+        // 检查权限
+        if (!checkPermi(['system:menu:update'])) {
+          return <DictTag type={DICT_TYPE.COMMON_STATUS} value={rowData.status} />
+        }
 
-      // 检查权限并添加按钮
-      if (checkPermi(['system:menu:update'])) {
-        buttons.push(
-          <ElButton key="edit" link type="primary" onClick={() => openForm('update', rowData.id)}>
-            修改
-          </ElButton>
+        // 如果有权限，渲染 ElSwitch
+        return (
+          <ElSwitch
+            v-model={rowData.status}
+            active-value={CommonStatusEnum.ENABLE}
+            inactive-value={CommonStatusEnum.DISABLE}
+            loading={menuStatusUpdating[rowData.id]}
+            class="ml-4px"
+            onChange={(val) => handleStatusChanged(rowData, val)}
+          />
         )
       }
-      if (checkPermi(['system:menu:create'])) {
-        buttons.push(
-          <ElButton
-            key="create"
-            link
-            type="primary"
-            onClick={() => openForm('create', undefined, rowData.id)}
-          >
-            新增
-          </ElButton>
-        )
+    },
+    {
+      key: 'operations',
+      title: '操作',
+      align: 'center',
+      width: 160,
+      fixed: TableV2FixedDir.RIGHT,
+      cellRenderer: ({ rowData }) => {
+        // 定义按钮列表
+        const buttons: InstanceType<typeof ElButton>[] = []
+
+        // 检查权限并添加按钮
+        if (checkPermi(['system:menu:update'])) {
+          buttons.push(
+            <ElButton key="edit" link type="primary" onClick={() => openForm('update', rowData.id)}>
+              修改
+            </ElButton>
+          )
+        }
+        if (checkPermi(['system:menu:create'])) {
+          buttons.push(
+            <ElButton
+              key="create"
+              link
+              type="primary"
+              onClick={() => openForm('create', undefined, rowData.id)}
+            >
+              新增
+            </ElButton>
+          )
+        }
+        if (checkPermi(['system:menu:delete'])) {
+          buttons.push(
+            <ElButton key="delete" link type="danger" onClick={() => handleDelete(rowData.id)}>
+              删除
+            </ElButton>
+          )
+        }
+        // 如果没有权限，返回 null
+        if (buttons.length === 0) {
+          return null
+        }
+        // 渲染按钮列表
+        return <>{buttons}</>
       }
-      if (checkPermi(['system:menu:delete'])) {
-        buttons.push(
-          <ElButton key="delete" link type="danger" onClick={() => handleDelete(rowData.id)}>
-            删除
-          </ElButton>
-        )
-      }
-      // 如果没有权限，返回 null
-      if (buttons.length === 0) {
-        return null
-      }
-      // 渲染按钮列表
-      return <>{buttons}</>
     }
-  }
-]
+  ]
+})
 
 const { wsCache } = useCache()
 const { t } = useI18n() // 国际化
@@ -230,12 +271,32 @@ const isExpandAll = ref(false) // 是否展开，默认全部折叠
 // 添加展开行控制
 const expandedRowKeys = ref<number[]>([])
 
+/** 批量选中的菜单编号（el-table-v2 不支持 type="selection"，勾选列是自己用 ElCheckbox 渲染的） */
+const checkedIds = ref<number[]>([])
+
+/** 把树形列表拍平成一维编号，供「全选」判断当前可见的行 */
+const flattenIds = (rows: any[]): number[] =>
+  rows.flatMap((row) => [row.id, ...flattenIds(row.children ?? [])])
+const allFlatIds = computed(() => flattenIds(list.value))
+
+const toggleCheck = (id: number, val: boolean) => {
+  checkedIds.value = val
+    ? [...new Set([...checkedIds.value, id])]
+    : checkedIds.value.filter((checkedId) => checkedId !== id)
+}
+
+const toggleCheckAll = (val: boolean) => {
+  checkedIds.value = val ? allFlatIds.value : []
+}
+
 /** 查询列表 */
 const getList = async () => {
   loading.value = true
   try {
     const data = await MenuApi.getMenuList(queryParams)
     list.value = handleTree(data)
+    // 刷新后清空勾选：列表已经换了一茬，留着旧编号会在「批量删除」时误删（尤其是新增菜单复用了编号的场景）
+    checkedIds.value = []
   } finally {
     loading.value = false
   }
@@ -261,8 +322,8 @@ const openForm = (type: string, id?: number, parentId?: number) => {
 /** 展开/折叠操作 */
 const toggleExpandAll = () => {
   if (!isExpandAll.value) {
-    // 展开所有
-    expandedRowKeys.value = list.value.map((item) => item.id)
+    // 展开所有：必须是拍平后的全部编号，只放一级的话孙子层仍然折叠着，「展开」名不副实
+    expandedRowKeys.value = allFlatIds.value
   } else {
     // 折叠所有
     expandedRowKeys.value = []
@@ -291,6 +352,25 @@ const handleDelete = async (id: number) => {
     await MenuApi.deleteMenu(id)
     message.success(t('common.delSuccess'))
     // 刷新列表
+    await getList()
+  } catch {}
+}
+
+/**
+ * 批量删除按钮操作
+ *
+ * 确认框里点名「连同勾选的子菜单一起删」：菜单是树，勾中一个目录往往连带勾了它下面的按钮权限，
+ * 一句「确定删除吗」不足以让管理员意识到这一删会带走多少条子节点。
+ */
+const handleDeleteBatch = async () => {
+  if (checkedIds.value.length === 0) {
+    return
+  }
+  try {
+    await message.delConfirm(`确定删除选中的 ${checkedIds.value.length} 个菜单吗？包含其勾选的子菜单`)
+    await MenuApi.deleteMenuList(checkedIds.value)
+    message.success(t('common.delSuccess'))
+    // getList 内部会清空勾选，这里不用再清一次
     await getList()
   } catch {}
 }

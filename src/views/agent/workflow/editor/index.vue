@@ -10,6 +10,9 @@
 
   🔴 撤销/重做：本页 watch(dslObject,{deep}) 捕获「就地突变」自动入栈；undo/redo 用 cloneDeep 整体换引用，
      换引用会触发 useWorkflowEditor 的 ref-watch 重算画布，historyApplying 期间不再入栈。
+
+  🔴 需求5：左右两栏默认<b>收缩</b>，靠 .wf-rail 竖条展开/收起，选中节点或连线时右栏自动展开
+     （属性面板是配置节点的唯一入口，收起着点节点却没反应会被当成「坏了」）。见 leftCollapsed / rightCollapsed。
 -->
 <template>
   <div class="wf-editor" v-loading="loading">
@@ -147,10 +150,31 @@
       </template>
     </div>
 
-    <!-- 主体：三栏（左目录 / 中画布 / 右属性面板） -->
+    <!--
+      主体：三栏（左目录 / 中画布 / 右属性面板）
+
+      🔴 需求5：左右两栏默认<b>收缩</b>，把宽度让给画布。侧栏之间那条 .wf-rail 竖条既是分隔条也是开关，
+         所以它始终渲染（收起态变宽并显示竖排标题，让人知道那边藏着什么）。
+         刻意不把按钮塞进子组件的标题栏：属性面板有「选中节点 / 选中连线 / 未选中」三个分支、各自带标题，
+         没有一个稳定位置能放这个按钮。
+    -->
     <div class="wf-editor__body">
+      <WorkflowPalette v-if="canvasReady && !readonly && !leftCollapsed" :editor="editor" />
+      <button
+        v-if="canvasReady && !readonly"
+        type="button"
+        class="wf-rail"
+        :class="{ 'wf-rail--collapsed': leftCollapsed }"
+        :aria-label="leftCollapsed ? '展开节点目录' : '收起节点目录'"
+        :title="leftCollapsed ? '展开节点目录' : '收起节点目录'"
+        data-testid="rail-left"
+        @click="leftCollapsed = !leftCollapsed"
+      >
+        <Icon :icon="leftCollapsed ? 'ep:arrow-right' : 'ep:arrow-left'" />
+        <span v-if="leftCollapsed" class="wf-rail__label">节点目录</span>
+      </button>
+
       <main class="wf-editor__main">
-        <WorkflowPalette v-if="canvasReady && !readonly" :editor="editor" />
         <WorkflowDesigner
           v-if="canvasReady"
           :editor="editor"
@@ -163,8 +187,22 @@
           description="这条流程的配置数据损坏，无法打开画布编辑"
         />
       </main>
-      <WorkflowPropertyPanel
+
+      <button
         v-if="canvasReady"
+        type="button"
+        class="wf-rail wf-rail--right"
+        :class="{ 'wf-rail--collapsed': rightCollapsed }"
+        :aria-label="rightCollapsed ? '展开属性配置' : '收起属性配置'"
+        :title="rightCollapsed ? '展开属性配置' : '收起属性配置'"
+        data-testid="rail-right"
+        @click="rightCollapsed = !rightCollapsed"
+      >
+        <Icon :icon="rightCollapsed ? 'ep:arrow-left' : 'ep:arrow-right'" />
+        <span v-if="rightCollapsed" class="wf-rail__label">属性配置</span>
+      </button>
+      <WorkflowPropertyPanel
+        v-if="canvasReady && !rightCollapsed"
         v-model:description="formData.description"
         :editor="editor"
         :readonly="readonly"
@@ -291,6 +329,30 @@ const {
 
 // Req4：画布缩放。store 以 flowId 为键，与 Designer 里的 useVueFlow(flowId) 是同一份
 const { zoomIn, zoomOut, fitView } = useVueFlow(editor.flowId)
+
+// ---------- 需求5：左右侧栏默认收起，把宽度让给画布 ----------
+const leftCollapsed = ref(true)
+const rightCollapsed = ref(true)
+
+/**
+ * 选中节点 / 连线时自动展开右栏。
+ *
+ * 🔴 这条自动展开是「默认收起」能成立的前提：属性面板是配置节点的<b>唯一</b>入口
+ *    （画布上没有第二个抽屉或弹窗能干这事）。若点中一个节点而右边什么都不弹，
+ *    用户的合理结论是「设计器坏了」或「这个节点不可配置」，而不是「哦，我要先去点右边那条竖杆」。
+ *
+ * 🔴 只自动展开、绝不自动收起：用户可能刚手动收起右栏好把整张图看全，此时若因为「取消选中」
+ *    就替他收起、又因为「选中」替他展开，侧栏会跟着每一次点击来回抽动。手动收起表达的意图
+ *    应当被尊重，直到下一次真的出现「有新东西要配」。
+ */
+watch(
+  [() => editor.selectedNodeId.value, () => editor.selectedEdge.value],
+  ([nodeId, edge]) => {
+    if (nodeId || edge) {
+      rightCollapsed.value = false
+    }
+  }
+)
 
 // ---------- 撤销 / 重做（editorHistory 快照栈 + deep watch 捕获就地突变） ----------
 const history = createHistory<EditorDsl>()
@@ -678,11 +740,9 @@ const handleBack = async () => {
 }
 
 .wf-editor__body {
-  display: grid;
+  display: flex;
   min-height: 0;
   flex: 1;
-  /* 🔴 这个 348 是右栏 .wf-panel 的宽度副本（见 WorkflowPropertyPanel.vue），两处必须同步改 */
-  grid-template-columns: minmax(0, 1fr) 348px;
   overflow: hidden;
 }
 
@@ -690,6 +750,48 @@ const handleBack = async () => {
   display: flex;
   min-width: 0;
   min-height: 0;
+  flex: 1;
+}
+
+/*
+  侧栏收起/展开竖条（需求5）。
+  🔴 由 flex 布局接管宽度分配后，这里不再需要「右栏 348px」的副本——
+     此前 grid-template-columns 里写死一份、.wf-panel 里写死一份，两处必须同步改，漏一处就会
+     出现「面板宽度和留白对不上」的错位。现在宽度只由各侧栏自己声明。
+*/
+.wf-rail {
+  display: flex;
+  width: 16px;
+  flex-shrink: 0;
+  flex-direction: column;
+  padding: 8px 0;
+  border: 0;
+  /*
+    用底色而不是边框来标出这条把手：左栏 .wf-palette 自带 border-right、右栏 .wf-panel 自带 border-left，
+    把手再加一道边框就成了「两条紧挨着的竖线」，看着像渲染错位。
+  */
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+
+  &:hover {
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+  }
+}
+
+.wf-rail--collapsed {
+  width: 26px;
+}
+
+.wf-rail__label {
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 16px;
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
 }
 
 .wf-editor__broken {
@@ -717,11 +819,16 @@ const handleBack = async () => {
  *   所以宁可让最窄一档的画布从 372px 缩到 326px，也要保住属性面板可用。
  */
 @media (width <= 1100px) {
-  .wf-editor__body {
-    grid-template-columns: minmax(0, 1fr);
+  .wf-panel {
+    display: none;
   }
 
-  .wf-panel {
+  /*
+    🔴 竖条必须跟着一起藏：它是「展开右栏」的唯一开关，而右栏在这一档被 display:none 掉了，
+       留着就是一个点了没反应的死按钮——比没有按钮更让人怀疑页面坏了。
+       此时右栏的配置能力整体不可用（与改动前的行为一致），要配置请把窗口拉宽到 1100px 以上。
+  */
+  .wf-rail--right {
     display: none;
   }
 }

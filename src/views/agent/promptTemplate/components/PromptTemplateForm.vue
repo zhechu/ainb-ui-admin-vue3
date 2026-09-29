@@ -27,16 +27,6 @@
       </div>
     </div>
 
-    <el-alert type="info" :closable="false" show-icon class="mb-16px">
-      <template #title>
-        <span class="text-12px">
-          模板是聊天面板的<b>提问起手式</b>：用户点一下，正文就插入到输入框，他可以改完再发送。
-          它<b>不会</b>进系统提示词，也不影响工具调用与权限，所以这里不需要声明风险等级。
-          正文里用 <code v-pre>{{占位符}}</code> 标记要用户替换的位置。
-        </span>
-      </template>
-    </el-alert>
-
     <el-row :gutter="20">
       <!-- ==================== 左：表单 ==================== -->
       <el-col :xs="24" :lg="15">
@@ -170,6 +160,21 @@
         </div>
       </el-col>
     </el-row>
+
+    <!--
+      🔴 说明放在表单最下面：它是「读一遍就懂」的背景知识，不是填表前必须先读的前置条件。
+         摆在最上面会把真正要填的字段挤到首屏之下，管理员每次进来都得先跳过一大段文字才看见「模板名称」。
+         填表时右边那块「聊天面板里的样子」已经把最要紧的效果就地演示了，这段文字沦为补充说明。
+    -->
+    <el-alert type="info" :closable="false" show-icon class="mt-16px">
+      <template #title>
+        <span class="text-12px">
+          模板是聊天面板的<b>提问起手式</b>：用户点一下，正文就插入到输入框，他可以改完再发送。
+          它<b>不会</b>进系统提示词，也不影响工具调用与权限，所以这里不需要声明风险等级。
+          正文里用 <code v-pre>{{占位符}}</code> 标记要用户替换的位置。
+        </span>
+      </template>
+    </el-alert>
   </ContentWrap>
 </template>
 

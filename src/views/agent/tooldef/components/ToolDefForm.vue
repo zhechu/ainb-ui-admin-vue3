@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <el-alert type="info" :closable="false" show-icon class="mb-16px">
+    <el-alert type="info" :closable="false" show-icon class="mb-16px max-w-900px mx-auto">
       <template #title>
         <span class="text-12px">
           自定义工具 = 把一个<b>数据接口</b>包装成 AI 能直接调用的工具。接口的地址/SQL/鉴权/租户隔离
@@ -46,7 +46,7 @@
       :rules="formRules"
       :disabled="isView"
       label-width="120px"
-      class="max-w-900px"
+      class="max-w-900px mx-auto"
     >
       <el-row :gutter="16">
         <el-col :span="12">

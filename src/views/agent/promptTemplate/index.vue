@@ -72,15 +72,6 @@
 
     <!-- 列表 -->
     <ContentWrap>
-      <el-alert type="info" :closable="false" class="mb-12px">
-        <template #title>
-          <span class="text-12px">
-            模板保存后<b>立即</b>出现在「智能助手」输入框旁的模板按钮里（关闭态除外），无需重启或刷新其它页面。
-            正文里的 <code v-pre>{{占位符}}</code> 会在插入后高亮提醒用户替换。
-          </span>
-        </template>
-      </el-alert>
-
       <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
         <el-table-column
           label="序号"

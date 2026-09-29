@@ -10,14 +10,6 @@
       </div>
     </div>
 
-    <el-alert type="info" :closable="false" class="mb-10px">
-      <template #title>
-        记录每次调用的参数、<b>实际执行的 SQL（含自动注入的租户条件）</b>与耗时。
-        调用时间区间<b>必填且不超过 3 个月</b>，防止日志量大拖慢查询。
-        排查「为什么查不到数据」时，展开看执行的 SQL 最直接；失败时可展开查看<b>完整报错原因</b>。
-      </template>
-    </el-alert>
-
     <el-form :inline="true" size="small" class="-mb-15px">
       <el-form-item label="调用时间" required>
         <el-date-picker

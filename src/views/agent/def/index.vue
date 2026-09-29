@@ -8,6 +8,8 @@
      另加「复制」（换 code 成一个独立的新 Agent）。删除放宽到「草稿 + 已停用」。
   🔴 需求10：列表里会有一行<b>系统内置</b>的「默认平台助手」——它就是聊天入口未选 Agent 时用的那份
      系统提示词，可就地维护人设/名称/描述，但不可删除、停用、派生（后端抛 AGENT_DEF_BUILTIN_READONLY）。
+  🔴 需求8：已停用可<b>重新发布</b>上线（无需派生新版本）——停用只是从聊天选择器摘掉，配置仍是完整快照。
+  🔴 需求9：批量删除，且<b>只有已停用</b>的行勾得上（比单删更严：草稿可能正在被编辑，不该混进一整页的勾选）。
 
   权限（增量14a 拆分，与后端 AgentDefController @PreAuthorize 逐字一致）：
      读（查看）= agent:def:query；新增/复制/派生 = :create；编辑 = :update；删除 = :delete；发布/停用 = :publish。
@@ -64,13 +66,39 @@
         >
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
+        <!--
+          批量删除（需求9）。🔴 只有「已停用」的行勾得上，与单行删除（草稿 + 已停用）刻意不同：
+          批量删的目标是「已经下线、确认不再要」的那一批；草稿可能正在被人编辑，混进批量勾选
+          太容易一删一大片。规则藏在灰掉的复选框里没人能猜到，故用 tooltip 说明。
+          包一层 span 是因为禁用的 el-button 不派发鼠标事件，tooltip 挂不上去。
+        -->
+        <el-tooltip
+          v-if="checkPermi(['agent:def:delete'])"
+          content="仅「已停用」的智能体可勾选，用于批量清理已下线的配置"
+          placement="top"
+        >
+          <span class="ml-12px align-middle">
+            <el-button type="danger" plain :disabled="checkedIds.length === 0" @click="handleDeleteBatch">
+              <Icon icon="ep:delete" class="mr-5px" />
+              批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
+            </el-button>
+          </span>
+        </el-tooltip>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+    <el-table
+      class="xpy-list-table"
+      stripe
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+    >
+      <!-- 批量删除的勾选列（需求9）。selectable 把不该删的行直接灰掉，而不是让用户勾上后再报错 -->
+      <el-table-column type="selection" width="44" :selectable="isRowSelectable" />
       <!-- 序号列：indexMethod 已配 auto-import（@/utils/table），按当前页码换算全局序号 -->
       <el-table-column
         label="序号"
@@ -114,7 +142,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="300" fixed="right">
+      <el-table-column label="操作" align="center" min-width="340" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -144,14 +172,21 @@
           >
             复制
           </el-button>
+          <!--
+            需求8：已停用可重新发布上线。停用只是把它从聊天选择器摘掉，配置仍是完整可用的一份快照，
+            「临时下线排障、修好了再放回来」是常态；此前只给草稿放行，管理员为了原封不动地恢复一个
+            Agent 得先派生新版本再发布，凭空多出一个内容完全相同的 v(n+1)。
+            判据写成 !== PUBLISHED 而不是枚举 DRAFT/DISABLED：状态是封闭枚举，PUBLISHED 行本来就另有「停用」，
+            将来若再加一个可发布状态，这里自动正确，不会静默漏掉。
+          -->
           <el-button
-            v-if="scope.row.status === 'DRAFT'"
+            v-if="scope.row.status !== 'PUBLISHED'"
             link
             type="success"
             @click="handlePublish(scope.row)"
             v-hasPermi="['agent:def:publish']"
           >
-            发布
+            {{ scope.row.status === 'DISABLED' ? '重新发布' : '发布' }}
           </el-button>
           <el-button
             v-if="scope.row.status === 'PUBLISHED' && !scope.row.builtin"
@@ -163,7 +198,9 @@
             停用
           </el-button>
           <!-- 需求11：草稿可直接删；已停用也可删（不再被选用，删了不留孤儿）；
-               已发布须先停用（它还挂在聊天选择器里，直接删等于对话选到一个不存在的 Agent） -->
+               已发布须先停用（它还挂在聊天选择器里，直接删等于对话选到一个不存在的 Agent）。
+               🔴 单删比批量删宽（放行草稿）：一次删一个、看得见是谁，误删代价有限；
+                  批量删面对一整页勾选，收紧到「仅已停用」才不至于连带删掉还在编辑的草稿。 -->
           <el-button
             v-if="scope.row.status !== 'PUBLISHED' && !scope.row.builtin"
             link
@@ -216,6 +253,7 @@
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
+import { checkPermi } from '@/utils/permission'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
 
 defineOptions({ name: 'AgentDef' })
@@ -256,6 +294,10 @@ const getList = async () => {
     const data = await AgentDefApi.getDefPage(queryParams)
     list.value = data.list
     total.value = data.total
+    // 翻页/搜索/删除后清空勾选：checkedIds 存的是编号，而列表已经换了一茬，
+    // 留着旧编号会让「批量删除（N）」里的 N 与页面上看得见的勾选数对不上。
+    // el-table 换数据时本身会重算选中态并触发 selection-change，这里显式清一次是不依赖那个时序。
+    checkedIds.value = []
   } finally {
     loading.value = false
   }
@@ -368,12 +410,23 @@ const handleCopySubmit = async () => {
   }
 }
 
-/** 发布：DRAFT → PUBLISHED */
+/**
+ * 发布：DRAFT / DISABLED → PUBLISHED（需求8：停用后可重新上线）
+ *
+ * 确认文案按来源状态分开写：草稿是「首次让它生效」，已停用是「放回线上」——
+ * 后者需要提醒管理员，这个版本的配置在停用期间没被复查过，重新上线即刻对聊天入口生效。
+ */
 const handlePublish = async (row: AgentDefVO) => {
+  const relaunch = row.status === 'DISABLED'
   try {
-    await message.confirm(`确认发布 Agent「${row.name || row.code}」(v${row.version})？`)
+    await message.confirm(
+      relaunch
+        ? `确认重新发布 Agent「${row.name || row.code}」(v${row.version})？` +
+            `它停用期间的配置未作改动，发布后即刻回到聊天选择器中可被选用。`
+        : `确认发布 Agent「${row.name || row.code}」(v${row.version})？`
+    )
     await AgentDefApi.publishDef(row.id)
-    message.success('发布成功')
+    message.success(relaunch ? '重新发布成功' : '发布成功')
     await getList()
   } catch {}
 }
@@ -396,6 +449,44 @@ const handleDelete = async (row: AgentDefVO) => {
     )
     await AgentDefApi.deleteDef(row.id)
     message.success('删除成功')
+    await getList()
+  } catch {}
+}
+
+// ========== 批量删除（需求9）==========
+const checkedIds = ref<number[]>([])
+
+/**
+ * 哪些行勾得上（需求9：只有已停用的才能选择删除）
+ *
+ * <p>内置行永远排除：它是「聊天入口未选 Agent 时用哪段系统提示词」的平台设置，不是业务 Agent，
+ * 删掉它所有未选 Agent 的对话都会退化成模型自由发挥。
+ * <p>判据与工具栏 tooltip、确认框文案三处必须一致，否则会出现「勾上了却删不掉」。
+ */
+const isRowSelectable = (row: AgentDefVO) => row.status === 'DISABLED' && !row.builtin
+
+const handleRowCheckboxChange = (rows: AgentDefVO[]) => {
+  checkedIds.value = rows.map((row) => row.id)
+}
+
+/**
+ * 批量删除。后端是「全成或全不成」：先把 ids 全查回来校验，有一条不该删就整批拒绝、一条都不动。
+ * 确认框把要删的名字列出来（最多 5 个 + 「等 N 个」），因为批量删是不可恢复操作，
+ * 只显示数量不足以让人发现「勾错了」。
+ */
+const handleDeleteBatch = async () => {
+  if (checkedIds.value.length === 0) {
+    return
+  }
+  const rows = list.value.filter((row) => checkedIds.value.includes(row.id))
+  const names = rows.map((row) => `「${row.name || row.code}」v${row.version}`)
+  const preview =
+    names.length <= 5 ? names.join('、') : `${names.slice(0, 5).join('、')} 等 ${names.length} 个`
+  try {
+    await message.delConfirm(`确认删除已停用的 Agent：${preview}？删除后不可恢复。`)
+    await AgentDefApi.deleteDefList(checkedIds.value)
+    message.success('删除成功')
+    // getList 内部会清空勾选
     await getList()
   } catch {}
 }

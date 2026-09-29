@@ -38,7 +38,7 @@
       :model="formData"
       :rules="formRules"
       label-width="100px"
-      class="max-w-760px"
+      class="max-w-760px mx-auto"
     >
       <el-form-item label="流程名称" prop="name">
         <el-input v-model="formData.name" clearable placeholder="请输入流程名称" />

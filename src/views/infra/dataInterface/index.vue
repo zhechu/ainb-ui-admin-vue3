@@ -46,7 +46,7 @@
           @click="openForm('create')"
           v-hasPermi="['infra:data-interface:create']"
         >
-          <Icon icon="ep:plus" class="mr-5px" /> 新建接口
+          <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <el-button plain @click="openLog()">
           <Icon icon="ep:document" class="mr-5px" /> 调用日志
@@ -56,12 +56,6 @@
   </ContentWrap>
 
   <ContentWrap>
-    <el-alert type="warning" :closable="false" show-icon class="mb-10px">
-      <template #title>
-        接口里的 SQL 会<b>直接对数据库执行</b>。系统已自动为每条语句注入租户条件，
-        并禁止 DDL 与对系统内置表的写操作；但<b>含写操作的接口仍会真实修改数据</b>，请谨慎配置。
-      </template>
-    </el-alert>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
         label-class-name="col-index"

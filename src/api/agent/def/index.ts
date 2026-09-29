@@ -128,7 +128,18 @@ export const AgentDefApi = {
   deleteDef: (id: number): Promise<boolean> =>
     request.delete({ url: '/agent/def/delete', params: { id } }),
 
-  /** 发布：DRAFT → PUBLISHED（按 id 精确发布该版本，幂等）。后端 @RequestParam id，走 params */
+  /**
+   * 批量删除定义。判据与单删一致（内置行拒、已发布拒），但语义是<b>全成或全不成</b>：
+   * 后端先把 ids 全查回来校验一遍，有一条不该删就整批拒绝、一条都不动。
+   * 🔴 ids 走逗号串而非数组：axios 默认把数组序列化成 ids[]=1&ids[]=2，后端 @RequestParam List<Long> 收不到。
+   */
+  deleteDefList: (ids: number[]): Promise<boolean> =>
+    request.delete({ url: '/agent/def/delete-list', params: { ids: ids.join(',') } }),
+
+  /**
+   * 发布：DRAFT / DISABLED → PUBLISHED（按 id 精确发布该版本，幂等）。后端 @RequestParam id，走 params
+   * 🔴 已停用可重新发布：停用只是把它从聊天选择器摘掉，配置仍是完整快照，「临时下线排障、修好再放回来」是常态。
+   */
   publishDef: (id: number): Promise<number> =>
     request.post({ url: '/agent/def/publish', params: { id } }),
 
