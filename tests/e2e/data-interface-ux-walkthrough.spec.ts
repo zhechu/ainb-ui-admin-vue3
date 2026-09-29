@@ -80,7 +80,7 @@ test('数据接口体验优化走查', async ({ page }) => {
   // ========== 打开新建表单（SQL 类型，默认主数据源 → 表结构面板会加载） ==========
   await page.goto('/infra/data-manage/data-interface')
   await page.waitForLoadState('networkidle')
-  await page.getByRole('button', { name: /新建接口/ }).click()
+  await page.getByRole('button', { name: '新增', exact: true }).click()
   await expect(page.getByText('新建数据接口')).toBeVisible()
 
   const panel = page.locator('.w-280px').first()
@@ -162,7 +162,7 @@ test('数据接口体验优化走查', async ({ page }) => {
     .locator('input')
     .fill(IFACE_CODE)
   await page.getByRole('button', { name: /保\s*存/ }).first().click()
-  await expect(page.getByRole('button', { name: /新建接口/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toBeVisible({ timeout: 20_000 })
 
   // ---------- 编辑一次以产生版本 ----------
   let row = await findRow(page)
@@ -175,7 +175,7 @@ test('数据接口体验优化走查', async ({ page }) => {
     .locator('input')
     .fill('走查UX首次修改')
   await page.getByRole('button', { name: /保\s*存/ }).first().click()
-  await expect(page.getByRole('button', { name: /新建接口/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toBeVisible({ timeout: 20_000 })
 
   // ========== 需求三：版本页「预览」→ 只读表单 ==========
   row = await findRow(page)

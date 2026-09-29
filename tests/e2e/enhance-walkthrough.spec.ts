@@ -82,13 +82,19 @@ test('数据接口 + 业务数据 走查', async ({ page }) => {
   await page.screenshot({ path: `${SHOTS}/enh-01-list.png` })
 
   // ========== A2 新建：页内表单 + 责任人/记录日志/多行备注 ==========
-  await page.getByRole('button', { name: /新建接口/ }).click()
+  await page.getByRole('button', { name: '新增', exact: true }).click()
   await expect(page.getByText('新建数据接口')).toBeVisible()
   await expect(page.locator('.el-dialog:visible')).toHaveCount(0)
   const ownerItem = page.locator('.el-form-item').filter({ hasText: '责任人' }).first()
   await ownerItem.locator('input').fill('李四')
   const logItem = page.locator('.el-form-item').filter({ hasText: '记录日志' }).first()
-  await expect(logItem.locator('.el-switch')).toBeVisible()
+  // 🔴 日志默认关闭（防高频接口写日志拖慢性能），A6 要验报错日志就得在这里显式开启——
+  //    顺带把开关本身也验了：默认必须是关的，点一下必须变成开的
+  const logSwitch = logItem.locator('.el-switch')
+  await expect(logSwitch).toBeVisible()
+  await expect(logSwitch).not.toHaveClass(/is-checked/)
+  await logSwitch.click()
+  await expect(logSwitch).toHaveClass(/is-checked/)
   const remarkItem = page.locator('.el-form-item').filter({ hasText: '备注' }).first()
   await expect(remarkItem.locator('textarea')).toBeVisible()
   await remarkItem.locator('textarea').fill('第一行备注\n第二行备注')
@@ -107,7 +113,7 @@ test('数据接口 + 业务数据 走查', async ({ page }) => {
   await setSql(page, 'SELECT 1 AS ok')
   await page.screenshot({ path: `${SHOTS}/enh-02-form.png` })
   await page.getByRole('button', { name: /保\s*存/ }).first().click()
-  await expect(page.getByRole('button', { name: /新建接口/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toBeVisible({ timeout: 20_000 })
 
   // 列表出现新行，责任人=李四
   let row = await findRow(page)
@@ -123,7 +129,7 @@ test('数据接口 + 业务数据 走查', async ({ page }) => {
     .locator('input')
     .fill('走查首次修改')
   await page.getByRole('button', { name: /保\s*存/ }).first().click()
-  await expect(page.getByRole('button', { name: /新建接口/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toBeVisible({ timeout: 20_000 })
 
   // ========== A4 预览（页内 + 执行成功） ==========
   row = await findRow(page)
@@ -140,7 +146,7 @@ test('数据接口 + 业务数据 走查', async ({ page }) => {
   await row.getByRole('button', { name: '配置' }).click()
   await setSql(page, 'SELECT * FROM walk_no_such_table_xyz')
   await page.getByRole('button', { name: /保\s*存/ }).first().click()
-  await expect(page.getByRole('button', { name: /新建接口/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: '新增', exact: true })).toBeVisible({ timeout: 20_000 })
   row = await findRow(page)
   await row.getByRole('button', { name: '预览' }).click()
   await page.getByRole('button', { name: /执\s*行/ }).click()

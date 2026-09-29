@@ -226,17 +226,18 @@ test.describe('智能体管理页', () => {
 
     await searchByCode(page, BUILTIN_CODE)
     const row = page.locator('.el-table__body tr').filter({ hasText: BUILTIN_CODE }).first()
-    const builtinId = (await row.locator('td:nth-child(2)').innerText()).trim()
+    // 列序号含首列的批量删除勾选列（2026-09-29 需求9 新增），整体比业务列偏移 1
+    const builtinId = (await row.locator('td:nth-child(3)').innerText()).trim()
 
     // 打标 + 状态：它是「已发布」，但额外挂一枚「系统内置」danger 标
     // 🔴 必须按列取：内置行的【描述】正文本身就以「系统内置：…」开头，
     //    直接 row.getByText('系统内置') 会同时命中标签和描述两个节点（strict mode 违规）
-    const statusCell = row.locator('td:nth-child(6)')
+    const statusCell = row.locator('td:nth-child(7)')
     await expect(statusCell.locator('.el-tag').filter({ hasText: '系统内置' })).toBeVisible({
       timeout: 15000
     })
     await expect(statusCell.locator('.el-tag').filter({ hasText: '已发布' })).toBeVisible()
-    await expect(row.locator('td:nth-child(4)')).toHaveText('默认平台助手')
+    await expect(row.locator('td:nth-child(5)')).toHaveText('默认平台助手')
 
     // 就地维护的三个入口都在
     for (const name of ['查看', '编辑', '复制']) {
@@ -280,7 +281,7 @@ test.describe('智能体管理页', () => {
     await createDraftViaUi(page, CODE_V, '派生源助手', PERSONA)
     await searchByCode(page, CODE_V)
     const row = page.locator('.el-table__body tr').filter({ hasText: CODE_V }).first()
-    const originId = (await row.locator('td:nth-child(2)').innerText()).trim()
+    const originId = (await row.locator('td:nth-child(3)').innerText()).trim()
 
     // ---------- 发布，把它变成「不可就地改」的状态 ----------
     await row.getByRole('button', { name: '发布' }).first().click()
@@ -317,9 +318,9 @@ test.describe('智能体管理页', () => {
     await expect(sameCode).toHaveCount(2, { timeout: 20000 })
     const v1 = sameCode.filter({ hasText: '已发布' }).first()
     const v2 = sameCode.filter({ hasText: '草稿' }).first()
-    await expect(v1.locator('td:nth-child(5)')).toHaveText('1')
-    await expect(v2.locator('td:nth-child(5)')).toHaveText('2')
-    expect((await v2.locator('td:nth-child(2)').innerText()).trim()).toBe(derivedId)
+    await expect(v1.locator('td:nth-child(6)')).toHaveText('1')
+    await expect(v2.locator('td:nth-child(6)')).toHaveText('2')
+    expect((await v2.locator('td:nth-child(3)').innerText()).trim()).toBe(derivedId)
 
     // ---------- 复制 → 换 code 的 v1 草稿 ----------
     await v1.getByRole('button', { name: '复制' }).first().click()
@@ -353,7 +354,7 @@ test.describe('智能体管理页', () => {
       timeout: 20000
     })
     const copiedRow = page.locator('.el-table__body tr').filter({ hasText: CODE_COPY }).first()
-    await expect(copiedRow.locator('td:nth-child(5)')).toHaveText('1')
+    await expect(copiedRow.locator('td:nth-child(6)')).toHaveText('1')
     await expect(copiedRow.getByText('草稿')).toBeVisible()
     // 副本不是内置行、也不是已发布行，故删除按钮在
     await expect(copiedRow.getByRole('button', { name: '删除' })).toBeVisible()

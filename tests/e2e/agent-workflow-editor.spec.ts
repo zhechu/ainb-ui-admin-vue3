@@ -57,6 +57,12 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     expect(initialCount).toBeGreaterThanOrEqual(3)
     const flowBox = await page.locator('.vue-flow').first().boundingBox()
     expect(flowBox?.height ?? 0).toBeGreaterThan(100)
+    // 需求5：左右侧栏默认收起，画布吃满宽度。先断言「收起」这个默认态本身，再手动展开左目录
+    const railLeft = page.locator('[data-testid="rail-left"]')
+    await expect(railLeft).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('.wf-palette__item')).toHaveCount(0)
+    await expect(page.locator('.wf-panel')).toHaveCount(0)
+    await railLeft.click()
     // 左目录在
     await expect(page.locator('.wf-palette__item').first()).toBeVisible({ timeout: 10000 })
 
