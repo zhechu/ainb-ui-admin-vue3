@@ -226,7 +226,12 @@
                 <Icon icon="ep:search" />
               </template>
             </el-input>
-            <el-scrollbar max-height="320px">
+            <!--
+              🔴 Req5：模板从 6 条扩到 40 条（10 个分类），320px 的窗口要滚六七屏才翻得完，
+                 「点开模板看看平台能干什么」这个用途就废了。改成跟视口走：够高就多显示，
+                 小屏（悬浮球抽屉）也不会顶出屏幕。空间不够时 popper 会自己翻到下方，不用管。
+            -->
+            <el-scrollbar max-height="min(56vh, 520px)">
               <div v-if="!groupedTemplates.length" class="agent-tpl-empty">
                 {{ templateList.length ? '没有匹配的模板' : '还没有可用的模板，管理员可在「提示词模板」页新建' }}
               </div>
@@ -475,9 +480,14 @@ const openTemplatePopover = () => {
 }
 
 /**
- * 按分类分组（后端已按 category + sort 排好序，Map 的插入顺序即分类顺序）
+ * 按分类分组（组内沿用后端 category + sort + id 的升序）
  * 🔴 分类为空归入「未分类」并排在最后：不这么做的话空分类会插在最前面，
  * 而它其实是「管理员没填」而不是一个真的类别。
+ * 🔴 分类之间的先后按「组内最小 sort」重排，不再沿用后端返回的顺序：后端是
+ * ORDER BY category,sort，于是分类的先后落在 MySQL 中文排序规则上（按 Unicode 码点，不是拼音），
+ * 结果是「表单搭建」这种一眼该排前面的分类会被排到倒数第二，而管理员在「提示词模板」页改「排序」
+ * 怎么改都挪不动分类——正是本平台头号缺陷「配了但不生效」的形状。取组内最小值做组序后，
+ * 排序号才真的管用：数字小的分类整体靠前，组内仍按 sort 升序。
  */
 const groupedTemplates = computed(() => {
   const kw = templateKeyword.value.trim().toLowerCase()
@@ -501,7 +511,14 @@ const groupedTemplates = computed(() => {
     if (!named.has(key)) named.set(key, [])
     named.get(key)!.push(t)
   }
-  const groups = [...named.entries()].map(([category, items]) => ({ category, items }))
+  const groups = [...named.entries()]
+    .map(([category, items]) => ({
+      category,
+      items,
+      order: Math.min(...items.map((i) => i.sort ?? Number.MAX_SAFE_INTEGER))
+    }))
+    .sort((a, b) => a.order - b.order)
+    .map(({ category, items }) => ({ category, items }))
   if (uncategorized.length) groups.push({ category: UNCATEGORIZED, items: uncategorized })
   return groups
 })

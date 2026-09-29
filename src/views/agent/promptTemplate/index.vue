@@ -242,6 +242,9 @@ const handleDelete = async (row: AgentPromptTemplateVO) => {
     await message.delConfirm(`确认删除模板「${row.name}」？删除后聊天面板里就不再出现。`)
     await AgentPromptTemplateApi.deletePromptTemplate(row.id)
     message.success('删除成功')
+    // 删掉本页最后一行就往前退一页：留在越界的空页上，管理员会以为「模板全没了」
+    const lastPage = Math.max(1, Math.ceil((total.value - 1) / queryParams.pageSize))
+    if (queryParams.pageNo > lastPage) queryParams.pageNo = lastPage
     await Promise.all([getList(), loadCategories()])
   } catch {}
 }
@@ -253,15 +256,33 @@ const handleDelete = async (row: AgentPromptTemplateVO) => {
 const openForm = async (row?: AgentPromptTemplateVO, m?: 'view' | 'edit') => {
   viewMode.value = 'form'
   await nextTick()
-  // 新建时给面板一份「当前列表的排序号」，让它把新模板排在最后，省得管理员自己想序号
-  formRef.value?.setKnownSorts(list.value.map((item) => item.sort ?? 0))
+  if (!row) {
+    // 🔴 新建时的排序号候选必须是【全表】口径，不能拿当前页的 list：
+    //    新模板要「排在最后一条之后」，而当前页只是全表的一页（模板已 40 条、分两页），
+    //    取页内最大值 +10 会和后面几页撞号——结果是以为排在最后、实际插在中间，聊天面板顺序就乱了。
+    //    simple-list 不分页，正是全量口径；它只含开启中的模板，与已关闭的撞号无妨
+    //    （关闭的本就不进聊天面板，重新开启时同序号由 id 兜底排序）。
+    const all = await AgentPromptTemplateApi.getSimplePromptTemplateList().catch(() => [])
+    formRef.value?.setKnownSorts(all.map((item) => item.sort ?? 0))
+  }
   formRef.value?.open(row?.id, m)
 }
 
-/** 保存成功：回列表并刷新（分类可能新增了，一并重取） */
-const onSaved = async () => {
+/**
+ * 保存成功：回列表并刷新（分类可能新增了，一并重取）
+ *
+ * 🔴 新增后跳到【最后一页】：新模板的排序号是「全表最大 + 10」，在 sort 升序的列表里必然垫底。
+ *    不跳的话管理员存完停在第 1 页、看不见自己刚建的那条——正是本模块头号缺陷
+ *    「保存成功但不生效且无提示」的形状。编辑不改排序号，行还在原页，不用跳。
+ */
+const onSaved = async (isCreate: boolean) => {
   viewMode.value = 'list'
   await Promise.all([getList(), loadCategories()])
+  if (!isCreate) return
+  const lastPage = Math.max(1, Math.ceil(total.value / queryParams.pageSize))
+  if (lastPage === queryParams.pageNo) return
+  queryParams.pageNo = lastPage
+  await getList()
 }
 
 /** 返回：只回列表，不强制刷新（没改过东西就别白发一次请求） */

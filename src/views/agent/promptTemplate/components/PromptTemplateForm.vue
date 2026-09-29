@@ -76,7 +76,8 @@
             </el-col>
           </el-row>
           <div class="form-tip -mt-8px mb-16px ml-96px">
-            聊天面板按分类分栏；同分类内排序小的在前。留空分类归入「{{ UNCATEGORIZED }}」。
+            聊天面板按分类分栏：同分类内排序小的在前，分类之间则按「该分类里最小的排序号」排先后
+            ——想让整个分类靠前，就把它某条模板的排序号改小。留空分类归入「{{ UNCATEGORIZED }}」并排最后。
           </div>
 
           <el-form-item label="状态" prop="status">
@@ -183,7 +184,7 @@ import {
 
 defineOptions({ name: 'PromptTemplateForm' })
 
-const emit = defineEmits<{ success: []; cancel: [] }>()
+const emit = defineEmits<{ success: [isCreate: boolean]; cancel: [] }>()
 const message = useMessage()
 
 const formLoading = ref(false)
@@ -345,11 +346,14 @@ const submitForm = async () => {
     if (isEdit.value && editId.value) {
       await AgentPromptTemplateApi.updatePromptTemplate(payload)
       message.success('修改成功')
+      emit('success', false)
     } else {
       await AgentPromptTemplateApi.createPromptTemplate(payload)
       message.success('新增成功，聊天面板立即可用')
+      // 🔴 告诉列表页这是新增：新模板的排序号是「全表最大 + 10」，在 sort 升序的列表里必然垫底，
+      //    列表页要据此跳到最后一页，否则管理员存完在第 1 页什么都看不见。
+      emit('success', true)
     }
-    emit('success')
   } finally {
     formLoading.value = false
   }
