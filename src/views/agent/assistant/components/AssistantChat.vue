@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-w-0 h-full">
+  <div ref="chatRootRef" class="flex flex-col min-w-0 h-full">
     <!-- 滚动区与「回到底部」按钮同处一个相对定位容器，按钮才能贴着滚动区底部，
          而不是去猜输入区有多高（compact 与非 compact 的输入区高度不一样） -->
     <div class="relative flex-1 min-h-0">
@@ -90,15 +90,18 @@
                 :run-progress="item.runProgress"
                 :run-result="item.runResult"
                 :run-error="item.runError"
+                :confirmable="!!item.hitl"
                 @confirm="() => handleConfirmWorkflow(item)"
                 @cancel="() => handleCancelWorkflow(item)"
               />
 
               <!-- HITL 确认卡片（增量13）：流程走到人工闸口，就在聊天里问「同意/拒绝」，
                    不再把用户支去「工作流执行历史」里恢复。三态由 item.hitl 承载：
-                   待确认（decided=null）→ 续跑中（running）→ 已处理（decided 有值） -->
+                   待确认（decided=null）→ 续跑中（running）→ 已处理（decided 有值）。
+                   🔴 用独立 v-if 而不是 v-else-if：草稿卡「运行」撞闸口时（2026-09-29 修的死路），
+                      同一条消息上草稿卡与确认卡要<b>同时</b>在 —— 上面看跑到哪了、下面做决定。 -->
               <HitlConfirmCard
-                v-else-if="item.hitl"
+                v-if="item.hitl"
                 :content="item.hitl.content"
                 :node-id="item.hitl.nodeId"
                 :running="item.hitl.running"
@@ -108,7 +111,7 @@
               />
 
               <!-- 普通问答气泡 -->
-              <template v-else>
+              <template v-if="!item.cardStatus && !item.hitl">
                 <div
                   class="px-14px py-10px rounded-10px bg-[var(--el-fill-color-light)] break-words"
                 >
@@ -175,20 +178,38 @@
 
     <!-- 输入区 -->
     <div
-      class="border-t border-[var(--el-border-color-lighter)] border-t-solid"
+      class="relative flex-shrink-0 border-t border-[var(--el-border-color-lighter)] border-t-solid"
       :class="compact ? 'px-14px py-12px' : 'px-24px py-16px'"
     >
-      <el-input
-        ref="inputRef"
-        v-model="inputText"
-        type="textarea"
-        :rows="compact ? 2 : 3"
-        resize="none"
-        :maxlength="INPUT_MAX_LENGTH"
-        show-word-limit
-        placeholder="问点什么吧，Enter 发送 / Shift+Enter 换行"
-        @keydown.enter="handleEnter"
-      />
+      <!--
+        上缘拖拽把手：往上拖把输入框拉高（2026-09-29 二轮：贴长提示词时不用滚着看）。
+        🔴 放在输入区顶边而不是用 textarea 原生 resize 角：原生角标在右下角、只有 10px 见方，
+           而且横向也能拖（会把输入框拖得比发送行还宽）；顶边一条整宽热区更符合「往上拉高」的直觉。
+      -->
+      <div
+        class="agent-input-resize"
+        data-testid="chat-input-resize"
+        title="拖拽调整输入框高度"
+        @mousedown.prevent="startInputResize"
+        @dblclick="resetInputHeight"
+      ></div>
+      <div
+        ref="inputWrapRef"
+        class="agent-input-wrap"
+        :style="inputHeight ? { height: `${inputHeight}px` } : undefined"
+      >
+        <el-input
+          ref="inputRef"
+          v-model="inputText"
+          type="textarea"
+          :rows="compact ? 2 : 3"
+          resize="none"
+          :maxlength="INPUT_MAX_LENGTH"
+          show-word-limit
+          placeholder="问点什么吧，Enter 发送 / Shift+Enter 换行"
+          @keydown.enter="handleEnter"
+        />
+      </div>
       <!-- 需求8：Agent 选择器与发送按钮同处一行（原来独占一行、白占 40px 竖向空间）。
            🔴 会话一旦建立（innerConversationId 有值）就锁定：D4「创建时定、之后以会话为准」，
            防一轮对话中途换 Agent 导致历史里混两套人设。新建对话（未落库）时可自由选。
@@ -389,6 +410,66 @@ const inputText = ref('')
 const streaming = ref(false)
 const scrollbarRef = ref()
 const inputRef = ref()
+
+/**
+ * 输入框高度的手动拉伸
+ *
+ * 原来 textarea 写死 rows=3、resize:none，粘贴一段长提示词进去只能靠内部滚动条来回看，
+ * 想边看边改更是没办法 —— 这是「录入提示词」这个主场景上的硬伤。
+ * 改成：往上拖输入区顶边把框拉高，双击顶边恢复默认。
+ *
+ * 🔴 只在用户拖过之后才写 height（inputHeight 为 null 时不加内联样式），
+ *    这样默认的 3 行外观、以及 compact 模式的 2 行外观都由 rows 决定，
+ *    不会因为写死像素值而在悬浮球/整页两种形态下走形。
+ */
+const inputWrapRef = ref<HTMLElement>()
+const chatRootRef = ref<HTMLElement>()
+const inputHeight = ref<number | null>(null)
+const MIN_INPUT_HEIGHT = 64
+const MAX_INPUT_HEIGHT = 480
+/** 拉高输入框时给消息区留的底线：低于这个值，用户就没法「边看回答边补提示词」了 */
+const MIN_MESSAGE_AREA = 160
+
+const startInputResize = (e: MouseEvent) => {
+  const wrap = inputWrapRef.value
+  const startHeight = wrap?.offsetHeight ?? 110
+  const startY = e.clientY
+  /**
+   * 上限按「对话区自己的高度」算，不能按 window.innerHeight 算。
+   *
+   * 🔴 踩过一次：用 0.6 * innerHeight，在 720 高的窗口里能拖到 432px，
+   *    而对话区本身只有约 600px（上面还有导航栏、标签页），扣掉输入区自己的
+   *    发送行与内边距（约 85px）之后，消息区只剩 83px —— 输入框是大了，
+   *    回答却看不见了，等于把一个滚动问题换成了另一个。
+   * 所以这里量的是真实可用的两根尺寸：对话区根高、输入区里除了 textarea 之外的固定开销。
+   */
+  const rootHeight = chatRootRef.value?.clientHeight ?? window.innerHeight
+  const chrome = (wrap?.parentElement?.offsetHeight ?? 0) - startHeight
+  const maxHeight = Math.min(
+    MAX_INPUT_HEIGHT,
+    Math.max(MIN_INPUT_HEIGHT, rootHeight - chrome - MIN_MESSAGE_AREA)
+  )
+  const onMove = (ev: MouseEvent) => {
+    // 往上拖（clientY 变小）= 变高
+    const next = startHeight + (startY - ev.clientY)
+    inputHeight.value = Math.min(maxHeight, Math.max(MIN_INPUT_HEIGHT, next))
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
+  // 拖动期间锁定光标与选区，否则鼠标一快就滑出热区、把页面文字刷成选中态
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+const resetInputHeight = () => {
+  inputHeight.value = null
+}
 
 /**
  * 是否跟随底部滚动
@@ -798,6 +879,30 @@ const loadMessages = async (conversationId: number) => {
                 ? 'published'
                 : 'done'
           msg.defStatus = draft.status
+          /**
+           * 刷新后重建「草稿卡运行撞闸口」的确认卡片：这条路线的挂起没落 execution_id
+           * （聊天路由才落），不补这一查的话，刷新后挂起在对话里<b>一点痕迹都没有</b>，
+           * 用户只在执行历史里看到一行等待确认却无处可点（2026-09-29 实测的死路）。
+           * 🔴 只认「最新一条」执行：用户若在其后又跑过一次，旧的挂起已是被放弃的分支，
+           *    为它重建卡片会把用户带去 resume 一条他早已不要的执行。
+           */
+          if (!item.executionId && msg.cardStatus !== 'pending') {
+            const execPage = await AgentWorkflowApi.getExecutionPage({
+              pageNo: 1,
+              pageSize: 1,
+              workflowDefId: draft.defId
+            })
+            if (execPage.list?.[0]?.status === 'INTERRUPTED') {
+              msg.hitl = {
+                executionId: execPage.list[0].id,
+                // nodeId 不重建：同聊天路由的理由 —— currentNode 是最后跑完的节点，不是闸口
+                content: '流程走到人工确认闸口，已暂停等待您的决定。',
+                running: false,
+                decided: null,
+                error: ''
+              }
+            }
+          }
         } catch {
           // 草稿加载失败就当普通消息显示（warnings 本就不可在刷新后恢复，与旧卡一致）
         }
@@ -1170,7 +1275,11 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       applyChatEvent(answerMessage, payload.data)
       // 续跑又撞上一个人工闸口（多闸口流程）：WORKFLOW_CONFIRM 会落在 answerMessage 上，
       // 它自己就成了下一张卡片，用户可以在同一段对话里连续确认
-      if (payload.data?.type === 'WORKFLOW_CONFIRM') hitl.running = false
+      if (payload.data?.type === 'WORKFLOW_CONFIRM') {
+        hitl.running = false
+        // 草稿卡路线：执行又停在新闸口上，卡片终态要跟着回到「已挂起」
+        if (item.cardStatus) item.runResult = 'interrupted'
+      }
     },
     (err) => {
       // 🔴 同 handleSend：必须 throw，否则 fetchEventSource 会无限重连、反复提交 resume
@@ -1180,6 +1289,10 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       if (answerMessage.status === 'STREAMING') {
         answerMessage.status = 'ERROR'
         answerMessage.errorMsg = '连接中断，请重试'
+      }
+      if (item.cardStatus && !hitl.error) {
+        item.runResult = 'error'
+        item.runError = '续跑连接中断，请重试'
       }
       throw err
     },
@@ -1194,6 +1307,16 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
             '流程恢复后没有返回任何内容，请刷新页面查看执行状态；若反复出现请联系管理员查看服务端日志'
         } else {
           answerMessage.status = 'SUCCESS'
+        }
+      }
+      // 草稿卡路线：续跑流结束即执行走到终态（或新闸口，上面已处理），把卡片终态对齐，
+      // 否则草稿卡会一直挂着「已挂起」的警告，而流程其实已经跑完了
+      if (item.cardStatus && !hitl.error && item.runResult === 'interrupted') {
+        if (answerMessage.status === 'ERROR') {
+          item.runResult = 'error'
+          item.runError = answerMessage.errorMsg
+        } else if (!answerMessage.hitl) {
+          item.runResult = 'success'
         }
       }
       emit('conversation-updated')
@@ -1286,6 +1409,10 @@ const runWorkflow = (item: any): Promise<void> => {
         }
         const data = payload.data
         switch (data.type) {
+          case 'META':
+            // 执行实例编号在 META 里下发；INTERRUPTED 事件只带 nodeId，确认卡片两样都要
+            item.runExecutionId = data.executionId
+            break
           case 'NODE':
             // NODE 在节点「完成」时到达，带上 nodeId；从预览里回填可读名
             if (data.nodeId) {
@@ -1295,6 +1422,23 @@ const runWorkflow = (item: any): Promise<void> => {
             break
           case 'INTERRUPTED':
             item.runResult = 'interrupted'
+            /**
+             * 🔴 2026-09-29 修的死路：这里原来只置 runResult='interrupted'，界面上剩一句
+             * 「可在「流程执行」页恢复」—— 而那个页根本不存在，执行历史抽屉也是只读的，
+             * 用户拿着一条 INTERRUPTED 执行无处可点（实测见会话#242 设备管理流程）。
+             * 聊天路由撞闸口会发 WORKFLOW_CONFIRM 落一张确认卡，这条「草稿卡运行」路由
+             * 没有那一落，于是就地补上同一张卡：executionId 取自 META、nodeId 取自本事件。
+             */
+            if (data.executionId ?? item.runExecutionId) {
+              item.hitl = {
+                executionId: data.executionId ?? item.runExecutionId,
+                nodeId: data.nodeId,
+                content: '流程走到人工确认闸口，已暂停等待您的决定。',
+                running: false,
+                decided: null,
+                error: ''
+              }
+            }
             break
           case 'DONE':
             item.runResult = 'success'
@@ -1407,5 +1551,30 @@ defineExpose({
   font-size: 12px;
   color: var(--el-text-color-placeholder);
   border-top: 1px solid var(--el-border-color-lighter);
+}
+
+/* 输入区顶边的拖拽热区：整宽 6px 压在分割线上（top:-3px 让它骑跨 border），
+   hover 亮起一道主色提示「这里能拖」。 */
+.agent-input-resize {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: 6px;
+  cursor: row-resize;
+
+  &:hover {
+    background: var(--el-color-primary-light-5);
+  }
+}
+
+/* 拖高之后让 textarea 跟着撑满外层。外层默认没有 height（由 rows 决定），
+   百分比对 auto 会退化成 auto，所以默认的 3 行外观不受影响。 */
+.agent-input-wrap {
+  :deep(.el-textarea),
+  :deep(.el-textarea__inner) {
+    height: 100%;
+  }
 }
 </style>

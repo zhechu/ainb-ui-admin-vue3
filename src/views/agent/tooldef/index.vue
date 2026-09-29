@@ -20,20 +20,11 @@
      （@AgentTool 声明 + AgentToolRegistry 收集 + AgentSecurityGateway 逐次鉴权），
      由 AgentToolExecutor 直接调用 Java 方法，没有跨进程的 JSON-RPC 往返。
      好处是权限、风险等级、Plan 确认能一处管住；代价是外部 MCP Server 的工具进不来。
-     页面顶部那段提示就是写给管理员看的，免得他到处找「MCP 服务器地址」配置项。
+     （这段背景原先写在页面顶部提示语里，2026-09-29 按体验要求删掉了提示语，说明留在注释里。）
 -->
 <template>
   <!-- ==================== 列表 ==================== -->
   <template v-if="viewMode === 'list'">
-    <el-alert type="info" :closable="false" class="mb-12px">
-      <template #title>
-        <span class="text-12px">
-          这里的工具是平台<b>自建的进程内工具注册表</b>，不遵循 MCP 协议，也没有「MCP 服务器地址」可配。
-          每把工具都由 Agent 安全网关逐次鉴权、按风险等级决定是否要用户确认，这是自建换来的强管控。
-        </span>
-      </template>
-    </el-alert>
-
     <el-tabs v-model="activeTab" class="agent-tooldef-tabs">
       <!-- ==================== 内置工具 ==================== -->
       <el-tab-pane label="内置工具" name="builtin">

@@ -147,7 +147,9 @@ test.describe('2026-09-29 十项体验优化走查', () => {
     menuIds = [] // UI 已经删干净，afterAll 不必再动
   })
 
-  test('智能体：已停用可重新发布 + 仅已停用可勾选批量删除（Req8/Req9）', async ({ page }) => {
+  test('智能体：已停用可重新发布 + 草稿/已停用可勾选批量删除（Req8/Req9/二轮Req2）', async ({
+    page
+  }) => {
     await login(page)
     await gotoWithAuth(page, '/ai/agent/def')
     await expect(page.getByRole('columnheader', { name: '状态' }).first()).toBeVisible({
@@ -163,14 +165,16 @@ test.describe('2026-09-29 十项体验优化走查', () => {
     const batchBtn = page.getByRole('button', { name: /批量删除/ })
     await expect(batchBtn).toBeDisabled()
 
-    // Req9：草稿行勾不上（selectable 把它灰掉了），而不是勾上了再被后端拒
+    // 二轮 Req2：草稿行勾得上（上一轮只有已停用勾得上）；已发布的灰掉在下面断言
     const rowCheckbox = row.locator('.el-checkbox').first()
-    await expect(rowCheckbox.locator('input')).toBeDisabled()
+    await expect(rowCheckbox.locator('input')).toBeEnabled()
 
     // Req8：草稿 → 发布 → 停用 → 「重新发布」按钮必须出现（改之前这一行只有 编辑/复制/删除）
     await row.getByRole('button', { name: '发布', exact: true }).click()
     await confirmBox(page, /确认发布/)
     await expect(row.locator('.el-tag').filter({ hasText: '已发布' })).toBeVisible({ timeout: 15000 })
+    // 已发布行勾不上：后端 validateDeletable 只认草稿/已停用，勾上了只会整批被拒
+    await expect(rowCheckbox.locator('input')).toBeDisabled()
 
     await row.getByRole('button', { name: '停用', exact: true }).click()
     await confirmBox(page, /确认停用/)
@@ -201,7 +205,7 @@ test.describe('2026-09-29 十项体验优化走查', () => {
     await expect(row.locator('.el-tag').filter({ hasText: '已停用' })).toBeVisible({ timeout: 15000 })
     await rowCheckbox.click()
     await batchBtn.click()
-    const box = page.locator('.el-message-box').filter({ hasText: '确认删除已停用的 Agent' })
+    const box = page.locator('.el-message-box').filter({ hasText: '确认删除选中的 Agent' })
     await expect(box).toBeVisible({ timeout: 10000 })
     // 确认框里点名了要删谁（只有个数量不足以让人发现「勾错了」）
     await expect(box).toContainText(AGENT_NAME)

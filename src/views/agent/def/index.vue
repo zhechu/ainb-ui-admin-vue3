@@ -9,7 +9,7 @@
   🔴 需求10：列表里会有一行<b>系统内置</b>的「默认平台助手」——它就是聊天入口未选 Agent 时用的那份
      系统提示词，可就地维护人设/名称/描述，但不可删除、停用、派生（后端抛 AGENT_DEF_BUILTIN_READONLY）。
   🔴 需求8：已停用可<b>重新发布</b>上线（无需派生新版本）——停用只是从聊天选择器摘掉，配置仍是完整快照。
-  🔴 需求9：批量删除，且<b>只有已停用</b>的行勾得上（比单删更严：草稿可能正在被编辑，不该混进一整页的勾选）。
+  🔴 需求9：批量删除，「草稿 / 已停用」的行勾得上（2026-09-29 二轮放开草稿，与单删同口径）。
 
   权限（增量14a 拆分，与后端 AgentDefController @PreAuthorize 逐字一致）：
      读（查看）= agent:def:query；新增/复制/派生 = :create；编辑 = :update；删除 = :delete；发布/停用 = :publish。
@@ -67,14 +67,14 @@
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <!--
-          批量删除（需求9）。🔴 只有「已停用」的行勾得上，与单行删除（草稿 + 已停用）刻意不同：
-          批量删的目标是「已经下线、确认不再要」的那一批；草稿可能正在被人编辑，混进批量勾选
-          太容易一删一大片。规则藏在灰掉的复选框里没人能猜到，故用 tooltip 说明。
+          批量删除（需求9）。🔴 只有「草稿 / 已停用」的行勾得上（2026-09-29 二轮放开草稿），
+          与单行删除同口径；已发布行须先停用再删，避免线上配置被一整页勾选连带清掉。
+          规则藏在灰掉的复选框里没人能猜到，故用 tooltip 说明。
           包一层 span 是因为禁用的 el-button 不派发鼠标事件，tooltip 挂不上去。
         -->
         <el-tooltip
           v-if="checkPermi(['agent:def:delete'])"
-          content="仅「已停用」的智能体可勾选，用于批量清理已下线的配置"
+          content="仅「草稿 / 已停用」的智能体可勾选，用于批量清理不再使用的配置"
           placement="top"
         >
           <span class="ml-12px align-middle">
@@ -199,8 +199,7 @@
           </el-button>
           <!-- 需求11：草稿可直接删；已停用也可删（不再被选用，删了不留孤儿）；
                已发布须先停用（它还挂在聊天选择器里，直接删等于对话选到一个不存在的 Agent）。
-               🔴 单删比批量删宽（放行草稿）：一次删一个、看得见是谁，误删代价有限；
-                  批量删面对一整页勾选，收紧到「仅已停用」才不至于连带删掉还在编辑的草稿。 -->
+               批量删与单删同口径（2026-09-29 二轮放开草稿）：草稿 / 已停用可勾，已发布灰掉。 -->
           <el-button
             v-if="scope.row.status !== 'PUBLISHED' && !scope.row.builtin"
             link
@@ -457,13 +456,15 @@ const handleDelete = async (row: AgentDefVO) => {
 const checkedIds = ref<number[]>([])
 
 /**
- * 哪些行勾得上（需求9：只有已停用的才能选择删除）
+ * 哪些行勾得上（需求9 批量删除；2026-09-29 二轮：草稿也放开）
  *
  * <p>内置行永远排除：它是「聊天入口未选 Agent 时用哪段系统提示词」的平台设置，不是业务 Agent，
  * 删掉它所有未选 Agent 的对话都会退化成模型自由发挥。
+ * <p>已发布行勾不上：后端 validateDeletable 只认 DRAFT/DISABLED，勾上已发布行只会换来整批被拒。
  * <p>判据与工具栏 tooltip、确认框文案三处必须一致，否则会出现「勾上了却删不掉」。
  */
-const isRowSelectable = (row: AgentDefVO) => row.status === 'DISABLED' && !row.builtin
+const isRowSelectable = (row: AgentDefVO) =>
+  (row.status === 'DISABLED' || row.status === 'DRAFT') && !row.builtin
 
 const handleRowCheckboxChange = (rows: AgentDefVO[]) => {
   checkedIds.value = rows.map((row) => row.id)
@@ -483,7 +484,7 @@ const handleDeleteBatch = async () => {
   const preview =
     names.length <= 5 ? names.join('、') : `${names.slice(0, 5).join('、')} 等 ${names.length} 个`
   try {
-    await message.delConfirm(`确认删除已停用的 Agent：${preview}？删除后不可恢复。`)
+    await message.delConfirm(`确认删除选中的 Agent（草稿或已停用）：${preview}？删除后不可恢复。`)
     await AgentDefApi.deleteDefList(checkedIds.value)
     message.success('删除成功')
     // getList 内部会清空勾选

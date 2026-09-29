@@ -12,7 +12,7 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *     · 需求2：新增/编辑真是页内面板而【不是弹窗】，且两个 tab 都真有分页；
  *     · 需求3：关联数据接口后，入参表真回显、绑到「含写」接口时执行方式真自动切换并自动补权限；
  *     · 需求4：按钮文案真是「新增」而不是「新增工具」；
- *     · 需求5：页面真挂着「不遵循 MCP」的说明，管理员不会到处找 MCP 服务器地址。
+ *     · 二轮需求3：列表顶部「不遵循 MCP」提示语已删除（说明保留在 index.vue 的文件头注释里）。
  *   本模块头号缺陷「配了/点了但不生效且无提示」正是这类管理页最易踩的坑，故必须浏览器实测。
  *
  * 🔴 选择器一律走「当前可见的 tab-pane」：el-tabs 的非激活面板是 v-show（display:none）而不是卸载，
@@ -58,10 +58,8 @@ test.describe('工具管理页（内置工具在线维护）', () => {
     await gotoWithAuth(page, '/ai/agent/tooldef')
     await page.waitForURL(LIST_URL, { timeout: 15000 })
 
-    // ---------- 需求5：页面挂着「不遵循 MCP」的说明 ----------
-    await expect(page.locator('.el-alert').filter({ hasText: /不遵循 MCP 协议/ }).first()).toBeVisible({
-      timeout: 15000
-    })
+    // ---------- 2026-09-29 二轮需求3：列表顶部「不遵循 MCP」提示语已按体验要求删除 ----------
+    await expect(page.locator('.el-alert').filter({ hasText: /不遵循 MCP 协议/ })).toHaveCount(0)
 
     // ---------- 需求2：默认停在「内置工具」tab，首页 20 行 + 分页 ----------
     await expect(page.getByRole('tab', { name: '内置工具' })).toBeVisible({ timeout: 15000 })

@@ -133,6 +133,36 @@ test.describe('AI 助手 · 全局悬浮入口', () => {
     await expect(page.getByText('我是平台助手')).toHaveCount(1)
   })
 
+  test('二轮需求1：左缘拖拽调宽 + 头部最大化/还原', async ({ page }) => {
+    await login(page)
+    await gotoWithAuth(page, BUSINESS_PAGE)
+    const drawer = await openDrawer(page)
+
+    // ⚠️ 亚像素：width 实测会返回 479.99998 这类值，统一 Math.round 再比
+    const widthOf = async () => Math.round((await drawer.boundingBox())!.width)
+    expect(await widthOf(), '默认宽度应保持改版前的 480').toBe(480)
+
+    // 拖左缘往左 300px：抽屉贴右边，宽度应同步 +300（默认视口 1280，上限 90% 够不到）
+    const handle = page.locator('[data-testid="agent-dock-resize"]')
+    await expect(handle).toBeVisible()
+    const hb = (await handle.boundingBox())!
+    const startX = hb.x + hb.width / 2
+    await page.mouse.move(startX, hb.y + 240)
+    await page.mouse.down()
+    await page.mouse.move(startX - 300, hb.y + 240, { steps: 10 })
+    await page.mouse.up()
+    const dragged = await widthOf()
+    expect(dragged, '拖拽后抽屉没有变宽').toBe(780)
+
+    // 最大化铺满视口；还原回「拖出来的宽度」而不是默认 480 —— 用户拖出的尺寸不该被一次最大化吃掉。
+    // ⚠️ 最大化/还原的宽度变化是带 0.3s 动画的（只有拖拽期间关过渡），故用 expect.poll 等动画落地
+    const viewportWidth = (await page.viewportSize())!.width
+    await page.locator('[data-testid="agent-dock-maximize"]').click()
+    await expect.poll(widthOf, { timeout: 5_000, message: '最大化后应铺满视口' }).toBe(viewportWidth)
+    await page.locator('[data-testid="agent-dock-maximize"]').click()
+    await expect.poll(widthOf, { timeout: 5_000, message: '还原后应回到拖拽出的宽度' }).toBe(dragged)
+  })
+
   test('历史会话：抽屉里就能看到列表，点一条能切回去继续', async ({ page, request }) => {
     const token = await apiLogin(request)
     const title = `E2E 历史列表 ${Date.now()}`

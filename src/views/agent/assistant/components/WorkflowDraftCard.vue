@@ -165,7 +165,11 @@
       />
       <el-alert
         v-else-if="runResult === 'interrupted'"
-        title="流程已挂起，等待人工确认；可在「流程执行」页恢复"
+        :title="
+          confirmable
+            ? '流程已挂起，等待人工确认；请在下方确认卡片中选择「同意并继续」或「拒绝」'
+            : '流程已挂起，等待人工确认'
+        "
         type="warning"
         :closable="false"
         show-icon
@@ -216,6 +220,13 @@ const props = defineProps<{
   runResult?: 'success' | 'error' | 'interrupted' | null
   /** 运行失败原因 */
   runError?: string
+  /**
+   * 挂起时聊天里是否跟着给了确认卡片（父组件按 item.hitl 传）。
+   * 🔴 决定挂起提示怎么写：有卡就指给用户「在下方卡片决定」；
+   *    没卡（拿不到 executionId 的兜底）就只陈述事实，绝不编一个不存在的入口 ——
+   *    「可在「流程执行」页恢复」那句指向空气的文案就是这么来的（2026-09-29 修）。
+   */
+  confirmable?: boolean
 }>()
 
 defineEmits<{

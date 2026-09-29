@@ -21,9 +21,20 @@
       :size="drawerSize"
       :with-header="false"
       direction="rtl"
-      class="agent-dock-drawer"
+      :class="['agent-dock-drawer', { 'agent-dock-resizing': resizing }]"
     >
-      <div class="flex flex-col h-full">
+      <div class="relative flex flex-col h-full">
+        <!--
+          左缘拖拽柄：往左拖把抽屉拉宽，方便贴一大段提示词。
+          移动端抽屉本就 100% 宽，没有可拖的余量，故不渲染。
+        -->
+        <div
+          v-if="!isMobile"
+          class="agent-dock-resize"
+          data-testid="agent-dock-resize"
+          title="拖拽调整宽度"
+          @mousedown.prevent="startResize"
+        ></div>
         <!-- 头部：对话视图与历史视图各一套按钮 -->
         <div
           class="flex items-center justify-between px-16px py-12px border-b border-[var(--el-border-color-lighter)] border-b-solid"
@@ -53,11 +64,20 @@
             </el-tooltip>
             <el-tooltip
               v-if="view === 'chat'"
+              :content="maximized ? '还原' : '最大化'"
+              placement="bottom"
+            >
+              <el-button link data-testid="agent-dock-maximize" @click="maximized = !maximized">
+                <Icon :icon="maximized ? 'ep:scale-to-original' : 'ep:full-screen'" :size="16" />
+              </el-button>
+            </el-tooltip>
+            <el-tooltip
+              v-if="view === 'chat'"
               content="在完整页面中打开"
               placement="bottom"
             >
               <el-button link data-testid="agent-dock-expand" @click="handleExpand">
-                <Icon icon="ep:full-screen" :size="16" />
+                <Icon icon="ep:share" :size="16" />
               </el-button>
             </el-tooltip>
             <el-tooltip content="收起" placement="bottom">
@@ -172,7 +192,49 @@ const activeAgentDefId = computed(
 const triggerHint = '点击唤起'
 
 /** 手机上 480px 会超出屏宽，抽屉直接铺满 */
-const drawerSize = computed(() => (appStore.getMobile ? '100%' : 480))
+const isMobile = computed(() => appStore.getMobile)
+/** 最大化：抽屉铺满整个视口。与拖拽调宽互不干扰——还原后回到上次拖出的宽度 */
+const maximized = ref(false)
+/** 正在拖左缘调宽。拖拽期间要关掉抽屉的宽度过渡，见文件末尾的全局样式 */
+const resizing = ref(false)
+/** 当前拖出的宽度。默认 480，与改版前一致 */
+const drawerWidth = ref(480)
+/** 拖拽下限：再窄输入框就只能写一行，违背了「方便录入提示词」的初衷 */
+const MIN_DOCK_WIDTH = 360
+
+const drawerSize = computed(() =>
+  isMobile.value || maximized.value ? '100%' : drawerWidth.value
+)
+
+/**
+ * 左缘拖拽调宽
+ *
+ * <p>宽度 = 起始宽 + (按下时的 x - 当前 x)：抽屉贴右边，鼠标往左走它变宽。
+ * <p>上限取视口的 90%：全铺满有「最大化」按钮负责，拖拽只解决「比 480 宽一点」这档需求；
+ *    留 10% 也是给「我还看得见底下页面」这个抽屉存在的理由。
+ * <p>拖拽期间把 body 光标与文本选择锁住：否则鼠标掠过输入框会变成 I 形光标、
+ *    掠过文字会选中一片，松手时抽屉宽度对了、页面却一团糟。
+ */
+const startResize = (e: MouseEvent) => {
+  const startX = e.clientX
+  const startWidth = drawerWidth.value
+  const maxWidth = Math.max(MIN_DOCK_WIDTH, Math.floor(window.innerWidth * 0.9))
+  resizing.value = true
+  const onMove = (ev: MouseEvent) => {
+    drawerWidth.value = Math.min(maxWidth, Math.max(MIN_DOCK_WIDTH, startWidth + (startX - ev.clientX)))
+  }
+  const onUp = () => {
+    resizing.value = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
 
 /** 当前是不是助手独立页（2026-09-29 起菜单挂在「AI」下，路径是 /ai/agent/assistant） */
 const inAssistantPage = computed(
@@ -356,5 +418,32 @@ watch(inAssistantPage, (val) => {
 :deep(.el-drawer__body) {
   padding: 0;
   overflow: hidden;
+}
+
+// 左缘拖拽柄：贴着抽屉左边界的一条窄热区，hover 时亮一下提示「这里能拖」
+.agent-dock-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+
+  &:hover {
+    background: var(--el-color-primary-light-5);
+  }
+}
+</style>
+
+<!--
+  🔴 非 scoped：要选的 .el-drawer 是 Element 内部元素，拿不到本组件的 scope id，scoped 里写不到它。
+  Element 给 .el-drawer 挂了 transition: all —— 拖拽调宽时宽度会带着 0.3s 动画追鼠标，
+  手感发飘、松手瞬间量到的还是动画中间值；最大化/还原走同一个 width 属性，但那里动画是想要的。
+  所以只在拖拽期间（resizing 挂上的这个类）关掉过渡。类名带 agent-dock 前缀，不会误伤别的抽屉。
+-->
+<style lang="scss">
+.agent-dock-resizing.el-drawer {
+  transition: none;
 }
 </style>
