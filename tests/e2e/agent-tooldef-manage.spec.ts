@@ -114,6 +114,9 @@ test.describe('工具管理页（内置工具在线维护）', () => {
     await expect(freshRow.getByText('默认', { exact: true })).toBeVisible({ timeout: 10000 })
 
     // ---------- 需求2：点「维护」→ 页内面板，且【没有弹窗】 ----------
+    // 🔴 列表展示名必须在点「维护」之前读：面板与列表是 v-if/v-else 互斥渲染，
+    //    面板一开列表就卸载了，事后再去读行会一直等到超时。
+    const listDisplayName = (await freshRow.locator('td:nth-child(2)').innerText()).trim()
     await freshRow.getByRole('button', { name: '维护' }).click()
     await expect(
       page.locator('.panel-title').filter({ hasText: `维护内置工具 · ${BUILTIN_TARGET}` })
@@ -127,6 +130,11 @@ test.describe('工具管理页（内置工具在线维护）', () => {
     // 工具名不可改（它是代码里的身份，模型按它调用）
     await expect(formItem(page, '工具名').locator('input')).toBeDisabled()
     await expect(formItem(page, '工具名').locator('input')).toHaveValue(BUILTIN_TARGET)
+    // 🔴 需求2（2026-09-29）：展示名必须【带入】列表里那个中文名，不能是空白。
+    //    历史 BUG 正是点「维护」进来展示名空白：管理员以为要自己填，存个空串就把中文展示名覆盖没了。
+    //    只断言「能填」断不出这个 BUG——本用例紧接着就要填新值，空白也能过——所以必须先断言带入值。
+    expect(listDisplayName, '列表里的展示名应是中文').toMatch(/[\u4e00-\u9fa5]/)
+    await expect(formItem(page, '展示名').locator('input')).toHaveValue(listDisplayName)
 
     // ---------- 改展示名 + 关启用 ----------
     await formItem(page, '展示名').locator('input').fill('E2E 维护展示名')

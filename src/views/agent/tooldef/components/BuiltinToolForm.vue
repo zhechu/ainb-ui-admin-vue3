@@ -228,11 +228,12 @@ const open = (target: AgentRegisteredToolVO) => {
     target.declaredRiskLevel && target.declaredRiskLevel !== 'READ_ONLY' ? '需用户确认' : '无需确认'
   // 表单预填【生效值】，让管理员看到当前状态
   form.value = {
-    // 🔴 判「展示名有没有被维护过」必须比【声明展示名】，不能比工具名：
-    //    代码工具的声明展示名现在都是中文（doc_search → 检索平台使用手册），
-    //    拿 生效值 === toolName 判会永远不成立，于是把声明名当草稿填进输入框，
-    //    管理员一保存就凭空多出一行「值与代码完全相同」的覆盖，列表还标成「维护中」。
-    displayName: target.displayName === declaredDisplayName.value ? '' : (target.displayName ?? ''),
+    // 🔴 展示名必须和其余六个字段一样预填生效值，不能拿「生效值 === 声明值」判成未维护就清空：
+    //    代码声明展示名现在都是中文，未维护时生效值恰好恒等于声明值，那条判断对全部内置工具都成立，
+    //    结果是点「维护」进来展示名永远空白。况且保存本表单必然会落一条覆盖行（isOverridden 的语义
+    //    就是「有行即已维护，哪怕值与代码相同」），清空展示名根本挡不住覆盖行，只是让管理员看不到当前值。
+    //    清空输入框 = 不覆盖、回落代码默认，这条语义由 placeholder 与后端三级回落保证，仍然成立。
+    displayName: target.displayName ?? '',
     description: target.description ?? '',
     groupName: target.groupName ?? '',
     riskLevel: target.riskLevel || target.declaredRiskLevel || 'READ_ONLY',
