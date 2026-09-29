@@ -1,208 +1,250 @@
 <!--
-  流程编排（Workflow 定义管理）—— 增量8 / P4 第一刀
+  流程编排（Workflow 定义管理）—— 增量8 / P4 起，2026-09-29 AI助手优化 Req 1 / Req 3
 
-  修复「流程编排」菜单点开是空白页的缺陷：菜单行早已存在（component=agent/workflow/index、
-  component_name=AgentWorkflow、permission=agent:workflow:query），但页面文件此前不存在。
+  职责：def 列表 / 分页 / 只读画布 / 发布 / 停用 / 版本管理 / 执行历史（含节点级 trace），
+       以及新增·编辑元信息的【页内面板】；画布本身的拖拽编排在整页设计器（editor/index.vue）。
 
-  本刀只读 + 管理：def 列表 / 分页 / 只读画布 / 发布 / 停用 / 执行历史（含节点级 trace）。
-  🔴 有界：暂不做拖拽编辑、节点配置面板、新建-编辑表单、调试运行（P4 后续刀）。
+  🔴 Req 1（2026-09-29）：新增/编辑元信息由 640px 弹窗改为页内面板，与工具管理（views/agent/tooldef）
+     同一套范式——viewMode 在 'list' / 'form' 间切换，面板与列表同级条件渲染，URL 不变、不加路由。
+
+  🔴 Req 3（2026-09-29）：新增「来源」列与筛选项。除本页「新增」外，规划器与助手对话也会往
+     agent_workflow_def 落行（code 形如 wf_plan_*），不标来源就分不清哪条是自己建的。
+     来源由服务端按入口写死，前端只读展示。见 WorkflowSourceEnum 与
+     sql/mysql/xpy-2026-09-29-agent-workflow-def-source.sql。
 
   权限（增量14a 拆分，与后端 AgentWorkflowDefController @PreAuthorize 逐字一致）：
      读（查看画布/执行历史）= agent:workflow:query；新增 = :create；编辑 = :update；删除 = :delete；
      发布/停用 = :publish；发起执行（run/resume/event，在 ExecutionHistoryDrawer）= :run。
      按钮权限行 + 角色授权见 sql/mysql/xpy-2026-09-27-agent-fine-grained-perms.sql（super_admin 绕过一切权限点）。
-  状态无数据字典，用本地 map 渲染 tag（同 views/agent/usage 的做法）。
+  状态与来源均无数据字典，用本地 map 渲染 tag（同 views/agent/usage 的做法）。
 -->
 <template>
-  <!-- 搜索 -->
-  <ContentWrap>
-    <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="68px">
-      <el-form-item label="流程编码" prop="code">
-        <el-input
-          v-model="queryParams.code"
-          placeholder="请输入流程编码"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item label="流程名称" prop="name">
-        <el-input
-          v-model="queryParams.name"
-          placeholder="请输入流程名称"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
-          <el-option
-            v-for="item in STATUS_OPTIONS"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
+  <!-- ==================== 列表 ==================== -->
+  <!--
+    🔴 新增/编辑元信息走【页内面板】而非弹窗（同 views/agent/tooldef 的范式）：
+       面板与列表是同级的条件渲染，URL 不变、不加路由。
+       表单最坏情况（webhook + 内联经典案例卡）有十来项、每项还带说明，640px 弹窗里必须滚动，
+       管理员看不见「上面填了什么、下面要填什么」。
+  -->
+  <template v-if="viewMode === 'list'">
+    <!-- 搜索 -->
+    <ContentWrap>
+      <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true" label-width="68px">
+        <el-form-item label="流程编码" prop="code">
+          <el-input
+            v-model="queryParams.code"
+            placeholder="请输入流程编码"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button @click="handleQuery">
-          <Icon icon="ep:search" class="mr-5px" />
-          搜索
-        </el-button>
-        <el-button @click="resetQuery">
-          <Icon icon="ep:refresh" class="mr-5px" />
-          重置
-        </el-button>
-        <!-- 操作按钮放搜索表单末尾，与 tenant 等列表页同款布局（AI助手 UX 修复：原先孤悬在列表区顶部） -->
-        <!-- Req 2：新增与设计分开——「新增」先弹元信息弹窗建草稿，再由弹窗回调跳整页设计器 -->
-        <el-button
-          type="primary"
-          plain
-          @click="openCreate"
-          v-hasPermi="['agent:workflow:create']"
-        >
-          <Icon icon="ep:plus" class="mr-5px" /> 新增
-        </el-button>
-        <!-- Req 3：五种触发方式的经典案例，不建数据也不需要权限，纯粹给人参考 -->
-        <el-button plain @click="openCases" data-testid="trigger-case-btn">
-          <Icon icon="ep:reading" class="mr-5px" /> 触发案例
-        </el-button>
-      </el-form-item>
-    </el-form>
-  </ContentWrap>
+        </el-form-item>
+        <el-form-item label="流程名称" prop="name">
+          <el-input
+            v-model="queryParams.name"
+            placeholder="请输入流程名称"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
+          />
+        </el-form-item>
+        <el-form-item label="状态" prop="status">
+          <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
+            <el-option
+              v-for="item in STATUS_OPTIONS"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <!-- Req 3：按来源筛，选「手动添加」即可把大模型悄悄生成的草稿噪音一次滤掉 -->
+        <el-form-item label="来源" prop="source">
+          <el-select v-model="queryParams.source" placeholder="请选择来源" clearable class="!w-240px">
+            <el-option
+              v-for="item in SOURCE_OPTIONS"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="handleQuery">
+            <Icon icon="ep:search" class="mr-5px" />
+            搜索
+          </el-button>
+          <el-button @click="resetQuery">
+            <Icon icon="ep:refresh" class="mr-5px" />
+            重置
+          </el-button>
+          <!-- 操作按钮放搜索表单末尾，与 tenant 等列表页同款布局（AI助手 UX 修复：原先孤悬在列表区顶部） -->
+          <!-- Req 2：新增与设计分开——「新增」先在页内面板填元信息建草稿，保存后再跳整页设计器 -->
+          <el-button
+            type="primary"
+            plain
+            @click="openCreate"
+            v-hasPermi="['agent:workflow:create']"
+          >
+            <Icon icon="ep:plus" class="mr-5px" /> 新增
+          </el-button>
+          <!-- Req 3：五种触发方式的经典案例，不建数据也不需要权限，纯粹给人参考 -->
+          <el-button plain @click="openCases" data-testid="trigger-case-btn">
+            <Icon icon="ep:reading" class="mr-5px" /> 触发案例
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </ContentWrap>
 
-  <!-- 列表 -->
-  <ContentWrap>
-    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
-      <!-- Req 1：序号列（参考模型配置页 views/ai/model/model/index.vue；indexMethod 已配 auto-import） -->
-      <el-table-column
-        label="序号"
-        type="index"
-        width="44"
-        align="center"
-        :index="indexMethod(queryParams)"
-        class-name="col-index"
-        label-class-name="col-index"
+    <!-- 列表 -->
+    <ContentWrap>
+      <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+        <!-- Req 1：序号列（参考模型配置页 views/ai/model/model/index.vue；indexMethod 已配 auto-import） -->
+        <el-table-column
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod(queryParams)"
+          class-name="col-index"
+          label-class-name="col-index"
+        />
+        <el-table-column label="编号" align="center" prop="id" width="80" />
+        <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
+        <el-table-column label="流程名称" align="center" prop="name" min-width="160" show-overflow-tooltip />
+        <el-table-column label="版本" align="center" prop="version" width="70" />
+        <el-table-column label="状态" align="center" prop="status" width="100">
+          <template #default="scope">
+            <el-tag :type="statusTagType(scope.row.status)" size="small">
+              {{ statusLabel(scope.row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <!-- Req 3：来源。AUTO 的行不是管理员建的，鼠标悬停说清它从哪来，免得对着不敢删 -->
+        <el-table-column label="来源" align="center" prop="source" width="104">
+          <template #default="scope">
+            <el-tooltip :content="sourceHint(scope.row.source)" placement="top">
+              <el-tag :type="sourceTagType(scope.row.source)" size="small" effect="plain">
+                {{ sourceLabel(scope.row.source) }}
+              </el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column label="触发方式" align="center" prop="triggerType" width="124">
+          <template #default="scope">
+            <span>{{ triggerLabel(scope.row.triggerType) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="负责人" align="center" prop="ownerUserId" width="90" />
+        <el-table-column
+          label="创建时间"
+          align="center"
+          prop="createTime"
+          width="180"
+          :formatter="dateFormatter"
+        />
+        <el-table-column label="操作" align="center" min-width="440" fixed="right">
+          <template #default="scope">
+            <el-button
+              link
+              type="primary"
+              @click="openCanvas(scope.row.id)"
+              v-hasPermi="['agent:workflow:query']"
+            >
+              查看画布
+            </el-button>
+            <el-button
+              link
+              type="primary"
+              @click="openHistory(scope.row)"
+              v-hasPermi="['agent:workflow:query']"
+            >
+              执行历史
+            </el-button>
+            <el-button
+              link
+              type="primary"
+              @click="openVersions(scope.row)"
+              v-hasPermi="['agent:workflow:query']"
+            >
+              版本
+            </el-button>
+            <!-- Req 2：设计与编辑分开——「设计」跳整页设计器画画布；「编辑」在页内面板只改元信息+触发方式 -->
+            <el-button
+              v-if="scope.row.status === 'DRAFT'"
+              link
+              type="primary"
+              @click="openEditor(scope.row)"
+              v-hasPermi="['agent:workflow:update']"
+            >
+              设计
+            </el-button>
+            <el-button
+              v-if="scope.row.status === 'DRAFT'"
+              link
+              type="primary"
+              @click="openFormEdit(scope.row)"
+              v-hasPermi="['agent:workflow:update']"
+            >
+              编辑
+            </el-button>
+            <el-button
+              v-if="scope.row.status === 'DRAFT'"
+              link
+              type="success"
+              @click="handlePublish(scope.row)"
+              v-hasPermi="['agent:workflow:publish']"
+            >
+              发布
+            </el-button>
+            <el-button
+              v-if="scope.row.status === 'PUBLISHED'"
+              link
+              type="warning"
+              @click="handleDisable(scope.row)"
+              v-hasPermi="['agent:workflow:publish']"
+            >
+              停用
+            </el-button>
+            <el-button
+              v-if="scope.row.status === 'DRAFT'"
+              link
+              type="danger"
+              @click="handleDelete(scope.row)"
+              v-hasPermi="['agent:workflow:delete']"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <!-- 分页 -->
+      <Pagination
+        :total="total"
+        v-model:page="queryParams.pageNo"
+        v-model:limit="queryParams.pageSize"
+        @pagination="getList"
       />
-      <el-table-column label="编号" align="center" prop="id" width="80" />
-      <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
-      <el-table-column label="流程名称" align="center" prop="name" min-width="160" show-overflow-tooltip />
-      <el-table-column label="版本" align="center" prop="version" width="70" />
-      <el-table-column label="状态" align="center" prop="status" width="100">
-        <template #default="scope">
-          <el-tag :type="statusTagType(scope.row.status)" size="small">
-            {{ statusLabel(scope.row.status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="触发方式" align="center" prop="triggerType" width="124">
-        <template #default="scope">
-          <span>{{ triggerLabel(scope.row.triggerType) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="负责人" align="center" prop="ownerUserId" width="90" />
-      <el-table-column
-        label="创建时间"
-        align="center"
-        prop="createTime"
-        width="180"
-        :formatter="dateFormatter"
-      />
-      <el-table-column label="操作" align="center" min-width="440" fixed="right">
-        <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openCanvas(scope.row.id)"
-            v-hasPermi="['agent:workflow:query']"
-          >
-            查看画布
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openHistory(scope.row)"
-            v-hasPermi="['agent:workflow:query']"
-          >
-            执行历史
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openVersions(scope.row)"
-            v-hasPermi="['agent:workflow:query']"
-          >
-            版本
-          </el-button>
-          <!-- Req 2：设计与编辑分开——「设计」跳整页设计器画画布；「编辑」弹窗只改元信息+触发方式 -->
-          <el-button
-            v-if="scope.row.status === 'DRAFT'"
-            link
-            type="primary"
-            @click="openEditor(scope.row)"
-            v-hasPermi="['agent:workflow:update']"
-          >
-            设计
-          </el-button>
-          <el-button
-            v-if="scope.row.status === 'DRAFT'"
-            link
-            type="primary"
-            @click="openFormEdit(scope.row)"
-            v-hasPermi="['agent:workflow:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            v-if="scope.row.status === 'DRAFT'"
-            link
-            type="success"
-            @click="handlePublish(scope.row)"
-            v-hasPermi="['agent:workflow:publish']"
-          >
-            发布
-          </el-button>
-          <el-button
-            v-if="scope.row.status === 'PUBLISHED'"
-            link
-            type="warning"
-            @click="handleDisable(scope.row)"
-            v-hasPermi="['agent:workflow:publish']"
-          >
-            停用
-          </el-button>
-          <el-button
-            v-if="scope.row.status === 'DRAFT'"
-            link
-            type="danger"
-            @click="handleDelete(scope.row)"
-            v-hasPermi="['agent:workflow:delete']"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <!-- 分页 -->
-    <Pagination
-      :total="total"
-      v-model:page="queryParams.pageNo"
-      v-model:limit="queryParams.pageSize"
-      @pagination="getList"
-    />
-  </ContentWrap>
+    </ContentWrap>
 
-  <!-- 只读画布对话框 -->
-  <WorkflowCanvasDialog ref="canvasRef" />
-  <!-- 执行历史抽屉 -->
-  <ExecutionHistoryDrawer ref="historyRef" />
-  <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
-  <WorkflowVersionDrawer ref="versionRef" @success="getList" />
-  <!-- Req 2：新增/编辑元信息弹窗（新增成功后跳整页设计器） -->
-  <WorkflowForm ref="formRef" @success="handleFormSuccess" />
-  <!-- Req 3：五种触发方式的经典案例参考手册（只看不建，与新增弹窗里的内联卡片同源） -->
-  <TriggerCaseDialog ref="caseRef" />
+    <!-- 只读画布对话框 -->
+    <WorkflowCanvasDialog ref="canvasRef" />
+    <!-- 执行历史抽屉 -->
+    <ExecutionHistoryDrawer ref="historyRef" />
+    <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
+    <WorkflowVersionDrawer ref="versionRef" @success="getList" />
+    <!-- Req 3：五种触发方式的经典案例参考手册（只看不建，与新增面板里的内联卡片同源） -->
+    <TriggerCaseDialog ref="caseRef" />
+  </template>
+
+  <!-- ==================== 新增 / 编辑元信息（页内面板） ==================== -->
+  <!-- Req 1：由弹窗改页内。新增成功后由 handleFormSuccess 跳整页设计器 -->
+  <WorkflowForm
+    v-else-if="viewMode === 'form'"
+    ref="formRef"
+    @success="handleFormSuccess"
+    @cancel="backToList"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -223,12 +265,20 @@ const { push } = useRouter()
 const loading = ref(true)
 const total = ref(0)
 const list = ref<AgentWorkflowDefVO[]>([])
+
+/**
+ * 页内视图切换：'list' 列表 / 'form' 新增·编辑元信息面板。
+ * 🔴 面板与列表是同级条件渲染，URL 不变、不加路由（同 views/agent/tooldef 的范式）。
+ */
+const viewMode = ref<'list' | 'form'>('list')
+
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
   code: undefined,
   name: undefined,
-  status: undefined
+  status: undefined,
+  source: undefined
 })
 const queryFormRef = ref()
 
@@ -245,6 +295,27 @@ const statusTagType = (status: string): 'info' | 'success' | 'warning' => {
   if (status === 'DISABLED') return 'warning'
   return 'info' // DRAFT 及未知
 }
+
+/**
+ * 来源本地 map（无数据字典，同状态）。与后端 WorkflowSourceEnum 一致。
+ *
+ * 🔴 Req 3：除本页「新增」外，规划器（POST /agent/planner/plan-workflow）与智能助手对话里的
+ *    「搭流程」意图也会往这张表落行，编码形如 wf_plan_xxx。不标来源的话，管理员对着一堆
+ *    自己没建过的流程既不敢删、也找不到自己那几条。
+ * 🔴 未回填的历史行 source 可能为空，一律按「手动添加」显示（与后端 WorkflowSourceEnum.isManual 一致）。
+ */
+const SOURCE_OPTIONS = [
+  { value: 'MANUAL', label: '手动添加' },
+  { value: 'AUTO', label: '自动生成' }
+]
+const sourceLabel = (source?: string) =>
+  source === 'AUTO' ? '自动生成' : '手动添加'
+const sourceTagType = (source?: string): 'success' | 'warning' =>
+  source === 'AUTO' ? 'warning' : 'success'
+const sourceHint = (source?: string) =>
+  source === 'AUTO'
+    ? '由「流程规划器」或智能助手对话里的大模型自动生成，不是你在本页手动新建的'
+    : '管理员在本页点「新增」手动创建（含版本回滚复制出的新草稿）'
 
 /**
  * 触发方式中文名：统一取 triggerCases.ts 的 TRIGGER_TYPE_LABELS（无数据字典）。
@@ -303,14 +374,25 @@ const openEditor = (row: AgentWorkflowDefVO) => {
 }
 
 /**
- * 新增/编辑元信息弹窗（Req 2）。
- * · openCreate：弹「新增流程」——填 名称/编码/触发/模板，建草稿后由 handleFormSuccess 跳设计器；
- * · openFormEdit：弹「编辑流程信息」——只改 名称/描述/触发（编码只读），画布节点原样保留。
+ * 新增/编辑元信息（Req 2；2026-09-29 由弹窗改页内面板）。
+ * · openCreate：「新增流程」面板——填 名称/编码/触发/模板，建草稿后由 handleFormSuccess 跳设计器；
+ * · openFormEdit：「编辑流程信息」面板——只改 名称/描述/触发（编码只读），画布节点原样保留。
  */
 const formRef = ref()
-const openCreate = () => formRef.value?.open('create')
-const openFormEdit = (row: AgentWorkflowDefVO) => formRef.value?.open('update', row)
+/** 🔴 面板是 v-else-if 渲染的，切过去之后必须等 nextTick 才拿得到 ref，否则 open() 打在 undefined 上 */
+const openPanel = async (type: 'create' | 'update', row?: AgentWorkflowDefVO) => {
+  viewMode.value = 'form'
+  await nextTick()
+  formRef.value?.open(type, row)
+}
+const openCreate = () => openPanel('create')
+const openFormEdit = (row: AgentWorkflowDefVO) => openPanel('update', row)
+/** 面板「返回 / 取消」：只切回列表、不重新拉数据（列表数据没被改过） */
+const backToList = () => {
+  viewMode.value = 'list'
+}
 const handleFormSuccess = async (id?: number, isCreate?: boolean) => {
+  viewMode.value = 'list'
   await getList()
   // 新增成功 → 直进整页设计器（对齐门户 handleFormSuccess）；编辑元信息只刷新列表
   if (isCreate && id) push({ name: 'AgentWorkflowEditor', query: { id: String(id) } })
@@ -365,6 +447,8 @@ onActivated(() => {
     firstActivated = false
     return
   }
-  getList()
+  // 🔴 只在列表态刷新：正停在新增/编辑面板时切回来（例如从设计器返回），
+  //    重拉列表会把 viewMode 之外的东西一起扰动，而面板里填了一半的内容更不该被丢掉。
+  if (viewMode.value === 'list') getList()
 })
 </script>

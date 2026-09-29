@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
 import { monacoOf, setMonacoText } from './helpers/monaco'
+import { createWorkflowDraft } from './helpers/workflow'
 
 /**
  * 流程设计器「类型化输入/输出端口 + 上游变量引用」端到端验证（6 项优化 Req5 / Phase E）
@@ -54,15 +55,9 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
     await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板；触发方式默认 chat → 「表单问答助手」案例）→ 跳设计器
-    await page.getByRole('button', { name: '新增', exact: true }).click()
-    const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
-    await expect(dialog).toBeVisible({ timeout: 10000 })
     const stamp = Date.now()
     const code = `wf_io_${stamp}`
-    await dialog.locator('input[placeholder="请输入流程名称"]').fill(`IO测试${stamp}`)
-    await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
-    await dialog.locator('.el-radio').filter({ hasText: '经典案例' }).first().click()
-    await dialog.getByRole('button', { name: '确定', exact: true }).click()
+    await createWorkflowDraft(page, { code, name: `IO测试${stamp}` })
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
     const flowNodes = page.locator('.vue-flow__node')

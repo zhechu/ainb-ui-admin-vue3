@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
 import { monacoOf, setMonacoText, expectMonacoVisible } from './helpers/monaco'
+import { createWorkflowDraft } from './helpers/workflow'
 
 /**
- * 流程编排「新增弹窗 → 整页设计器」端到端验证
+ * 流程编排「新增面板 → 整页设计器」端到端验证
  *
- * 🔴 为什么非要走浏览器：接口/单测证不了「弹窗真能建草稿并跳设计器、三栏真渲染、VueFlow 不 0 高塌陷、
+ * 🔴 为什么非要走浏览器：接口/单测证不了「页内面板真能建草稿并跳设计器、三栏真渲染、VueFlow 不 0 高塌陷、
  *   顶栏缩放/开发者模式真能驱动画布、JSON 面板真是代码编辑器且能放大、点节点上的『＋』真能接线、
  *   删除真不弹二次确认、撤销/重做真回退」——这些只有真实 DOM 才暴露（本模块头号缺陷正是
  *   「配了/点了但不生效且无提示」）。
@@ -41,20 +42,10 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     const addBtn = page.getByRole('button', { name: '新增', exact: true })
     await expect(addBtn).toBeVisible()
 
-    // 点「新增」→ 元信息弹窗（新增与设计分开）
-    await addBtn.click()
-    const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
-    await expect(dialog).toBeVisible({ timeout: 10000 })
-
+    // 点「新增」→ 页内元信息面板（Req2 新增与设计分开；Req1 由弹窗改页内，定位见 helpers/workflow）
     const stamp = Date.now()
     const code = `wf_e2e_${stamp}`
-    await dialog.locator('input[placeholder="请输入流程名称"]').fill(`E2E测试流程${stamp}`)
-    await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
-    // 起步模板默认「经典案例」（按当前触发方式 chat 生成完整流程）。
-    // 🔴 用 .el-radio 容器定位而不是 getByText：弹窗内联的案例卡与 form-tip 里也出现「经典案例」四个字，
-    //    getByText 会撞严格模式（多匹配）而失败。
-    await dialog.locator('.el-radio').filter({ hasText: '经典案例' }).first().click()
-    await dialog.getByRole('button', { name: '确定', exact: true }).click()
+    await createWorkflowDraft(page, { code, name: `E2E测试流程${stamp}` })
 
     // 建草稿后跳整页设计器
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })

@@ -27,6 +27,11 @@ export interface AgentWorkflowDefVO {
   /** 是否主版本（增量14b）：同 code 多已发布版本中被指定为当前生效的那一版；执行入口优先选中它 */
   primaryFlag?: boolean
   description?: string
+  /**
+   * 来源：MANUAL=管理员手动新增 / AUTO=规划器或助手对话由大模型自动生成。
+   * 🔴 只读，由服务端按「走的哪个 create 入口」决定，故 SaveVO 里没有它。
+   */
+  source?: string
   /** DSL JSON 原文；仅 get?id 返回，分页为 null */
   dsl?: string | null
   /** form_event / schedule / chat / webhook / 空（无触发器） */
@@ -43,6 +48,8 @@ export interface AgentWorkflowDefPageReqVO extends PageParam {
   name?: string
   status?: string
   triggerType?: string
+  /** MANUAL / AUTO；不传=全部 */
+  source?: string
 }
 
 /**
@@ -57,6 +64,7 @@ export interface AgentWorkflowDefSaveVO {
   dsl: string
   /** 🔴 没有 remark：description 已承担说明职责，两个近义字段只会让人不知道填哪个（列已从表里删除） */
   description?: string
+  /** 🔴 刻意没有 source：来源由服务端按入口写死，允许前端传就等于允许把自动生成的行伪装成手动 */
 }
 
 /** DSL 校验结果，对应后端 {@code AgentWorkflowDefValidateRespVO} */

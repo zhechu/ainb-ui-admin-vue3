@@ -1,10 +1,15 @@
 <!--
-  流程编排「新增 / 编辑元信息」弹窗 —— AI助手 流程编排优化 / Req 2（新增与设计分开）
+  流程编排「新增 / 编辑元信息」页内面板 —— AI助手 流程编排优化 / Req 2（新增与设计分开）
+  2026-09-29 由 640px 弹窗改为页内面板，与工具管理（views/agent/tooldef）同一套范式。
 
-  仿 views/infra/portal/PortalForm.vue 的 open(type,row?)/submitForm/emit('success') 约定。
+  🔴 为什么页内：这个表单最坏情况（webhook + 内联经典案例卡）有十来项，每项还带 1~3 行说明，
+     640px 弹窗里必须滚动，管理员看不见「上面填了什么、下面要填什么」。页内面板随页面自然滚动，
+     经典案例卡也能完整摊开。面板与列表是同级的条件渲染，URL 不变、不加路由。
+
+  仿 views/agent/tooldef/components/ToolDefForm.vue 的 open()/submitForm/emit('success'|'cancel') 约定。
   · 新增：收集 名称 + 编码 + 触发方式 + 模板起步（经典案例/空白/复制已有）→ buildStarterDsl 产合法 DSL → createDef 建草稿，
-    emit('success', id, true) 让列表页跳整页设计器（设计归设计器，弹窗只管元信息）。
-    Req 3：弹窗内联展示「当前触发方式的经典案例」（场景/走向/触发怎么填/要点 + 起步 DSL），
+    emit('success', id, true) 让列表页跳整页设计器（设计归设计器，本面板只管元信息）。
+    Req 3：面板内联展示「当前触发方式的经典案例」（场景/走向/触发怎么填/要点 + 起步 DSL），
     选「经典案例」模板时建出来的就是它；全部五种见列表页工具栏的「触发案例」按钮。
   · 编辑：只改元信息 + 触发方式（编码只读），画布节点原样保留——getDef 取完整 DSL 后 injectTrigger 只换 trigger 块，
     emit('success', id, false) 仅刷新列表（不跳设计器，那是「设计」按钮的事）。
@@ -13,13 +18,27 @@
   深层格式（cron 合法性 / webhook path 字符集）由后端权威校验，报错文案经 axios 拦截器直接 toast 给用户。
 -->
 <template>
-  <Dialog v-model="dialogVisible" :title="dialogTitle" width="640px">
+  <ContentWrap>
+    <div class="panel-header mb-15px flex items-center justify-between">
+      <div class="flex items-center">
+        <el-button link @click="handleCancel">
+          <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
+        </el-button>
+        <span class="panel-title ml-8px">{{ panelTitle }}</span>
+      </div>
+      <div class="flex items-center">
+        <el-button @click="handleCancel">取 消</el-button>
+        <el-button type="primary" :loading="formLoading" @click="submitForm">确 定</el-button>
+      </div>
+    </div>
+
     <el-form
       ref="formRef"
       v-loading="formLoading"
       :model="formData"
       :rules="formRules"
-      label-width="96px"
+      label-width="100px"
+      class="max-w-760px"
     >
       <el-form-item label="流程名称" prop="name">
         <el-input v-model="formData.name" clearable placeholder="请输入流程名称" />
@@ -131,8 +150,8 @@
       </template>
 
       <!--
-        Req 3：当前触发方式的经典案例，内联展示（不套第二层弹窗——项目 Dialog 会把 appendToBody
-        从透传属性里删掉，嵌套弹窗层级不可控）。全部五种见列表页工具栏的「触发案例」按钮。
+        Req 3：当前触发方式的经典案例，内联展示在表单里。改页内面板后有整页高度可用，
+        起步 DSL 折叠展开也不会再把表单挤到要滚动。全部五种见列表页工具栏的「触发案例」按钮。
       -->
       <el-form-item v-if="currentCase" label="经典案例" class="!mb-8px">
         <div class="case-box" data-testid="trigger-case-inline">
@@ -154,11 +173,7 @@
         />
       </el-form-item>
     </el-form>
-    <template #footer>
-      <el-button :disabled="formLoading" type="primary" @click="submitForm">确定</el-button>
-      <el-button @click="dialogVisible = false">取消</el-button>
-    </template>
-  </Dialog>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
@@ -178,13 +193,12 @@ import TriggerCaseView from '../editor/components/TriggerCaseView.vue'
 defineOptions({ name: 'AgentWorkflowForm' })
 
 const message = useMessage()
-const dialogVisible = ref(false)
-const dialogTitle = ref('')
 const formLoading = ref(false)
 const formType = ref<'create' | 'update'>('create')
 const formRef = ref()
 
 const isUpdate = computed(() => formType.value === 'update')
+const panelTitle = computed(() => (isUpdate.value ? '编辑流程信息' : '新增流程'))
 
 /** 触发方式下拉：中文名单一来源在 triggerCases.ts（列表页与案例弹窗共用同一份，不会各叫各的） */
 const TRIGGER_OPTIONS: { value: WorkflowTriggerType; label: string }[] = TRIGGER_CASE_ORDER.map((value) => ({
@@ -317,7 +331,7 @@ const formRules = reactive({
   copySourceId: [{ validator: validateCopySource, trigger: 'change' }]
 })
 
-/** 收集弹窗字段 → 触发元信息 */
+/** 收集面板字段 → 触发元信息 */
 const collectTrigger = (): WorkflowTriggerMeta => {
   const d = formData.value
   switch (d.triggerType) {
@@ -339,7 +353,7 @@ const collectTrigger = (): WorkflowTriggerMeta => {
   }
 }
 
-/** 从既有 DSL 的 trigger 块反解出弹窗字段（编辑态回显当前触发配置） */
+/** 从既有 DSL 的 trigger 块反解出面板字段（编辑态回显当前触发配置） */
 const applyTriggerFromDsl = (dslText: string) => {
   try {
     const trigger = JSON.parse(dslText)?.trigger
@@ -374,7 +388,6 @@ const loadCopyOptions = async () => {
 
 const open = async (type: 'create' | 'update', row?: AgentWorkflowDefVO) => {
   formType.value = type
-  dialogTitle.value = type === 'create' ? '新增流程' : '编辑流程信息'
   formData.value = defaultFormData()
   existingDsl.value = ''
   if (type === 'update' && row) {
@@ -399,12 +412,13 @@ const open = async (type: 'create' | 'update', row?: AgentWorkflowDefVO) => {
   }
   // 驱动 Agent 候选两态都拉：默认触发方式就是 chat，且编辑态也要能把已绑 code 显示成「名称（code）」
   loadAgentOptions()
-  dialogVisible.value = true
   nextTick(() => formRef.value?.clearValidate())
 }
 defineExpose({ open })
 
-const emit = defineEmits<{ success: [id: number | undefined, isCreate: boolean] }>()
+const emit = defineEmits<{ success: [id: number | undefined, isCreate: boolean]; cancel: [] }>()
+
+const handleCancel = () => emit('cancel')
 
 const submitForm = async () => {
   if (!(await formRef.value?.validate())) return
@@ -423,7 +437,6 @@ const submitForm = async () => {
         description: d.description
       })
       message.success('保存成功')
-      dialogVisible.value = false
       emit('success', d.id, false)
       return
     }
@@ -448,7 +461,6 @@ const submitForm = async () => {
       description: d.description
     })
     message.success('新建成功（草稿）')
-    dialogVisible.value = false
     emit('success', id, true)
   } finally {
     formLoading.value = false
@@ -457,6 +469,11 @@ const submitForm = async () => {
 </script>
 
 <style lang="scss" scoped>
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .form-tip {
   width: 100%;
   font-size: 12px;

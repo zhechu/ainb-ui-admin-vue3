@@ -180,17 +180,19 @@
                 </el-form-item>
                 <div class="wf-panel__sub">条件（多条同时满足才命中）：</div>
                 <div v-for="(c, ci) in conditionsOf(b)" :key="ci" class="wf-cond">
+                  <!-- 🔴 Req4 字号加大后同步放宽这两个死宽：变量名要能看清 6~8 个字符、
+                       操作符下拉要能完整显示「大于等于」这类四字项而不截断 -->
                   <el-input
                     :model-value="c.var"
                     size="small"
                     placeholder="变量名"
-                    class="!w-86px"
+                    class="!w-96px"
                     @update:model-value="onConditionField(b, ci, 'var', $event)"
                   />
                   <el-select
                     :model-value="c.op"
                     size="small"
-                    class="!w-96px"
+                    class="!w-106px"
                     @update:model-value="onConditionField(b, ci, 'op', $event)"
                   >
                     <el-option v-for="op in RULE_OP_OPTIONS" :key="op.value" :label="op.label" :value="op.value" />
@@ -397,11 +399,12 @@
           <el-divider content-position="left">分支走向</el-divider>
           <el-form label-position="top" size="small" :disabled="readonly">
             <div v-for="c in caseRows" :key="c.key" class="wf-cond mb-6px">
+              <!-- 🔴 96px 与下面「默认分支」标签同宽，两行左侧才对得齐 -->
               <el-input
                 :model-value="c.key"
                 size="small"
                 placeholder="分支名"
-                class="!w-90px"
+                class="!w-96px"
                 @change="onCaseKeyChange(c.key, $event)"
               />
               <el-select
@@ -428,7 +431,7 @@
               </el-button>
             </div>
             <div class="wf-cond mb-6px">
-              <el-tag size="small" type="warning" class="!w-90px justify-center">默认分支</el-tag>
+              <el-tag size="small" type="warning" class="!w-96px justify-center">默认分支</el-tag>
               <el-select
                 :model-value="defaultTarget"
                 size="small"
@@ -572,10 +575,22 @@ const {
 </script>
 
 <style lang="scss" scoped>
-/* Req4：字号一律走 --wf-fs-* 令牌（定义在 .wf-editor 上，见 editor/index.vue），不再各处硬编码 */
+/*
+  Req4：字号一律走 --wf-fs-* 令牌（全局值定义在 :root 上，见 editor/index.vue），不再各处硬编码。
+
+  🔴 Req4 二次加大（2026-09-29）：与左栏节点目录同理，只在本侧栏根元素上【覆盖】同名令牌，
+     CSS 自定义属性按 DOM 继承，本组件内所有子元素（含 :deep 命中的 Element 内部节点）都会拿到
+     加大后的值，画布与沙箱面板不受影响。宽度 320 → 348px 容纳变大的字与控件
+     （🔴 这个 348 在 editor/index.vue 的 grid-template-columns 里还有一份，两处必须同步改）。
+*/
 .wf-panel {
+  --wf-fs-xs: 12px;
+  --wf-fs-sm: 13px;
+  --wf-fs-md: 14px;
+  --wf-fs-lg: 16px;
+
   display: flex;
-  width: 320px;
+  width: 348px;
   flex-shrink: 0;
   flex-direction: column;
   border-left: 1px solid var(--el-border-color-light);
@@ -588,15 +603,28 @@ const {
   padding: 10px 12px;
 }
 
+/*
+  🔴 表单控件本身用的是 el-form size="small"，其字号由 Element 写死（12px）、不吃 --wf-fs-* 令牌。
+     不单独提上来的话就成了「标签变大、要填的值反而更小」——比原来更别扭，也更容易看错自己填了什么。
+     这里只覆盖字号，不动控件高度，故不会撑破已有的紧凑布局。
+*/
+.wf-panel :deep(.el-input__inner),
+.wf-panel :deep(.el-textarea__inner),
+.wf-panel :deep(.el-select__wrapper),
+.wf-panel :deep(.el-checkbox__label),
+.wf-panel :deep(.el-radio__label) {
+  font-size: var(--wf-fs-sm, 13px);
+}
+
 /* 表单标签与分组标题统一：原来标签是 Element 默认 14px、分组标题 12px，同一列里两种字号看着跳 */
 .wf-panel :deep(.el-form-item__label) {
-  font-size: var(--wf-fs-sm, 12px);
+  font-size: var(--wf-fs-sm, 13px);
   font-weight: 500;
-  line-height: 18px;
+  line-height: 20px;
 }
 
 .wf-panel :deep(.el-divider__text) {
-  font-size: var(--wf-fs-sm, 12px);
+  font-size: var(--wf-fs-sm, 13px);
   font-weight: 600;
   color: var(--el-text-color-secondary);
 }
@@ -604,7 +632,7 @@ const {
 .wf-panel__title {
   display: flex;
   margin-bottom: 8px;
-  font-size: var(--wf-fs-md, 13px);
+  font-size: var(--wf-fs-md, 14px);
   font-weight: 600;
   align-items: center;
   gap: 6px;
@@ -612,29 +640,29 @@ const {
 
 .wf-panel__hint {
   margin-top: 2px;
-  font-size: var(--wf-fs-xs, 11px);
-  line-height: 16px;
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
   color: var(--el-text-color-placeholder);
 }
 
 .wf-panel__sub {
   margin-bottom: 4px;
-  font-size: var(--wf-fs-xs, 11px);
-  line-height: 16px;
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
   color: var(--el-text-color-placeholder);
 }
 
 .wf-panel__warn {
-  font-size: var(--wf-fs-xs, 11px);
-  line-height: 16px;
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
   color: var(--el-color-warning);
 }
 
 .wf-panel__warn-list {
   margin: 0;
   padding-left: 16px;
-  font-size: var(--wf-fs-sm, 12px);
-  line-height: 18px;
+  font-size: var(--wf-fs-sm, 13px);
+  line-height: 20px;
 }
 
 /* Phase E：字段标签的类型色点 / 类型名 / 必填星号 */
@@ -655,9 +683,9 @@ const {
   padding: 0 4px;
   border-radius: 3px;
   background: var(--el-fill-color);
-  // 10px 在 1080p 下几乎看不清，统一到最小档 11px
-  font-size: var(--wf-fs-xs, 11px);
-  line-height: 16px;
+  // 10px 在 1080p 下几乎看不清，统一到最小档
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
   color: var(--el-text-color-secondary);
 }
 
@@ -675,7 +703,7 @@ const {
   margin-bottom: 4px;
   align-items: center;
   gap: 6px;
-  font-size: var(--wf-fs-sm, 12px);
+  font-size: var(--wf-fs-sm, 13px);
 }
 
 .wf-io__var {
@@ -683,7 +711,7 @@ const {
   border-radius: 3px;
   background: var(--el-fill-color-light);
   font-family: var(--wf-mono, monospace);
-  font-size: var(--wf-fs-xs, 11px);
+  font-size: var(--wf-fs-xs, 12px);
 }
 
 .wf-io__label {
@@ -705,7 +733,7 @@ const {
 }
 
 .wf-branch__name {
-  font-size: var(--wf-fs-sm, 12px);
+  font-size: var(--wf-fs-sm, 13px);
   font-weight: 600;
 }
 
@@ -717,8 +745,8 @@ const {
 }
 
 .wf-panel__empty {
-  font-size: var(--wf-fs-sm, 12px);
-  line-height: 20px;
+  font-size: var(--wf-fs-sm, 13px);
+  line-height: 22px;
   color: var(--el-text-color-secondary);
 }
 

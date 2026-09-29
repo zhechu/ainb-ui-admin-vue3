@@ -48,10 +48,22 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 </script>
 
 <style lang="scss" scoped>
-/* Req4：字号走 --wf-fs-* 令牌（定义在 .wf-editor 上，见 editor/index.vue） */
+/*
+  Req4：字号走 --wf-fs-* 令牌（全局值定义在 :root 上，见 editor/index.vue）。
+
+  🔴 Req4 二次加大（2026-09-29）：11/12/13px 的侧栏在 1080p 下仍偏小，但直接改 :root 会连带把
+     画布节点卡、沙箱面板一起放大——那些地方宽度是算死的，容易挤爆。故只在本侧栏根元素上
+     【覆盖】同名令牌：CSS 自定义属性按 DOM 继承，本组件内所有子元素（含 el-tag / el-scrollbar 内部）
+     都会拿到加大后的值，而画布与其它面板不受影响。宽度同步 +18px 容纳变大的字。
+*/
 .wf-palette {
+  --wf-fs-xs: 12px;
+  --wf-fs-sm: 13px;
+  --wf-fs-md: 14px;
+  --wf-fs-lg: 16px;
+
   display: flex;
-  width: 168px;
+  width: 186px;
   flex-shrink: 0;
   flex-direction: column;
   border-right: 1px solid var(--el-border-color-light);
@@ -60,7 +72,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 
 .wf-palette__title {
   padding: 10px 12px 6px;
-  font-size: var(--wf-fs-md, 13px);
+  font-size: var(--wf-fs-md, 14px);
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
@@ -73,7 +85,7 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
 
 .wf-palette__group {
   margin: 8px 4px 4px;
-  font-size: var(--wf-fs-xs, 11px);
+  font-size: var(--wf-fs-xs, 12px);
   font-weight: 600;
   color: var(--el-text-color-placeholder);
 }
@@ -104,13 +116,16 @@ const { paletteGroups, onPaletteDragStart, addNodeByClick } = props.editor
   min-width: 0;
   flex: 1;
   justify-content: center;
+  /* 🔴 el-tag size="small" 的字号是 Element 写死的 12px、不吃 --wf-fs-* 令牌，
+     不单独提上来的话「标题变大了、节点名反而更小」，比原来更参差 */
+  font-size: var(--wf-fs-sm, 13px);
 }
 
 .wf-palette__hint {
   margin-top: 8px;
   padding: 0 4px;
-  font-size: var(--wf-fs-xs, 11px);
-  line-height: 16px;
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
   color: var(--el-text-color-placeholder);
 }
 </style>

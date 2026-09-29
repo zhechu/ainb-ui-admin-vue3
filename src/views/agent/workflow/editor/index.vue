@@ -681,7 +681,8 @@ const handleBack = async () => {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* 🔴 这个 348 是右栏 .wf-panel 的宽度副本（见 WorkflowPropertyPanel.vue），两处必须同步改 */
+  grid-template-columns: minmax(0, 1fr) 348px;
   overflow: hidden;
 }
 
@@ -709,6 +710,12 @@ const handleBack = async () => {
   gap: 8px;
 }
 
+/*
+ * 🔴 Req4 两侧栏各加宽了（左 168→186、右 320→348，合计吃掉画布 46px），这个断点【刻意没有跟着抬高】：
+ *   右栏是配置节点属性的唯一入口（画布上没有第二个抽屉/弹窗能做这件事），一旦隐藏就等于
+ *   1100–1160px 这一段的用户只能看图不能改，功能损失比画布窄 46px 严重得多。
+ *   所以宁可让最窄一档的画布从 372px 缩到 326px，也要保住属性面板可用。
+ */
 @media (width <= 1100px) {
   .wf-editor__body {
     grid-template-columns: minmax(0, 1fr);

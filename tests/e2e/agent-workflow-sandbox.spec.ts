@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
 import { monacoOf, setMonacoText } from './helpers/monaco'
+import { createWorkflowDraft } from './helpers/workflow'
 
 /**
  * 流程设计器「沙箱测试」端到端验证（6 项优化 Req4b / Phase D）
@@ -57,15 +58,9 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
     await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板）→ 跳设计器；随后整份 DSL 会被替换成沙箱专用链，模板内容不影响断言
-    await page.getByRole('button', { name: '新增', exact: true }).click()
-    const dialog = page.locator('.el-dialog').filter({ hasText: '新增流程' }).first()
-    await expect(dialog).toBeVisible({ timeout: 10000 })
     const stamp = Date.now()
     const code = `wf_sbx_${stamp}`
-    await dialog.locator('input[placeholder="请输入流程名称"]').fill(`沙箱测试${stamp}`)
-    await dialog.locator('input[placeholder*="小写字母开头"]').fill(code)
-    await dialog.locator('.el-radio').filter({ hasText: '经典案例' }).first().click()
-    await dialog.getByRole('button', { name: '确定', exact: true }).click()
+    await createWorkflowDraft(page, { code, name: `沙箱测试${stamp}` })
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
     await expect(page.locator('.vue-flow__node').first()).toBeVisible({ timeout: 20000 })
