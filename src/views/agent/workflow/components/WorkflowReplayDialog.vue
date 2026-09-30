@@ -178,6 +178,7 @@ import {
   type NodeTrace,
   type ReplayNodeData
 } from '../replayModel'
+import { ensureLoaded as ensureNameCatalog, nameResolver } from '../nameCatalog'
 
 defineOptions({ name: 'WorkflowReplayDialog' })
 
@@ -261,7 +262,9 @@ const open = async (executionId: number) => {
     // 执行元信息与节点 trace 无依赖，并行取；DSL 要先拿到 execution.workflowDefId 才能取，故随后串行
     const [execution, traces] = await Promise.all([
       AgentWorkflowApi.getExecution(executionId),
-      AgentWorkflowApi.getNodeTrace(executionId)
+      AgentWorkflowApi.getNodeTrace(executionId),
+      // 名称目录（重构 S1）：节点摘要里的工具键/子流程 code 要翻成中文名。ensureLoaded 永不 reject
+      ensureNameCatalog()
     ])
     exec.value = execution
     const def = await AgentWorkflowApi.getDef(execution.workflowDefId)
@@ -277,7 +280,7 @@ const open = async (executionId: number) => {
       parseError.value = `DSL 解析失败：${e?.message ?? '格式不合法'}`
       return
     }
-    const graph = buildReplayGraph(parsed, traces)
+    const graph = buildReplayGraph(parsed, traces, nameResolver)
     flowNodes.value = graph.nodes
     flowEdges.value = graph.edges
     traceByNode.value = graph.traceByNode

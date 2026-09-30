@@ -215,10 +215,25 @@
                     class="w-full"
                     @change="markDirty"
                   >
-                    <el-option v-for="t in toolList" :key="t.name" :label="t.name" :value="t.name">
-                      <span>{{ t.name }}</span>
+                    <!-- label 用「中文名（机器键）」：filterable 输中文、输英文键都能搜到（重构 S1 / L1） -->
+                    <el-option
+                      v-for="t in toolList"
+                      :key="t.name"
+                      :label="keyedLabel(t.name, t.displayName)"
+                      :value="t.name"
+                    >
+                      <span>{{ keyedLabel(t.name, t.displayName) }}</span>
                       <span class="text-12px text-[var(--el-text-color-secondary)] ml-8px">{{ t.description }}</span>
                     </el-option>
+                    <!-- 🔴 G7：目录加载失败时这里会是空的，必须说清原因而不是留一个空列表 -->
+                    <template #empty>
+                      <div
+                        class="p-8px text-12px text-[var(--el-text-color-secondary)]"
+                        data-testid="tool-catalog-empty-hint"
+                      >
+                        {{ toolLoadError || '没有可绑定的只读工具' }}
+                      </div>
+                    </template>
                   </el-select>
                 </el-form-item>
               </el-card>
@@ -235,6 +250,7 @@ import { AgentDefApi, type AgentDefSaveVO } from '@/api/agent/def'
 import { ModelApi, type ModelVO } from '@/api/ai/model/model'
 import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
 import { getToolList, type AgentToolVO } from '@/api/agent/config'
+import { keyedLabel } from '@/views/agent/workflow/nameCatalog'
 
 defineOptions({ name: 'AgentDefEditor' })
 
@@ -300,15 +316,28 @@ const loadKnowledge = async () => {
   }
 }
 
-/** 工具下拉数据源：只列只读工具（requireConfirm===false），与后端发布期校验同口径 */
+/**
+ * 工具下拉数据源：只列只读工具（requireConfirm===false），与后端发布期校验同口径。
+ *
+ * 🔴 这一页**刻意不换**到名称目录（`/agent/workflow-def/name-catalog`）：那个接口要 `agent:workflow:query`，
+ * 而本页的用户持有的是 `agent:def:*`。换过去等于给「编辑平台助手」凭空加一道流程编排权限 ——
+ * G7 要修的是「设计器拿不到工具目录」，不是「所有页面都走同一个接口」。
+ * 展示名本来就由 `/agent/config/tool-list` 下发（`AgentConfigController` 早就 put 了 displayName），
+ * 只是 `AgentToolVO` 此前没声明这个字段，TypeScript 眼里它不存在，页面就只能显示英文键。
+ */
 const toolList = ref<AgentToolVO[]>([])
+/** 目录加载失败的人话原因；🔴 G7 要求它可见 —— 空下拉 + 零提示就是原来的病 */
+const toolLoadError = ref('')
 const loadTools = async () => {
   if (toolList.value.length > 0) return
   try {
     const all = (await getToolList()) || []
     toolList.value = all.filter((t) => !t.requireConfirm)
-  } catch {
+    toolLoadError.value = ''
+  } catch (e: any) {
     toolList.value = []
+    toolLoadError.value =
+      e?.message || '工具目录加载失败（可能缺少 AI 配置查看权限），绑定工具将不可用'
   }
 }
 

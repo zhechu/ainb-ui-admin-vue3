@@ -1,5 +1,11 @@
 import type { Edge, Node } from '@vue-flow/core'
-import { NODE_TYPE_META, nodeHasRequiredGap, nodeTypeMeta, summarizeNode } from './nodeSummary'
+import {
+  NODE_TYPE_META,
+  nodeHasRequiredGap,
+  nodeTypeMeta,
+  summarizeNode,
+  type NodeNameResolver
+} from './nodeSummary'
 
 /**
  * DSL → Vue Flow 只读图的自动布局（增量8 / P4 第一刀）
@@ -45,8 +51,21 @@ const END_ID = '__end__'
 const START_KEYWORD = 'START'
 const END_KEYWORD = 'END'
 
-const X_GAP = 240
-const Y_GAP = 120
+/**
+ * 层间水平间距。**下界不是审美问题，是「悬停＋按钮还能不能点」的硬约束**：
+ * `.wf-node` 的 `max-width: 240px` + `.wf-node__plus` 的 `right: -34px`（都在
+ * `editor/components/WorkflowDesigner.vue`）⇒ 必须 X_GAP ≥ 240 + 34 + 余量，
+ * 否则节点一旦长到 max-width，它右侧那个悬停才浮出的「＋」就整颗压在下一个节点的卡片底下，
+ * 用户看得见却点不着（Playwright 的 hit-test 会报 `subtree intercepts pointer events`）。
+ *
+ * 🔴 原值 240 恰好等于 max-width，即「节点最长时两个卡片边贴边、＋完全被盖住」——这是个**旧账**，
+ * 只是重构 S1 之前工具节点的摘要都是 `调用工具「form_list」` 这种短英文键，节点停在 160px 的
+ * min-width 上，永远碰不到 max-width；S1 把摘要变成 `调用工具「查询表单列表」（form_list）`
+ * 之后，**每个** tool 节点都顶到 240px，旧账立刻变成必现故障。
+ * layout.spec.ts 有一条用例直接读那个 .vue 的 CSS 数字来守这条不等式，改 max-width 会红。
+ */
+export const X_GAP = 300
+export const Y_GAP = 120
 
 /** 节点类型 → el-tag 颜色。权威来源是 nodeSummary 的 NODE_TYPE_META（与聊天卡片/编辑器同色）；
     目录外的未知类型按前缀兜底（condition→warning、hitl→danger），认不出的默认 info，不硬猜 */
@@ -75,8 +94,15 @@ const isConditional = (e: DslEdge): boolean =>
  * 把一份 DSL 布局成 Vue Flow 的 nodes/edges。
  *
  * @param dsl 已 JSON.parse 的 DSL（容错：nodes/edges 缺失时按空数组处理）
+ * @param resolver 可选的名称解析器（重构 S1 / L1）：传了则节点摘要里的工具键、子流程 code 显示中文名；
+ *                 不传与今天逐字一致（layout.spec.ts 就是不传的那一态）。
+ *                 🔴 本模块**不**直接 import `nameCatalog.ts`：那边会把 Vue 的 ref 和 axios 拖进这个
+ *                 刻意保持纯函数的文件，layout.spec.ts 就跑不起来了。
  */
-export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
+export const layoutDsl = (
+  dsl: DslGraph,
+  resolver?: NodeNameResolver | null
+): { nodes: Node[]; edges: Edge[] } => {
   const dslNodes = dsl?.nodes ?? []
   const dslEdges = dsl?.edges ?? []
 
@@ -186,7 +212,7 @@ export const layoutDsl = (dsl: DslGraph): { nodes: Node[]; edges: Edge[] } => {
           tagType: nodeTagType(meta.nodeType),
           // 中文类型名 + 一句话摘要 + 必填缺口红点（合成端点 START/END 不需要）
           typeLabel: isEndpoint ? '' : nodeTypeMeta(meta.nodeType).label,
-          summary: isEndpoint ? '' : summarizeNode({ type: meta.nodeType, config: meta.config }),
+          summary: isEndpoint ? '' : summarizeNode({ type: meta.nodeType, config: meta.config }, resolver),
           hasGap: isEndpoint ? false : nodeHasRequiredGap({ type: meta.nodeType, config: meta.config })
         }
       })

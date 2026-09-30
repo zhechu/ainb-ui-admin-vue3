@@ -286,6 +286,7 @@ import {
 } from '@/api/agent/tooldef'
 import ToolDefForm from './components/ToolDefForm.vue'
 import BuiltinToolForm from './components/BuiltinToolForm.vue'
+import { riskTagType } from '@/views/agent/workflow/nameCatalog'
 
 defineOptions({ name: 'AgentToolDef' })
 
@@ -304,13 +305,9 @@ const RISK_OPTIONS = [
   { value: 'IRREVERSIBLE', label: '不可逆' }
 ]
 const riskLabel = (risk: string) => RISK_OPTIONS.find((r) => r.value === risk)?.label ?? risk
-const riskTagType = (risk: string): 'info' | 'success' | 'warning' | 'danger' => {
-  if (risk === 'READ_ONLY') return 'success'
-  if (risk === 'LOW') return 'info'
-  if (risk === 'MEDIUM') return 'warning'
-  if (risk === 'HIGH' || risk === 'IRREVERSIBLE') return 'danger'
-  return 'info'
-}
+// 🔴 riskTagType 不在本页定义：权威副本在 workflow/nameCatalog.ts（画布下拉的风险色点、config/index.vue 都吃它）。
+// 这里原本存着一份逐字等价的 if 链，漏改的表现是「同一风险等级两个页面不同色」，
+// 更坏的是未知等级静默回落成灰 info —— 灰在本模块的语义是「只读/安全」。
 
 /** config 只有 {code,mode}，解析失败就当作没绑（旧数据里的 HTTP config 会走到这一支，显示 —） */
 const parseConfig = (row: AgentToolDefVO): { code?: string; mode?: string } => {

@@ -78,6 +78,7 @@ import '@vue-flow/core/dist/theme-default.css'
 import type { Edge, Node } from '@vue-flow/core'
 import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
 import { layoutDsl } from '../layout'
+import { ensureLoaded as ensureNameCatalog, nameResolver } from '../nameCatalog'
 
 defineOptions({ name: 'WorkflowCanvasDialog' })
 
@@ -123,7 +124,7 @@ const renderFromDsl = (dslText: string | null | undefined, meta: AgentWorkflowDe
     parseError.value = `DSL 解析失败：${e?.message ?? '格式不合法'}`
     return
   }
-  const { nodes, edges } = layoutDsl(parsed)
+  const { nodes, edges } = layoutDsl(parsed, nameResolver)
   flowNodes.value = nodes
   flowEdges.value = edges
 }
@@ -134,7 +135,10 @@ const open = async (id: number) => {
   loading.value = true
   def.value = undefined
   try {
-    const data = await AgentWorkflowApi.getDef(id)
+    // 🔴 名称目录与定义并行拉：只读画布是非 DRAFT 流程唯一的查看入口（G13），
+    //    节点摘要里若还是 datamodel_create 这类裸键，用户看完等于没看。
+    //    ensureLoaded 永不 reject，放进 Promise.all 不会让定义加载失败。
+    const [data] = await Promise.all([AgentWorkflowApi.getDef(id), ensureNameCatalog()])
     renderFromDsl(data.dsl, data)
   } finally {
     loading.value = false

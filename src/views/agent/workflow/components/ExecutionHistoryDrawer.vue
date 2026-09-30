@@ -24,11 +24,17 @@
               border
             >
               <el-table-column label="节点 id" prop="nodeId" min-width="140" show-overflow-tooltip />
-              <el-table-column label="类型" prop="nodeType" width="130" />
+              <!-- 🔴 类型中文化（重构 S1 / L1）：原来直出 condition.rule 这类 DSL 原始 type，
+                   运维看执行历史时得先背一遍 13 种类型名。原始 type 留在 title 里，排障时悬停可看。 -->
+              <el-table-column label="类型" width="130" show-overflow-tooltip>
+                <template #default="scope">
+                  <span :title="scope.row.nodeType">{{ nodeTypeMeta(scope.row.nodeType).label }}</span>
+                </template>
+              </el-table-column>
               <el-table-column label="状态" prop="status" width="110">
                 <template #default="scope">
                   <el-tag :type="execTagType(scope.row.status)" size="small">
-                    {{ scope.row.status }}
+                    {{ execLabel(scope.row.status) }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -93,6 +99,7 @@ import {
   type AgentWorkflowExecutionVO
 } from '@/api/agent/workflow'
 import WorkflowReplayDialog from './WorkflowReplayDialog.vue'
+import { nodeTypeMeta } from '../nodeSummary'
 
 defineOptions({ name: 'ExecutionHistoryDrawer' })
 

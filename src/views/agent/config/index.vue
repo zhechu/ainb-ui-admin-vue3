@@ -113,7 +113,20 @@
       </template>
     </el-alert>
     <el-table :data="tools" v-loading="toolLoading" stripe max-height="460">
+      <!-- 🔴 展示名排在第一列（重构 S1 / L1）：后端一直在下发 displayName，只是前端没声明这个字段、
+           于是这一屏 30 行全是下划线英文，找工具只能靠肉眼扫。分组列同理（groupName 本轮才开始下发）。 -->
+      <el-table-column label="展示名" prop="displayName" width="160" show-overflow-tooltip>
+        <template #default="{ row }">
+          {{ row.displayName || row.name }}
+        </template>
+      </el-table-column>
       <el-table-column label="工具" prop="name" width="220" />
+      <el-table-column label="分组" prop="groupName" width="110" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span v-if="row.groupName">{{ row.groupName }}</span>
+          <span v-else class="text-[var(--el-text-color-placeholder)]">未分组</span>
+        </template>
+      </el-table-column>
       <el-table-column label="风险" width="110">
         <template #default="{ row }">
           <el-tag :type="riskTagType(row.risk)">{{ row.riskDescription }}</el-tag>
@@ -226,6 +239,10 @@ import * as ConfigApi from '@/api/agent/config'
 import type { AgentQuotaVO } from '@/api/agent/config'
 import { AgentDefApi } from '@/api/agent/def'
 import { AgentWorkflowApi } from '@/api/agent/workflow'
+// 🔴 风险色不在这儿定义：`riskTagType` 的权威副本在 workflow/nameCatalog.ts（画布下拉的风险色点也用它）。
+// 本页与 tooldef/index.vue 曾各存一份一模一样的映射，漏改任何一份的表现是「同一风险等级两个页面不同色」，
+// 而更坏的一种是**未知等级静默回落成灰色 info**——灰在本模块的语义就是「只读/安全」。
+import { riskTagType } from '@/views/agent/workflow/nameCatalog'
 
 defineOptions({ name: 'AgentConfig' })
 
@@ -255,11 +272,6 @@ const workflowOptions = ref<{ code: string; label: string }[]>([])
 function emptyQuota(): AgentQuotaVO {
   return { period: 'MONTH', warnRatio: 0.8, status: 0 }
 }
-
-const riskTagType = (risk: string) =>
-  ({ READ_ONLY: 'success', LOW: 'info', MEDIUM: 'warning', HIGH: 'danger', IRREVERSIBLE: 'danger' })[
-    risk
-  ] ?? 'info'
 
 /**
  * 一行配额的范围判别：优先看后端权威的 dimension；

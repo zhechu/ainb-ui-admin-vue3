@@ -66,20 +66,56 @@
                 class="w-full"
                 @change="mutate"
               >
-                <el-option
-                  v-for="o in optionsFor(f)"
-                  :key="String(o.value)"
-                  :label="o.label"
-                  :value="o.value"
-                >
-                  <span class="float-left">{{ o.label }}</span>
-                  <span
-                    v-if="o.desc"
-                    class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
+                <!-- 🔴 工具下拉按 groupName 分组（重构 S1）：30+ 个工具平铺只能靠肉眼扫。
+                     label 一律是「中文名（机器键）」，于是 filterable 输中文、输英文键都能搜到。 -->
+                <template v-if="f.optionsFrom === 'tool'">
+                  <el-option-group v-for="g in toolOptionGroups" :key="g.label" :label="g.label">
+                    <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value">
+                      <span class="float-left">{{ o.label }}</span>
+                      <!-- 🔴 风险色点（重构 S1）：只读工具不画点。30 个里大半是只读，
+                           全画上一排绿点等于没画，反而把「这条不可逆」淹掉。见 riskDotColor 注释 -->
+                      <span
+                        v-if="riskDotColor(o.risk)"
+                        class="wf-dot wf-risk-dot"
+                        :style="{ background: riskDotColor(o.risk) }"
+                        :title="riskDotTitle(o.riskDescription || o.risk, o.requireConfirm)"
+                      ></span>
+                      <span
+                        v-if="o.desc"
+                        class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
+                      >
+                        {{ o.desc }}
+                      </span>
+                    </el-option>
+                  </el-option-group>
+                </template>
+                <template v-else>
+                  <el-option
+                    v-for="o in optionsFor(f)"
+                    :key="String(o.value)"
+                    :label="o.label"
+                    :value="o.value"
                   >
-                    {{ o.desc }}
-                  </span>
-                </el-option>
+                    <span class="float-left">{{ o.label }}</span>
+                    <span
+                      v-if="o.desc"
+                      class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
+                    >
+                      {{ o.desc }}
+                    </span>
+                  </el-option>
+                </template>
+                <!-- 🔴 G7：目录加载失败会留下一个空下拉。空下拉 + 零提示正是原来的病，
+                     所以这里必须说清「为什么空」和「空的时候还能怎么办」（allow-create 手打工具键）。 -->
+                <template #empty>
+                  <div class="wf-panel__empty-hint" data-testid="catalog-empty-hint">
+                    {{
+                      f.optionsFrom === 'tool' && catalogError
+                        ? `${catalogError}；可直接输入工具键后回车`
+                        : '暂无可选项'
+                    }}
+                  </div>
+                </template>
               </el-select>
               <el-input
                 v-else-if="f.kind === 'textarea'"
@@ -113,7 +149,9 @@
                 class="w-full"
                 @change="mutate"
               >
-                <el-option v-for="o in tagsOptionsFor(f)" :key="o" :label="o" :value="o" />
+                <!-- 🔴 label 是「中文名（机器键）」、value 仍是机器键：写进 DSL 的必须是键，
+                     把中文写进 agent_loop.tools 会让模型循环按名字查不到工具而静默退化 -->
+                <el-option v-for="o in tagsOptionsFor(f)" :key="o.value" :label="o.label" :value="o.value" />
               </el-select>
               <!-- 对象键值对 → KeyValueEditor（tool.args / hitl.bpm_approval.formVars） -->
               <KeyValueEditor
@@ -299,8 +337,19 @@
                     data-testid="node-compensate-ref"
                     @change="mutate"
                   >
-                    <el-option v-for="t in toolList" :key="t.name" :label="t.name" :value="t.name">
-                      <span class="float-left">{{ t.name }}</span>
+                    <el-option
+                      v-for="t in toolList"
+                      :key="t.name"
+                      :label="keyedLabel(t.name, t.displayName)"
+                      :value="t.name"
+                    >
+                      <span class="float-left">{{ keyedLabel(t.name, t.displayName) }}</span>
+                      <span
+                        v-if="riskDotColor(t.risk)"
+                        class="wf-dot wf-risk-dot"
+                        :style="{ background: riskDotColor(t.risk) }"
+                        :title="riskDotTitle(t.riskDescription || t.risk, t.requireConfirm)"
+                      ></span>
                       <span
                         v-if="t.description"
                         class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
@@ -499,9 +548,19 @@
 import KeyValueEditor from '../../components/KeyValueEditor.vue'
 import JsonCodeField from './JsonCodeField.vue'
 import VariableRefPicker from './VariableRefPicker.vue'
+import { keyedLabel, riskDotColor } from '../../nameCatalog'
 import type { WorkflowEditorContext } from '../useWorkflowEditor'
 
 defineOptions({ name: 'WorkflowPropertyPanel' })
+
+/**
+ * 风险色点的 title 文案。
+ *
+ * 🔴 色点只有 7px，颜色本身说不清「不可逆」和「高危」的区别，也说不清「要不要人工确认」。
+ * 所以 title 必须把这两件事都讲出来——用户在下拉里悬停一下就该知道自己在挑什么。
+ */
+const riskDotTitle = (riskText?: string, requireConfirm?: boolean) =>
+  `${riskText || '有风险'}${requireConfirm ? '，运行前需人工确认' : ''}`
 
 /** 流程元信息（描述）双向绑定：由页面 v-model 下发，编辑即回写 formData（页面 watch 标脏） */
 const description = defineModel<string>('description')
@@ -514,6 +573,8 @@ const {
   visibleFields,
   optionsFor,
   tagsOptionsFor,
+  toolOptionGroups,
+  catalogError,
   mutate,
   nodeTypeLabel,
   nodeTypeTag,
@@ -645,6 +706,14 @@ const {
   color: var(--el-text-color-placeholder);
 }
 
+/* 目录加载失败 / 无可选项时下拉里的说明文字（G7：不许只剩一个空列表） */
+.wf-panel__empty-hint {
+  padding: 8px 12px;
+  font-size: var(--wf-fs-xs, 12px);
+  line-height: 18px;
+  color: var(--el-text-color-secondary);
+}
+
 .wf-panel__sub {
   margin-bottom: 4px;
   font-size: var(--wf-fs-xs, 12px);
@@ -677,6 +746,14 @@ const {
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* 下拉里的风险色点。`.el-select-dropdown__item` 不是 flex 容器（label 用的是 float-left），
+   所以这里必须自己给 inline-block + vertical-align，否则 7px 的圆点会掉到基线下面看不见 */
+.wf-risk-dot {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .wf-field-type {

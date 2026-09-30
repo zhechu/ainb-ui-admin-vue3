@@ -4,11 +4,19 @@ import { ElMessageBox } from 'element-plus'
 import type { Edge, Node } from '@vue-flow/core'
 import { MarkerType } from '@vue-flow/core'
 import { useMessage } from '@/hooks/web/useMessage'
-import { getToolList, type AgentToolVO } from '@/api/agent/config'
 import { ModelApi, type ModelVO } from '@/api/ai/model/model'
 import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
-import { AgentWorkflowApi } from '@/api/agent/workflow'
-import { layoutDsl } from '../layout'
+import type { NameCatalogToolVO } from '@/api/agent/workflow'
+import { layoutDsl, X_GAP, Y_GAP } from '../layout'
+import {
+  ensureLoaded as ensureNameCatalog,
+  groupedToolOptions,
+  keyedLabel,
+  nameCatalogError,
+  nameResolver,
+  toolItems,
+  workflowItems
+} from '../nameCatalog'
 import {
   NODE_TYPE_OPTIONS,
   DEFAULT_ROUTE,
@@ -111,7 +119,18 @@ export function useWorkflowEditor(
   const selectedEdge = ref<{ from: string; to: string; route?: string } | null>(null)
   const dslText = ref('')
   const configText = ref('{}')
-  const toolList = ref<AgentToolVO[]>([])
+  /**
+   * 工具目录（内置 + 用户自定义合流），来自 `/agent/workflow-def/name-catalog`。
+   *
+   * 🔴 数据源从 `/agent/config/tool-list` 换过来是 G7 的修复本体：那个接口要 `agent:config:query`，
+   * 只有流程编排权限的人拿不到，而旧代码 `.catch(() => [])` 把 403 静默吞成空数组 ——
+   * 用户看到的是一个**空下拉 + 零提示**，只能靠 `allow-create` 手打英文工具名。
+   * name-catalog 用 `agent:workflow:query`（设计器本来就有的权限），且失败会写 {@link nameCatalogError}。
+   *
+   * 🔴 做成 computed 而不是 ref + 赋值：目录是模块级共享单例，别处（如管理页维护完工具）调 `refresh()`
+   * 之后这里会自动跟上，不必再补一条「谁负责回填 toolList」的约定。
+   */
+  const toolList = computed<NameCatalogToolVO[]>(() => toolItems())
   const modelList = ref<ModelVO[]>([])
   const kbList = ref<KnowledgeVO[]>([])
   const workflowList = ref<{ label: string; value: string }[]>([])
@@ -216,7 +235,9 @@ export function useWorkflowEditor(
    */
   const buildFlow = () => {
     // EditorDsl 是 DslGraph 的超集，layoutDsl 只防御性读取少数字段，as any 跨过结构差异
-    const { nodes } = layoutDsl(dslObject.value as any)
+    // 🔴 传 nameResolver：画布节点摘要才会显示「调用工具「创建数据表」（datamodel_create）」而不是裸工具键。
+    //    目录是异步加载的，所以 loadCatalogs 完成后要再 buildFlow() 一次（见下）。
+    const { nodes } = layoutDsl(dslObject.value as any, nameResolver)
     const dslNodeById = new Map((dslObject.value.nodes ?? []).map((n) => [n.id, n]))
     for (const n of nodes) {
       const isStart = n.id === START_VISUAL_ID
@@ -435,8 +456,9 @@ export function useWorkflowEditor(
    *    顺序很要紧：**先问路由键、后建节点**，否则用户一取消就留下一个孤立节点（脏图，还得再删一次）。
    * 🔴 落点基准取「当前渲染坐标」而不是 DSL 里的 position：没拖动过的节点 position 是空的，
    *    坐标由 layoutDsl 现算，只有 flowNodes 里那份才是画布上真实看到的位置。
-   *    往右下各错开半格（layout 的 X_GAP/Y_GAP 是 240/120）：既不压住原节点，也不去挪动别的节点——
-   *    整体平移下游会连带改掉用户手工拖出来的布局，代价大于收益；要收拾整齐用顶栏「重新布局」。
+   *    往右下各错开半格/一格（直接取 layout 导出的 X_GAP/Y_GAP，不写死数字：改了间距这里自动跟上）——
+   *    既不压住原节点，也不去挪动别的节点：整体平移下游会连带改掉用户手工拖出来的布局，
+   *    代价大于收益；要收拾整齐用顶栏「重新布局」。
    */
   const addNodeAfter = async (sourceRef: string, type: string): Promise<string | null> => {
     if (readonly.value || !sourceRef || sourceRef === END_KEYWORD) return null
@@ -456,7 +478,7 @@ export function useWorkflowEditor(
     }
 
     const base = flowNodes.value.find((n) => n.id === toVisual(sourceRef))?.position ?? { x: 0, y: 0 }
-    const pos = { x: base.x + 120, y: base.y + 120 }
+    const pos = { x: base.x + X_GAP / 2, y: base.y + Y_GAP }
 
     const id = addNode(dslObject.value, type)
     const created = (dslObject.value.nodes ?? []).find((n) => n.id === id)
@@ -605,10 +627,16 @@ export function useWorkflowEditor(
   /**
    * select 字段的可选项。动态来源（tool/model/kb/workflow）映射已加载目录，静态来源用 f.options。
    * value 逐字对齐后端读取的类型：toolId=工具键(string)、modelId/knowledgeBaseId=数字 id、workflowId=流程 code(string)。
+   * 🔴 tool 的**分组**形态走 {@link toolOptionGroups}（el-option-group）；这里保留平铺版作兜底，
+   *    两者 label 同源 {@link keyedLabel}，不会出现「分组里是中文、平铺里是英文」。
    */
   const optionsFor = (f: ConfigField): { label: string; value: string | number | boolean; desc?: string }[] => {
     if (f.optionsFrom === 'tool') {
-      return toolList.value.map((t) => ({ label: t.name, value: t.name, desc: t.description }))
+      return toolList.value.map((t) => ({
+        label: keyedLabel(t.name, t.displayName),
+        value: t.name,
+        desc: t.description
+      }))
     }
     if (f.optionsFrom === 'model') {
       return modelList.value.map((m) => ({ label: m.name, value: m.id, desc: m.model }))
@@ -622,10 +650,24 @@ export function useWorkflowEditor(
     return f.options ?? []
   }
 
-  /** tags 字段的可选项：iteration.body / agent_loop.tools 给节点 id / 工具键候选，choices 无候选纯手输 */
-  const tagsOptionsFor = (f: ConfigField): string[] => {
-    if (f.key === 'body') return (dslObject.value.nodes ?? []).map((n) => n.id)
-    if (f.key === 'tools') return toolList.value.map((t) => t.name)
+  /** 工具下拉的分组选项，`el-option-group` 直接吃这个形状（30+ 个工具平铺只能靠肉眼扫） */
+  const toolOptionGroups = computed(() => groupedToolOptions())
+
+  /** 目录加载失败的人话原因；🔴 G7 要求它必须可见，空下拉 + 零提示就是原来的病 */
+  const catalogError = nameCatalogError
+
+  /**
+   * tags 字段的可选项：iteration.body / agent_loop.tools 给节点 id / 工具键候选，choices 无候选纯手输。
+   *
+   * 🔴 value 一律是**机器键**（写进 DSL 的就是它），只有 label 是中文名。
+   * 旧实现返回 `string[]`、label 与 value 同值，所以「把 label 改成中文」会连带把中文写进
+   * `agent_loop.tools` —— 模型循环执行时按工具键查不到，静默退化。故这里必须拆成 {label,value}。
+   */
+  const tagsOptionsFor = (f: ConfigField): { label: string; value: string }[] => {
+    if (f.key === 'body') return (dslObject.value.nodes ?? []).map((n) => ({ label: n.id, value: n.id }))
+    if (f.key === 'tools') {
+      return toolList.value.map((t) => ({ label: keyedLabel(t.name, t.displayName), value: t.name }))
+    }
     return []
   }
 
@@ -897,19 +939,22 @@ export function useWorkflowEditor(
   // ---------- 目录数据（fail-soft + 缓存） ----------
 
   const loadCatalogs = async () => {
-    const [tools, models, kbs, page] = await Promise.all([
-      getToolList().catch(() => []),
+    // 🔴 名称目录必须先 await：它既喂工具/子流程下拉，又喂画布摘要（layoutDsl 的 resolver）。
+    //    ensureLoaded 永不 reject（失败只写 nameCatalogError），所以这里不需要 try/catch。
+    await ensureNameCatalog()
+    const [models, kbs] = await Promise.all([
       ModelApi.getModelSimpleList(1).catch(() => []),
-      KnowledgeApi.getSimpleKnowledgeList().catch(() => []),
-      AgentWorkflowApi.getDefPage({ pageNo: 1, pageSize: 100, status: 'PUBLISHED' }).catch(() => null)
+      KnowledgeApi.getSimpleKnowledgeList().catch(() => [])
     ])
-    toolList.value = (tools as AgentToolVO[]) ?? []
     modelList.value = (models as ModelVO[]) ?? []
     kbList.value = (kbs as KnowledgeVO[]) ?? []
-    workflowList.value = ((page as any)?.list ?? []).map((w: any) => ({
+    workflowList.value = workflowItems().map((w) => ({
       value: w.code,
-      label: w.name ? `${w.name}（${w.code}）` : w.code
+      label: keyedLabel(w.code, w.name)
     }))
+    // 🔴 必须重算一次画布：buildFlow 在 onMounted 的 immediate watch 里已经跑过一轮，
+    //    那时目录还没回来，节点摘要里全是机器键。不补这一刀，用户要等下一次编辑才看到中文。
+    buildFlow()
   }
 
   onMounted(loadCatalogs)
@@ -986,6 +1031,8 @@ export function useWorkflowEditor(
     conditionsOf,
     optionsFor,
     tagsOptionsFor,
+    toolOptionGroups,
+    catalogError,
     routeTargetName,
     // 交互
     onPaletteDragStart,

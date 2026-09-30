@@ -170,3 +170,93 @@ describe('nodeSummary', () => {
     expect(flowStepsText(null, null)).toEqual([])
   })
 })
+
+/**
+ * 名称解析器注入（重构 S1 / L1）——「注入 / 不注入」两态
+ *
+ * 🔴 钉住的关键不是「注入了能出中文」（那是新功能，本来就会写对），
+ * 而是**不注入时必须与注入前逐字一致**：nodeSummary 是三处共用的摘要来源，
+ * 现有 3 个 spec 与 replayModel/layout 的默认调用都不传解析器，
+ * 一旦回落态漂移，画布、聊天卡片、回放会在没人察觉的情况下同时改口。
+ */
+describe('nodeSummary：名称解析器两态', () => {
+  const resolver = {
+    toolLabel: (k?: string | null) =>
+      ({ datamodel_create: '创建数据表', form_data_create: '新增表单数据' })[k ?? ''] ?? (k || ''),
+    workflowLabel: (c?: string | null) => (c === 'wf_asset_check' ? '资产盘点' : c || '')
+  }
+
+  const toolNode = { type: 'tool', config: { toolId: 'datamodel_create', outputVar: 'r' } }
+  const subNode = { type: 'sub_workflow', config: { workflowId: 'wf_asset_check', version: 2 } }
+
+  it('不注入 / 注入 null / 注入空对象：三者输出逐字相同，且等于今天的字面量', () => {
+    const today = ['调用工具「datamodel_create」', '调用另一条已发布流程「wf_asset_check」 v2']
+    for (const r of [undefined, null, {}]) {
+      expect(summarizeNode(toolNode, r)).toBe(today[0])
+      expect(summarizeNode(subNode, r)).toBe(today[1])
+    }
+    // 与「完全不传第二参」也必须一致 —— 这是可选参的语义底线
+    expect(summarizeNode(toolNode)).toBe(today[0])
+    expect(summarizeNode(subNode)).toBe(today[1])
+  })
+
+  it('注入后：中文名与原键并排（运维要 key、业务要中文，两者都不能少）', () => {
+    expect(summarizeNode(toolNode, resolver)).toBe('调用工具「创建数据表」（datamodel_create）')
+    expect(summarizeNode(subNode, resolver)).toBe(
+      '调用另一条已发布流程「资产盘点」（wf_asset_check） v2'
+    )
+  })
+
+  it('解析不出中文名时回落原键，绝不产出空「」', () => {
+    const unknown = { type: 'tool', config: { toolId: 'some_new_tool' } }
+    expect(summarizeNode(unknown, resolver)).toBe('调用工具「some_new_tool」')
+    // 🔴 这条是「约束无强制点」那一类缺陷的防线：回落分支若少了 prefix，
+    // 用户会看到「调用工具「」（some_new_tool）」这种比原样更坏的输出
+    expect(summarizeNode(unknown, resolver)).not.toContain('「」')
+    expect(summarizeNode({ type: 'sub_workflow', config: { workflowId: 'wf_x' } }, resolver)).toBe(
+      '调用另一条已发布流程「wf_x」'
+    )
+  })
+
+  it('缺字段的兜底文案不受解析器影响', () => {
+    expect(summarizeNode({ type: 'tool', config: {} }, resolver)).toBe('调用工具（未选择工具）')
+    expect(summarizeNode({ type: 'sub_workflow' }, resolver)).toBe('调用子流程（未选择流程）')
+  })
+
+  it('解析器只给一部分方法也不崩（各方法皆可选）', () => {
+    expect(summarizeNode(toolNode, { workflowLabel: resolver.workflowLabel })).toBe(
+      '调用工具「datamodel_create」'
+    )
+    expect(summarizeNode(subNode, { toolLabel: resolver.toolLabel })).toBe(
+      '调用另一条已发布流程「wf_asset_check」 v2'
+    )
+  })
+
+  it('nodeDetailLines：toolId 翻中文、agent_loop.tools 逐个翻、非字符串原样', () => {
+    const lines = nodeDetailLines({ type: 'tool', config: { toolId: 'datamodel_create' } }, resolver)
+    expect(lines.find((l) => l.label === '工具')?.value).toBe('创建数据表')
+
+    const loop = nodeDetailLines(
+      { type: 'agent_loop', config: { goal: '盘点', tools: ['datamodel_create', 'unknown_x'] } },
+      resolver
+    )
+    // 数组仍由 readable 拼「、」，形态与不注入时一致，只是每项换了名
+    expect(loop.find((l) => l.label === '可用只读工具')?.value).toBe('创建数据表、unknown_x')
+
+    // 不注入 → 原键
+    expect(
+      nodeDetailLines({ type: 'tool', config: { toolId: 'datamodel_create' } }).find(
+        (l) => l.label === '工具'
+      )?.value
+    ).toBe('datamodel_create')
+  })
+
+  it('buildSummaryNodes：解析器同时透传给 summary 与 details', () => {
+    const [node] = buildSummaryNodes(
+      [{ id: 'n1', type: 'tool', name: '建表', config: { toolId: 'form_data_create' } }],
+      resolver
+    )
+    expect(node.summary).toBe('调用工具「新增表单数据」（form_data_create）')
+    expect(node.details.find((l) => l.label === '工具')?.value).toBe('新增表单数据')
+  })
+})

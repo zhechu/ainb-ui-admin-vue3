@@ -13,6 +13,13 @@ export interface AgentConfigVO {
 /** 已注册的工具（只读） */
 export interface AgentToolVO {
   name: string
+  /**
+   * 中文展示名。后端早已下发（{@code AgentConfigController.toolList}），只是这里此前没声明，
+   * 于是 TypeScript 眼里它不存在、页面就只能显示 name —— 一屏下划线英文。
+   */
+  displayName?: string
+  /** 分组名（中文），空串表示不分组 */
+  groupName?: string
   description: string
   /** 需要的权限串，全部满足才放行 */
   permissions: string[]
@@ -21,6 +28,8 @@ export interface AgentToolVO {
   enabled: boolean
   /** 是否必须进 Plan 等用户确认 */
   requireConfirm: boolean
+  /** 当前租户是否在线维护过这个工具（管理页据此打「已维护」标记） */
+  overridden?: boolean
 }
 
 /** 配额 */

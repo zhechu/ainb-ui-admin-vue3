@@ -13,6 +13,10 @@
  *   - {@link flowStepsText}：edges → 流程走向文本行（卡片「流程走向」小节）；
  *   - {@link nodeHasRequiredGap}：必填配置缺失检测（画布节点红点警示）。
  *
+ * 🔴 名称中文化（重构 S1 / L1）：`summarizeNode` / `nodeDetailLines` / `buildSummaryNodes` 都收一个
+ *    **可选**的 {@link NodeNameResolver} 第二参，由 `nameCatalog.ts` 注入。不传时行为与注入前逐字一致，
+ *    所以本模块仍是纯函数、仍可被 vitest 直接跑（见 nodeSummary.spec.ts 的「不注入」用例）。
+ *
  * 🔴 类型目录逐字对齐后端：10 种 = NodeExecutorRegistry 已注册执行器（getType()），
  *    3 种（agent_loop/iteration/sub_workflow）= WorkflowDslValidator.GRAPH_BUILDER_TYPES 编译器合成子图。
  *    用途说明文案提炼自 WorkflowDslPlannerPrompt.NODE_CATALOG（那是给模型看的，这里翻成给业务人员看的）。
@@ -131,6 +135,41 @@ export const nodeTypeMeta = (type?: string | null): NodeTypeMeta =>
     group: '高级'
   }
 
+/**
+ * 名称解析器注入点（重构 S1 / L1）—— 把 DSL 里的机器键翻成中文名。
+ *
+ * 🔴 **每个方法都可选**、且整个参数可选：不传就是今天的行为（原样打印机器键）。
+ * 现有 3 个 spec 文件都不传，故行为逐字不变；生产路径由 `nameCatalog.ts` 的 `nameResolver` 注入。
+ *
+ * 🔴 本文件**绝不** import `nameCatalog.ts`：那边 import 这边（`nodeTypeLabel` 复用 `nodeTypeMeta`），
+ * 反向依赖会成环，且会把 Vue 的 `ref` 拖进这个刻意保持 Vue-free 的纯函数模块。
+ *
+ * 🔴 解析器**查不到必须回落原键**（由实现方保证），本模块只判「有没有变化」：
+ * 变了才把原键挪进括号，没变就保持原样 —— 否则会出现「调用工具「」（datamodel_create）」这种更坏的输出。
+ */
+export interface NodeNameResolver {
+  toolLabel?: (key?: string | null) => string
+  workflowLabel?: (code?: string | null) => string
+  widgetLabel?: (type?: string | null) => string
+  operatorLabel?: (op?: string | null) => string
+}
+
+/**
+ * 「机器键 + 中文名」并排展示：解析成功 → `前缀「中文名」（机器键）`；失败或未传解析器 → `前缀「机器键」`。
+ *
+ * 🔴 中文名后仍带原键是刻意的（方案 §3-L1）：运维排查看 key、业务用户看中文，两者都要。
+ * 而回落分支保留 `前缀` 原文（如「工具」二字），是为了让「目录没加载」与「目录加载了」两种输出
+ * 在结构上一致 —— 用户不会因为一次网络抖动就看到句子少了个成分。
+ */
+const named = (
+  prefix: string,
+  key: string,
+  resolve?: (k: string) => string | undefined
+): string => {
+  const label = resolve?.(key)
+  return label && label !== key ? `${prefix}「${label}」（${key}）` : `${prefix}「${key}」`
+}
+
 /** 摘要节点：卡片 props / 画布 data 共用的形状 */
 export interface SummaryNode {
   id: string
@@ -185,14 +224,19 @@ const ruleBranchCount = (config: Record<string, any>): number => asArray(config.
  * 每种类型一个模板；缺字段时如实说「未配置 xx」（这本身就是有用的信息），未知类型兜底列 config 键名。
  * 🔴 人话化（问题3a）：不再把 outputVar / 变量名 / 工具入参键名这些技术标识甩给用户；
  *    分支目标本就是要给用户看的路由名（condition.rule 的 target / condition.llm 的 choices），保留原样。
+ * 🔴 第二参 `resolver` 可选（重构 S1 / L1）：传了就把工具键、子流程 code 翻成中文名并排展示，
+ *    不传则与今天逐字一致。见 {@link NodeNameResolver}。
  */
-export const summarizeNode = (node?: { type?: string; config?: Record<string, any> } | null): string => {
+export const summarizeNode = (
+  node?: { type?: string; config?: Record<string, any> } | null,
+  resolver?: NodeNameResolver | null
+): string => {
   if (!node) return ''
   const config = asObject(node.config)
   switch (node.type) {
     case 'tool': {
       if (!config.toolId) return '调用工具（未选择工具）'
-      return `调用工具「${config.toolId}」`
+      return named('调用工具', str(config.toolId), resolver?.toolLabel)
     }
     case 'llm': {
       if (!config.prompt) return '调用大模型生成文本（未填写提示词）'
@@ -249,10 +293,12 @@ export const summarizeNode = (node?: { type?: string; config?: Record<string, an
       const body = asArray(config.body).length ? `，循环体 ${asArray(config.body).length} 个节点` : ''
       return `逐项处理一个列表里的每一项${body}`
     }
-    case 'sub_workflow':
-      return config.workflowId
-        ? `调用另一条已发布流程「${config.workflowId}」${config.version ? ` v${config.version}` : ''}`
-        : '调用子流程（未选择流程）'
+    case 'sub_workflow': {
+      if (!config.workflowId) return '调用子流程（未选择流程）'
+      // 🔴 workflowId 存的是流程 **code**（不是数据库 id），所以今天画布上显示的是 `wf_asset_check` 这类机器码
+      const ver = config.version ? ` v${config.version}` : ''
+      return named('调用另一条已发布流程', str(config.workflowId), resolver?.workflowLabel) + ver
+    }
     default: {
       const keys = Object.keys(config)
       return keys.length ? `${node.type || '未知类型'}节点（${truncate(keys.join('、'), 40)}）` : ''
@@ -301,14 +347,40 @@ const TOP_LEVEL_LABELS: Record<string, string> = {
 }
 
 /**
+ * 详情行里「存的是机器键」的 config 键 → 该用哪个解析方法。
+ * 其余键的值本就是给人看的文本（提示词、事件名、变量名），不翻译。
+ */
+const KEY_RESOLVER: Record<string, keyof NodeNameResolver> = {
+  toolId: 'toolLabel',
+  /** agent_loop 的可用工具清单，值是工具键数组 */
+  tools: 'toolLabel',
+  workflowId: 'workflowLabel'
+}
+
+/**
+ * 翻译一个详情值。🔴 数组逐个翻译后**仍交回 `readable`** 拼「、」，输出形态与今天一致；
+ * 非字符串原样返回（脏数据不该在这里被改形状）。
+ */
+const resolveDetailValue = (key: string, raw: any, resolver?: NodeNameResolver | null): any => {
+  const fn = resolver?.[KEY_RESOLVER[key] ?? '']
+  if (!fn) return raw
+  if (Array.isArray(raw)) return raw.map((x) => (typeof x === 'string' ? fn(x) : x))
+  return typeof raw === 'string' ? fn(raw) : raw
+}
+
+/**
  * 展开态详情行：先按 schema 顺序列 config（跳过空值），再列 schema 外的键，最后列顶层 recovery 等字段。
  * 标签用中文（来自 nodeConfigSchema 的字段声明），值转可读单行。
+ * 🔴 第二参 `resolver` 可选（重构 S1 / L1）：传了则工具键、子流程 code 翻成中文名，不传与今天逐字一致。
  */
-export const nodeDetailLines = (node?: {
-  type?: string
-  config?: Record<string, any>
-  [k: string]: any
-} | null): { label: string; value: string }[] => {
+export const nodeDetailLines = (
+  node?: {
+    type?: string
+    config?: Record<string, any>
+    [k: string]: any
+  } | null,
+  resolver?: NodeNameResolver | null
+): { label: string; value: string }[] => {
   if (!node) return []
   const config = asObject(node.config)
   const lines: { label: string; value: string }[] = []
@@ -316,12 +388,12 @@ export const nodeDetailLines = (node?: {
   for (const f of fieldsFor(node.type)) {
     if (!(f.key in config)) continue
     seen.add(f.key)
-    const text = readable(config[f.key])
+    const text = readable(resolveDetailValue(f.key, config[f.key], resolver))
     if (text) lines.push({ label: f.label, value: text })
   }
   for (const [k, v] of Object.entries(config)) {
     if (seen.has(k)) continue
-    const text = readable(v)
+    const text = readable(resolveDetailValue(k, v, resolver))
     if (text) lines.push({ label: k, value: text })
   }
   for (const [k, label] of Object.entries(TOP_LEVEL_LABELS)) {
@@ -336,15 +408,15 @@ export const nodeDetailLines = (node?: {
  * 把 nodes[] 组装成卡片用的 SummaryNode[]（容错：非数组/元素残缺都跳过）。
  * 🔴 人话化（问题3a）：无名节点回退成「步骤 N」（按在列表里的次序），不再把裸节点 id 甩给用户。
  */
-export const buildSummaryNodes = (nodes: any): SummaryNode[] =>
+export const buildSummaryNodes = (nodes: any, resolver?: NodeNameResolver | null): SummaryNode[] =>
   asArray(nodes)
     .filter((n) => n && n.id)
     .map((n, i) => ({
       id: str(n.id),
       type: n.type,
       name: n.name ? str(n.name) : `步骤 ${i + 1}`,
-      summary: summarizeNode(n),
-      details: nodeDetailLines(n)
+      summary: summarizeNode(n, resolver),
+      details: nodeDetailLines(n, resolver)
     }))
 
 /** DSL 边（flowStepsText 只读这几个键） */

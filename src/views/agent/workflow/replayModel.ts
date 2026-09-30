@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@vue-flow/core'
 import type { AgentNodeExecutionVO } from '@/api/agent/workflow'
 import { layoutDsl, type DslGraph, type TagType } from './layout'
+import type { NodeNameResolver } from './nodeSummary'
 
 /**
  * 节点级执行回放的纯逻辑模型（增量15 / P4 可视化编辑器后续刀：节点级回放）
@@ -114,12 +115,16 @@ export interface ReplayGraph {
  *
  * 🔴 纯叠加、不改布局：节点位置/边完全由 layoutDsl 决定（与只读画布/编辑器同一张图），只多染一层执行状态，
  * 保证「回放看到的图」与「预览/编辑看到的图」结构一致，作者不会因回放而认不出自己的流程。
+ *
+ * 🔴 第三参 `resolver` 可选（重构 S1 / L1）：传了则节点摘要里的工具键、子流程 code 翻成中文名，
+ * 不传与今天逐字一致（replayModel.spec.ts 就是不传的那一态）。
  */
 export const buildReplayGraph = (
   dsl: DslGraph,
-  traces: AgentNodeExecutionVO[] | null | undefined
+  traces: AgentNodeExecutionVO[] | null | undefined,
+  resolver?: NodeNameResolver | null
 ): ReplayGraph => {
-  const { nodes, edges } = layoutDsl(dsl)
+  const { nodes, edges } = layoutDsl(dsl, resolver)
   const traceByNode = aggregateTracesByNode(traces)
   const dataByNode = new Map<string, ReplayNodeData>()
   const replayNodes: Node[] = nodes.map((n) => {

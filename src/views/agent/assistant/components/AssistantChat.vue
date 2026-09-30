@@ -340,6 +340,10 @@ import {
   flowStepsText,
   type SummaryNode
 } from '@/views/agent/workflow/nodeSummary'
+import {
+  ensureLoaded as ensureNameCatalog,
+  nameResolver
+} from '@/views/agent/workflow/nameCatalog'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
 import WorkflowDraftCard from './WorkflowDraftCard.vue'
@@ -820,14 +824,23 @@ const focus = () => inputRef.value?.focus()
  * 走向文本（flowStepsText）—— AI助手 UX 修复前只抠 {id,type,name}，config 里的 prompt/工具/分支全被丢弃，
  * 用户看到的流程等于只有目录没有正文。这里改用 nodeSummary 的公共组装函数，与编辑器/只读画布同源。
  * 解析失败（草稿 dsl 异常）返回空，卡片显示「未能解析出节点预览」而不是崩掉。
+ *
+ * 🔴 async 是为了先 `await` 名称目录（重构 S1 / L1）：卡片摘要是一次性装配的、不在 computed 里，
+ * 目录晚到不会让已渲染的卡片自己刷新 —— 不 await 就等于「首屏那批卡片永久显示 datamodel_create」。
  */
-const parseWorkflowPreview = (dsl?: string): { nodes: SummaryNode[]; edgesText: string[] } => {
+const parseWorkflowPreview = async (
+  dsl?: string
+): Promise<{ nodes: SummaryNode[]; edgesText: string[] }> => {
   if (!dsl) return { nodes: [], edgesText: [] }
+  await ensureNameCatalog()
   try {
     const parsed = JSON.parse(dsl)
     const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : []
     const edges = Array.isArray(parsed?.edges) ? parsed.edges : []
-    return { nodes: buildSummaryNodes(nodes), edgesText: flowStepsText(nodes, edges) }
+    return {
+      nodes: buildSummaryNodes(nodes, nameResolver),
+      edgesText: flowStepsText(nodes, edges)
+    }
   } catch {
     return { nodes: [], edgesText: [] }
   }
@@ -866,7 +879,7 @@ const loadMessages = async (conversationId: number) => {
           msg.workflowDefId = draft.defId
           msg.workflowCode = draft.code
           msg.workflowName = draft.name
-          const preview = parseWorkflowPreview(draft.dsl)
+          const preview = await parseWorkflowPreview(draft.dsl)
           msg.nodes = preview.nodes
           msg.edgesText = preview.edgesText
           // 摘要优先用消息正文（appendDraftMessage 落库时写进了 content），拿不到再退回草稿名
@@ -1337,7 +1350,7 @@ const loadWorkflowDraft = async (item: any, defId: number) => {
   if (!defId) return
   try {
     const draft: AgentWorkflowDraftVO = await AgentPlannerApi.getWorkflowDraft(defId)
-    const preview = parseWorkflowPreview(draft.dsl)
+    const preview = await parseWorkflowPreview(draft.dsl)
     item.nodes = preview.nodes
     item.edgesText = preview.edgesText
     item.defStatus = draft.status

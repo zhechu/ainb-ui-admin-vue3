@@ -115,7 +115,50 @@ export interface AgentNodeExecutionVO {
   endTime?: Date
 }
 
+/**
+ * 名称目录（重构 S1 / L1）：DSL 里的「机器键」→ 给人看的中文名
+ *
+ * 🔴 与后端 {@code AgentNameCatalogRespVO} 一一对应。
+ * 权限是 {@code agent:workflow:query}（「不是」工具清单那个 {@code agent:config:query}）——
+ * 这是 G7 的修复点：此前设计器直接调 {@code /agent/config/tool-list}，只有编排权、
+ * 没有 AI 配置权的管理员打开设计器会看到一个「空的且无任何提示」的工具下拉。
+ */
+export interface NameCatalogToolVO {
+  /** 工具键，DSL 的 toolId 存的就是它 */
+  name: string
+  /** 中文展示名（服务端已做三级回落，正常不会是空） */
+  displayName: string
+  description?: string
+  /** 分组名，下拉按它分组；空串表示不分组 */
+  groupName: string
+  risk?: string
+  riskDescription?: string
+  requireConfirm?: boolean
+  enabled?: boolean
+  overridden?: boolean
+  /** BUILTIN=代码内置工具，其余取自 agent_tool_def.source */
+  source?: string
+}
+
+export interface NameCatalogVO {
+  tools: NameCatalogToolVO[]
+  /** 控件 type → 中文名 */
+  widgetLabels: Record<string, string>
+  operators: { operator: string; label: string }[]
+  /** 已发布流程 code → 中文名（sub_workflow 节点展示用） */
+  workflows: { code: string; name: string }[]
+}
+
 export const AgentWorkflowApi = {
+  /**
+   * 名称目录（只读；设计器/只读画布/聊天草稿卡/执行历史共用的「机器键 → 中文名」映射）
+   *
+   * 🔴 大模型与知识库「不在」这份目录里：agent 在 ai 模块的 api 层没有列模型/列知识库的出口，
+   * 而这两处前端本来就直接调 ai 的 simple-list、且显示的一直是名字。见后端 VO 类注释。
+   */
+  getNameCatalog: (): Promise<NameCatalogVO> =>
+    request.get({ url: '/agent/workflow-def/name-catalog' }),
+
   /** 定义分页（列表不带 dsl 正文） */
   getDefPage: (params: AgentWorkflowDefPageReqVO) =>
     request.get({ url: '/agent/workflow-def/page', params }),

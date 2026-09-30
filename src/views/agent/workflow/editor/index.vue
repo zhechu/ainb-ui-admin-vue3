@@ -116,6 +116,21 @@
       </div>
     </header>
 
+    <!--
+      🔴 G7（重构 S1）：名称目录加载失败的显式告警。
+
+      原来 `loadCatalogs` 里是 `.catch(() => [])`：403 被吞成空数组，用户看到的是一个空下拉 + 零提示，
+      只能靠 allow-create 手打英文工具名 —— 这正是本平台头号缺陷形态「配了不生效且无提示」。
+      现在目录改走 `agent:workflow:query`（设计器本来就有的权限），失败面小得多，但**仍然必须可见**。
+    -->
+    <div v-if="catalogError" class="wf-editor__validate">
+      <el-alert type="warning" :closable="false" show-icon data-testid="catalog-error-alert">
+        <template #title>{{ catalogError }}</template>
+        画布摘要与工具下拉会退回显示英文标识（如 datamodel_create），流程本身不受影响。
+        <el-button link type="primary" size="small" @click="loadCatalogs">重试</el-button>
+      </el-alert>
+    </div>
+
     <!-- 体检结果（结构化 errors/warnings，直接展示后端返回的「怎么改」文案） -->
     <div v-if="validateResult" class="wf-editor__validate">
       <el-alert
@@ -324,7 +339,10 @@ const {
   cancelRouteDialog,
   routeTargetName,
   // Req4：开发者模式开关（localStorage 持久化）从画布工具条搬到了顶栏
-  devMode
+  devMode,
+  // G7（重构 S1）：名称目录加载失败必须在页面上留痕，重试直接重跑 loadCatalogs
+  catalogError,
+  loadCatalogs
 } = editor
 
 // Req4：画布缩放。store 以 flowId 为键，与 Designer 里的 useVueFlow(flowId) 是同一份
