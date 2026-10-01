@@ -13,11 +13,28 @@ import {
  * 触发方式经典案例的结构不变量（AI助手 流程编排优化 / Req 3）
  *
  * 🔴 为什么这些断言值得写：案例是「给用户抄的样板」，一旦某条案例体检不过，用户照抄就会撞墙，
- *    而且撞墙时他认为是自己配错了——比没有案例更糟。这里把后端 WorkflowDslValidator 的**每一条 error 规则**
- *    与「不产 warning」的条件在前端复刻一遍，让案例坏掉时单测先红，而不是等用户在浏览器里发现。
+ *    而且撞墙时他认为是自己配错了——比没有案例更糟。
  *
- * 🔴 后端 /validate 的实测已在开发期逐个跑过（五条全 passed、0 error、0 warning）；本 spec 是它的
- *    离线守门员，防止后续改案例时把不变量改坏。
+ * 🔴 但本 spec **不是**后端 WorkflowDslValidator 的离线复刻，别当成双端一致的证据来读。
+ *    V1~V19 落地后（2026-10-02，`5050bfe0d8`→`fee188d5cf`）后端 V 系列 19 条里 **17 条生效**
+ *    （V9 未实现、V17 不可能触发），这里只碰得到其中三条：
+ *      · V13/V14 → `isHeadlessUnsafe()`（下面专有一节喂构造样本钉它）
+ *      · V15     → 「webhook 案例预填的鉴权方式能过 V15」那一条不变量
+ *    其余 **14** 条生效规则（工具存在/启用、agent_loop 只读、表与列存在、bpm 流程已部署、
+ *    模型存在、子流程已发布、干跑被拒、触发器×风险矩阵、不可达节点、写而未声明……）
+ *    **这里一条都没有**，由后端 `WorkflowDslValidatorTest`（145 条）独家守着。
+ *    ⟹ 刻意不复刻：把那 14 条在前端再写一遍就是校验器的第二份副本，会漂（方案 §2-D7）。
+ *       权威在后端，这里只管「**这五个案例本身**别坏」。
+ *
+ * 🔴 后端 /validate 的实测：2026-10-02 用**带全 V1~V19 的构建**逐条重跑过，
+ *    五条案例仍全 passed、0 error、0 warning（`demo_none`/`demo_chat`/`demo_form_event`/
+ *    `demo_schedule`/`demo_webhook`，按 TriggerCaseView 的同一套 buildStarterDsl('case', …) 组装）。
+ *    ⚠️ 那次实测是**手工跑的、没有自动化**，所以下次后端再加规则时它不会自己重跑 ——
+ *       本 spec 全绿**不等于**案例还能过后端体检。改案例后请重跑一次真 /validate。
+ *
+ * ⚠️ 残留的漂移面（已登记为方案 §0.8.1 第 14 行 / D-new23）：`isHeadlessUnsafe()` 是 V13/V14
+ *    判据的**第二个读者**，两端只靠注释对齐、无自动链路。它今天有 8 条口径测试 + 一条扫
+ *    `NODE_TYPE_META` 全键的穷举断言钉着，但后端若改了 V13/V14 的口径，这里不会自动红。
  */
 
 const ALL_TYPES: WorkflowTriggerType[] = ['none', 'chat', 'form_event', 'schedule', 'webhook']
