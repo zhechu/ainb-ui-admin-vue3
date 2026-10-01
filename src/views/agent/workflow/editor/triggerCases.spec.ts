@@ -27,10 +27,62 @@ const ID_PATTERN = /^[a-z][a-z0-9_]{0,62}$/
 /** 后端 WorkflowDslValidator.PLACEHOLDER_ROOT */
 const PLACEHOLDER_ROOT = /\{\{\s*\$\.([a-zA-Z][a-zA-Z0-9_]*)/g
 
-/** 无头触发：后台自动跑，界面上没有人可以点「同意」或发事件 */
+/**
+ * 无头触发：后台自动跑，界面上没有人可以点「同意」或发事件。
+ *
+ * 🔴 `none` **不在**里面，这不是漏项：none 压根不产 trigger 块（见文末 buildStarterDsl 那条断言），
+ *    后端 triggerTypeOf 因此拿到 null，而 isHeadlessTrigger(null) 明确返回 false
+ *    （WorkflowDslValidator:1457-1459）—— 这种定义只能由人点 run-stream 跑起来（沙箱、执行历史的重跑），
+ *    那个人就在场，聊天确认卡有地方推。把它算成无头，会把「沙箱里调 hitl.confirm」这条主路径整个堵死。
+ */
 const HEADLESS: WorkflowTriggerType[] = ['form_event', 'schedule', 'webhook']
-/** 挂起后需要人来唤醒的节点类型——无头流程里放它们等于永久卡死 */
-const BLOCKING_TYPES = ['hitl.confirm', 'hitl.bpm_approval', 'wait']
+
+/**
+ * 无头触发下**唤不醒**的节点类型。逐字对齐后端 V13 / V14，不多不少。
+ *
+ * 🔴 原名 BLOCKING_TYPES，且列了 hitl.bpm_approval 和整个 wait —— **两项都是错的**：
+ *   · `hitl.bpm_approval` 恰恰是 V13 给无头流程指的**出路**，错误文案原话就是
+ *     「无头流程的人工介入请改用 hitl.bpm_approval（走 BPM 待办唤醒，有承办人、不依赖聊天窗口）」；
+ *     V11 也把它同时放进 headlessGates 与 attendedGates（WorkflowDslValidator:1210-1212，
+ *     注释写着「有无头都能唤醒」）。把它列成禁用，等于教用户别用那个唯一能用的选项 ——
+ *     照抄的人会把闸口整个删掉，那正是 V11 要拦的方向。
+ *   · `wait` 必须按 waitType 分档：duration 有平台内的自动唤醒方
+ *     （WorkflowWaitResumeScheduler 扫 resume_at 到点续跑），V14 明确不管它，理由写在 :1321-1324
+ *     「一刀切禁掉所有 wait 会把『等 10 分钟再发通知』这种完全正常的自动化挡在门外」；
+ *     只有 event 那一档靠外部系统调 POST /agent/workflow/event，而平台内**零调用方**。
+ *
+ * 所以这里从「一张类型黑名单」改成「一个按 config 判的谓词」：判据是**唤不唤得醒**，
+ * 不是**会不会挂起**。挂起本身从来不是问题，醒不过来才是。
+ */
+const HEADLESS_UNSAFE_TYPES = ['hitl.confirm']
+
+/** wait 在无头触发下唤不醒的那一档；大小写敏感，与 V14:1351-1355 同口径 */
+const WAIT_TYPE_EVENT = 'event'
+
+const notBlank = (v: any): boolean => typeof v === 'string' && v.trim() !== ''
+
+/**
+ * 这个节点放进无头流程会不会永久卡在 INTERRUPTED。
+ *
+ * 🔴 wait(event) 这半边的判据刻意与 V14 逐字一致：
+ *   · waitType **大小写敏感**地等于 event。「取值合不合法」是编译器 validateWaitConfig 的权威
+ *     （EVENT 会被它判「未知，仅支持 duration/event」）；这里若放宽成不敏感，同一份 DSL 就会
+ *     同时收到「未知 waitType」和「没声明唤醒方」两条 —— 一个根因说两遍。
+ *   · 声明**只认 owner / endpoint，光写 note 不算**（wakeupDeclarationOf:1499 要求两者至少一个非空；
+ *     V14:1332-1334 的理由是「只填一句 note 等于把问题抄了一遍当答案」）。
+ *
+ * ⚠️ 声明了在后端只降到 warning，不是「安全」。本谓词返回 false 的含义是**不阻断发布**，
+ *    与后端 error / warning 的分界同口径 —— 别把它当成「这么配就没风险了」。
+ */
+const isHeadlessUnsafe = (node: Record<string, any>): boolean => {
+  if (HEADLESS_UNSAFE_TYPES.includes(node.type)) return true
+  if (node.type !== 'wait') return false
+  const waitType = node.config?.waitType
+  if (typeof waitType !== 'string' || waitType.trim() !== WAIT_TYPE_EVENT) return false
+  const wakeup = node.config?.externalWakeup
+  if (!wakeup || typeof wakeup !== 'object') return true
+  return !(notBlank(wakeup.owner) || notBlank(wakeup.endpoint))
+}
 
 /** 案例只允许用只读工具：样板会被真跑（沙箱/手动运行），不能产生副作用 */
 const READ_ONLY_TOOLS = [
@@ -99,6 +151,43 @@ describe('triggerCases 目录完整性', () => {
     expect(triggerCaseOf(null)).toBeUndefined()
     expect(triggerCaseOf(undefined)).toBeUndefined()
     expect(triggerCaseOf('webhook')?.triggerType).toBe('webhook')
+  })
+
+  /**
+   * 🔴 重构 S4a-i：webhook 此前是三个无头案例里唯一没写「无头执行」这条约束的。
+   *
+   * 漏掉的后果不是少一句提示：form_event 与 schedule 都写了、webhook 没写，
+   * 读者合理的推论就是「webhook 没有这个限制」，于是照着放一个「人工确认」节点，
+   * 发布时撞 error，还认为是自己配错了。
+   *
+   * 两条断言都不是在钉措辞，而是在钉**这条约束在不在场、给没给出路**：
+   * 只说「不许放」会让作者把闸口整个删掉 —— 那正是 V11 要拦的方向
+   * （WorkflowDslValidator:1286-1287 同一条文案纪律）。
+   */
+  it('每个无头案例都写明了无头约束，且都指出了「BPM 审批」这条出路', () => {
+    for (const t of HEADLESS) {
+      const hs = TRIGGER_CASES[t].highlights
+      expect(
+        hs.some((h) => h.includes('无头执行')),
+        `${t} 是无头触发，要点里却没说这件事，读者会以为只有别的触发方式有约束`
+      ).toBe(true)
+      expect(
+        hs.some((h) => h.includes('BPM 审批')),
+        `${t} 的无头要点没给出路，作者只会把人工闸口整个删掉`
+      ).toBe(true)
+    }
+  })
+
+  /**
+   * 案例预填的鉴权方式必须真能发布。
+   *
+   * 🔴 V15 已经把 authType=none（以及留空）判成 error（WorkflowDslValidator:1410-1421）：
+   *    入站地址是 @PermitAll 的，而「安全全靠 path 不可猜」在本平台不成立 ——
+   *    path 是作者手填的一格，两个仓库里都没有任何随机串生成。
+   *    预填一个发不出去的值，等于把用户直接送到体检报错面前。
+   */
+  it('webhook 案例预填的鉴权方式能过 V15', () => {
+    expect(TRIGGER_CASES.webhook.triggerDefaults.authType).toMatch(/^(hmac|token)$/)
   })
 
   it('triggerTypeLabel 认不出的类型原样返回，绝不吐 undefined 让页面渲染空白', () => {
@@ -191,14 +280,87 @@ describe('每个案例的图主体都满足后端 error 级规则', () => {
       })
 
       if (HEADLESS.includes(t)) {
-        it('无头触发不含人工确认/等待节点（挂起后没人唤醒，会永久卡死）', () => {
+        it('无头触发不含唤不醒的节点（挂起后没人唤醒，会永久卡在 INTERRUPTED）', () => {
           for (const n of body.nodes) {
-            expect(BLOCKING_TYPES, `${n.id} 是无头流程里的挂起节点`).not.toContain(n.type)
+            expect(isHeadlessUnsafe(n), `${n.id}（${n.type}）在无头流程里醒不过来`).toBe(false)
           }
         })
       }
     })
   }
+})
+
+/**
+ * {@link isHeadlessUnsafe} 自己的口径测试。
+ *
+ * 🔴 为什么必须单独立一节：上面那条断言问的是「案例里没有这种节点」，而五个案例**本来**就
+ *    一个挂起节点都没放 —— 哪怕这个谓词恒返回 false，那条断言也照样全绿，它守不住任何东西。
+ *    真正的判据在这里：逐条对齐后端 V13 / V14 / V11 的结论。少了这一节，
+ *    把 hitl.bpm_approval 重新加回黑名单（S4a-i 修的正是这个）也不会红。
+ */
+describe('isHeadlessUnsafe 与后端 V13/V14/V11 同口径', () => {
+  const node = (type: string, config: Record<string, any> = {}) => ({ id: 'n', type, config })
+
+  it('hitl.confirm 唤不醒：V13 在无头触发下报 error，且配了自定义 approveVar 也一样', () => {
+    expect(isHeadlessUnsafe(node('hitl.confirm'))).toBe(true)
+    expect(isHeadlessUnsafe(node('hitl.confirm', { approveVar: 'confirm_result' }))).toBe(true)
+  })
+
+  it('hitl.bpm_approval 唤得醒：它就是 V13 给无头流程指的出路，绝不可列进黑名单', () => {
+    expect(isHeadlessUnsafe(node('hitl.bpm_approval'))).toBe(false)
+    expect(isHeadlessUnsafe(node('hitl.bpm_approval', { bpmProcessDefKey: 'k' }))).toBe(false)
+  })
+
+  it('wait(duration) 唤得醒：WorkflowWaitResumeScheduler 到点自动续跑，V14 明确不管这一档', () => {
+    expect(isHeadlessUnsafe(node('wait', { waitType: 'duration', duration: 30 }))).toBe(false)
+    // 没填 waitType 也不归本谓词管：那是编译器 validateWaitConfig 的活
+    expect(isHeadlessUnsafe(node('wait', {}))).toBe(false)
+  })
+
+  it('wait(event) 没声明唤醒方 → 唤不醒：平台内零调用方会去发那个事件', () => {
+    expect(isHeadlessUnsafe(node('wait', { waitType: 'event', eventKey: 'k' }))).toBe(true)
+    // 光写 note 不算声明（V14:1332-1334：等于把问题抄了一遍当答案）
+    expect(
+      isHeadlessUnsafe(
+        node('wait', { waitType: 'event', externalWakeup: { note: '到时候会有人调' } })
+      )
+    ).toBe(true)
+    // 纯空白同样算没声明（wakeupDeclarationOf:1499 用的是 isBlank）
+    expect(
+      isHeadlessUnsafe(
+        node('wait', { waitType: 'event', externalWakeup: { owner: '  ', endpoint: '' } })
+      )
+    ).toBe(true)
+    // externalWakeup 不是对象 = 没声明
+    expect(isHeadlessUnsafe(node('wait', { waitType: 'event', externalWakeup: '订单中心' }))).toBe(
+      true
+    )
+  })
+
+  it('wait(event) 声明了 owner 或 endpoint 之一 → 不阻断（后端降到 warning，不是沉默）', () => {
+    expect(
+      isHeadlessUnsafe(node('wait', { waitType: 'event', externalWakeup: { owner: '订单中心' } }))
+    ).toBe(false)
+    expect(
+      isHeadlessUnsafe(
+        node('wait', {
+          waitType: 'event',
+          externalWakeup: { endpoint: 'POST /agent/workflow/event' }
+        })
+      )
+    ).toBe(false)
+  })
+
+  it('waitType 大小写敏感：EVENT 归编译器判「未知 waitType」，本谓词不代劳', () => {
+    expect(isHeadlessUnsafe(node('wait', { waitType: 'EVENT' }))).toBe(false)
+  })
+
+  it('13 种节点类型逐一表态：只有 hitl.confirm 唤不醒，新增类型必须回来改这条', () => {
+    const types = Object.keys(NODE_TYPE_META)
+    expect(types, '节点类型应当是 13 种').toHaveLength(13)
+    // 空 config 下 wait 不算（waitType 未填归编译器管），故这份清单里只剩 hitl.confirm
+    expect(types.filter((t) => isHeadlessUnsafe(node(t)))).toEqual(['hitl.confirm'])
+  })
 })
 
 describe('body() 每次返回全新对象', () => {

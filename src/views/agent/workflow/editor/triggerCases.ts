@@ -205,7 +205,8 @@ const formEventCase: TriggerCase = {
   highlights: [
     '触发载荷只有三个字段：{formCode, eventType, dataId}，整包写进 input，所以用 {{$.input.dataId}} 取主键。',
     '载荷里没有行的内容，要用 form_data_get 按 code + pk 把那行读回来——这一步不能省。',
-    '🔴 无头执行（后台自动跑，没有人在界面上等着）：绝不能放「人工确认」或「等待」节点，挂起后没人点，会一直卡住。',
+    '🔴 无头执行（后台自动跑，没有人在界面上等着）：「人工确认」节点会让这次执行一直停在「等待确认」，体检直接报错、发不出去。需要人把关请改用「BPM 审批」——它有承办人和待办列表，不依赖聊天窗口。',
+    '「等待」节点分两种：等待方式填 duration（等一段时间）是可以的，到点由平台自动唤醒；填 event（等外部事件）就必须在该节点写明谁会来发那个事件，否则同样发不出去。',
     '表单编码和事件类型在发布时会 fail-close 校验，配错发不出去，别等到线上才发现。',
     '同一张表配多条流程时，每次数据变更会把它们全部触发一遍，注意别互相写同一张表。'
   ],
@@ -267,7 +268,7 @@ const scheduleCase: TriggerCase = {
     '🔴 Cron 是 Spring 的 6 段格式（秒 分 时 日 月 周），不是 Quartz 的 7 段，也不支持 L/W/# 这些符号。',
     '每天凌晨 2 点 = 0 0 2 * * ?；每小时整点 = 0 0 * * * ?。发布时会校验 cron 合法性，写错发不出去。',
     '触发载荷是 {triggerType, scheduledFireTime, cron}，整包写进 input，用 {{$.input.scheduledFireTime}} 取本次到点时刻。',
-    '🔴 同样是无头执行：绝不能放「人工确认」或「等待」节点。',
+    '🔴 同样是无头执行：「人工确认」节点发不出去，要人把关请改用「BPM 审批」（走待办、有承办人）；「等待」只在等待方式为 duration 时可用，为 event 时必须写明谁来发那个事件。',
     '定时任务先 CAS 认领再触发，多实例部署也不会同一到点被跑两遍。'
   ],
   triggerDefaults: { cron: '0 0 2 * * ?' },
@@ -318,6 +319,15 @@ const scheduleCase: TriggerCase = {
  * 它是五个案例里唯一带**条件分支**的，因为 webhook 的真实用途几乎都是「外面发生了一件事，
  * 按内容分流处理」。同时它示范了那条绕不过去的固定套路：condition.rule 的条件只能读顶层变量，
  * 要判 input.amount 这种嵌套字段，必须先用 script 节点把它提成一个顶层变量。
+ *
+ * 🔴 重构 S4a-i 补的两条要点，都是「照抄就撞墙」那一类：
+ *   · webhook 也是**无头**触发，而本案例此前是五个里唯一没写这条的 —— form_event 与 schedule
+ *     都写了，读者会以为只有那两个有约束。
+ *   · 「鉴权选『无』则只靠 path 不可猜」这句话是**假的**，且已被后端 V15 判成 error：
+ *     path 是作者手填的一格（WorkflowForm.vue:136-138 一个普通输入框、默认空串），
+ *     两个仓库里都没有任何随机串生成。详见 V15 的类注释（WorkflowDslValidator:1393-1398）。
+ *     ⚠️ 若后续改成「保留 none 但发布时自动生成不可猜的 path」，本条要点与 triggerDefaults
+ *        都要跟着改 —— 那一项还挂着待裁定。
  */
 const webhookCase: TriggerCase = {
   triggerType: 'webhook',
@@ -325,13 +335,14 @@ const webhookCase: TriggerCase = {
   scenario: '外部系统 POST 入站地址即触发，请求体就是流程输入。适合对接第三方回调、跨系统联动。',
   flowText: 'START → 取出金额 → 按金额分流 →（大额单 / 小额单）→ END',
   configSummary:
-    '填「入站 Path」（本案例建议 order_callback，发布后地址即 /admin-api/agent/webhook/order_callback）+ 选「鉴权方式」；选 hmac/token 时还要填验签密钥。',
+    '填「入站 Path」（本案例建议 order_callback，发布后地址即 /admin-api/agent/webhook/order_callback）+ 选「鉴权方式」（只能 hmac 或 token）+ 填验签密钥。',
   highlights: [
     '发布后入站地址是 POST /admin-api/agent/webhook/{path}，调用方必须带标准 tenant-id 头。',
     '请求体 JSON 的顶层键原样写进 input，所以 {"amount":12000} 用 {{$.input.amount}} 取；不是 JSON 对象时整段落在 {{$.input.raw}}。',
     '🔴 条件判断只能读顶层变量，读不到 input.amount 这种嵌套字段。固定套路：先用「脚本」节点把字段提成顶层变量 amount，再用「规则条件」判它。',
+    '🔴 无头执行：回调打进来时没有人在界面上等着，「人工确认」节点会让这次执行一直停在「等待确认」、体检直接报错。要人把关请改用「BPM 审批」（走待办、有承办人）；「等待」只在等待方式为 duration 时可用，为 event 时必须写明谁来发那个事件。',
     '「规则条件」分支里的 target 是**路由键**（本案例是 big / small），不是节点 id；节点 id 在连线的 cases 里映射。',
-    '鉴权选 hmac/token 时必须填验签密钥，发布时会校验；选「无」则只靠 path 不可猜，别拿来收敏感数据。'
+    '🔴 鉴权方式只能选 hmac 或 token，并且必须填验签密钥（发布时会校验）。选「无」已经发不出去了：入站地址是免登录的，而「安全全靠 path 不可猜」这个前提在本平台**不成立**——path 是作者手填的一格、没有任何随机串生成，知道 path 的人就能用发布者的权限把这条流程跑完。'
   ],
   triggerDefaults: { path: 'order_callback', authType: 'hmac' },
   body: () => ({
