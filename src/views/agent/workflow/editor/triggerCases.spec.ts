@@ -33,8 +33,8 @@ import {
  *       本 spec 全绿**不等于**案例还能过后端体检。改案例后请重跑一次真 /validate。
  *
  * ⚠️ 残留的漂移面（已登记为方案 §0.8.1 第 14 行 / D-new23）：`isHeadlessUnsafe()` 是 V13/V14
- *    判据的**第二个读者**，两端只靠注释对齐、无自动链路。它今天有 8 条口径测试 + 一条扫
- *    `NODE_TYPE_META` 全键的穷举断言钉着，但后端若改了 V13/V14 的口径，这里不会自动红。
+ *    判据的**第二个读者**，两端只靠注释对齐、无自动链路。它今天有 7 条口径测试钉着（6 条喂构造
+ *    样本 + 1 条扫 `NODE_TYPE_META` 全键的穷举表态），但后端若改了 V13/V14 的口径，这里不会自动红。
  */
 
 const ALL_TYPES: WorkflowTriggerType[] = ['none', 'chat', 'form_event', 'schedule', 'webhook']
