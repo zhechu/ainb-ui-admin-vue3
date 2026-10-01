@@ -558,5 +558,48 @@ export const AgentWorkflowApi = {
       onclose: onClose,
       signal: ctrl.signal
     })
+  },
+
+  /**
+   * 恢复一条<b>挂起中</b>的执行（流式），走 {@code POST /agent/workflow/resume-stream}。
+   *
+   * <p>🔴 与 {@link AgentAssistantApi.resumeWorkflowStream} 刻意<b>不通用</b>、不要合并：
+   * 那个是<b>会话内</b>的恢复（要 {@code conversationId}、回推的是聊天事件
+   * PLANNING/MESSAGE/WORKFLOW_CONFIRM/DONE/ERROR），这个是<b>执行管理</b>的恢复
+   * （只认 {@code executionId}、回推 {@code WorkflowEvent}：META/NODE/INTERRUPTED/DONE/ERROR）。
+   * 执行历史抽屉里没有会话可挂，只能走这一条；两条流的事件词表不同，合并会让某一侧的
+   * switch 静默走 default（正是「配置生效了但界面没反应」那一类）。
+   *
+   * <p>权限 {@code agent:workflow:run}（副作用面：恢复之后续跑的节点会<b>真执行</b>写操作）。
+   *
+   * @param executionId 挂起的执行实例编号
+   * @param feedback    人工反馈，后端 {@code resume()} 经 updateState 写进 checkpoint 再从断点续跑。
+   *                    🔴 键名<b>必须</b>按挂起节点的类型给，见调用处
+   *                    {@code ExecutionHistoryDrawer.resumeFeedback} 的注释（只给 hitl_approved
+   *                    会让 bpm 审批节点读到 null、把「通过」判成「驳回」还报 SUCCEEDED）。
+   */
+  resumeStream: (
+    executionId: number,
+    feedback: Record<string, any>,
+    ctrl: AbortController,
+    onMessage: (event: any) => void,
+    onError: (err: any) => void,
+    onClose: () => void
+  ) => {
+    return fetchEventSource(`${config.base_url}/agent/workflow/resume-stream`, {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+        'tenant-id': `${getTenantId()}`
+      },
+      // 续跑可能十几秒（后面还挂着 LLM 节点），用户切走再回来不该发现连接断了
+      openWhenHidden: true,
+      body: JSON.stringify({ executionId, feedback }),
+      onmessage: onMessage,
+      onerror: onError,
+      onclose: onClose,
+      signal: ctrl.signal
+    })
   }
 }
