@@ -17,6 +17,20 @@
       </template>
       <!-- 审批表单 -->
       <div class="flex flex-col flex-1 pt-20px px-20px" v-loading="formLoading">
+        <!-- 变更清单摘要（S3 建渲染 / S6 供数据）：点「通过」之前先看见「通过之后平台上会改什么」。
+             🔴 只加在「通过」弹层，不加在「驳回」弹层：驳回是不做这些变更，
+                给人看一份「将会改什么」的清单只会分散注意力、还会让人误以为驳回也会改。
+             🔴 compact：弹层只有 420px 宽，塞不下字段级明细，这里只给 headline + 冲突 + 计数；
+                要看明细去详情页的「变更清单」页签 —— 同一份数据、同一个组件，两处渲染不各写一套。
+             🔴 max-h + 滚动：冲突条数不设上限，不限高度会把下面的「通过/取消」按钮顶出弹层，
+                审批人就会遇到一个点不到按钮的弹层 -->
+        <ChangeManifestCard
+          v-if="agentManifest"
+          data-testid="bpm-approve-manifest"
+          :manifest="agentManifest"
+          compact
+          class="mb-12px max-h-200px overflow-auto"
+        />
         <el-form
           label-position="top"
           class="mb-auto"
@@ -598,6 +612,9 @@ import SignDialog from './SignDialog.vue'
 import ProcessInstanceTimeline from '../detail/ProcessInstanceTimeline.vue'
 import { isEmpty } from '@/utils/is'
 import { UploadFile } from '@/components/UploadFile'
+// 🔴 跨模块复用（bpm → agent），理由同 detail/index.vue：四处渲染共用一个组件，不抄第五份
+import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
+import type { ChangeManifestVO } from '@/api/agent/workflow'
 
 defineOptions({ name: 'ProcessInstanceBtnContainer' })
 
@@ -614,6 +631,12 @@ const props = defineProps<{
   normalForm: any // 流程表单 formCreate
   normalFormApi: any // 流程表单 formCreate Api
   writableFields: string[] // 流程表单可以编辑的字段
+  /**
+   * agent 变更清单（S3 建渲染 / S6 供数据），由详情页从流程变量 `agent_change_manifest` 解出后传下来。
+   * 🔴 由父组件解析而不是这里再解一遍 `task.formVariables`：两处各解一次就是两份会漂的口径，
+   *    而「弹层里的摘要」与「页签里的全量」必须是同一份数据，否则审批人会看到两个不同的结论。
+   */
+  agentManifest?: ChangeManifestVO | null
 }>()
 
 const formLoading = ref(false) // 表单加载中

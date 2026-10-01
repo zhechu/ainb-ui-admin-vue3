@@ -121,6 +121,22 @@
               </el-scrollbar>
             </div>
           </el-tab-pane>
+
+          <!-- 变更清单（S3 建渲染 / S6 供数据）：agent 流程挂到 BPM 上时，
+               审批人在这里看「点了通过之后平台上会多出/改掉什么」。
+               🔴 放在最后一个页签，不插到中间：现有页签顺序被别处按位置假设过，
+                  而这块今天还恒不出现（S6 才注入流程变量），不值得为它冒重排的险 -->
+          <el-tab-pane v-if="agentManifest" label="变更清单" name="manifest">
+            <div class="form-scroll-area">
+              <el-scrollbar>
+                <ChangeManifestCard
+                  data-testid="bpm-manifest"
+                  :manifest="agentManifest"
+                  class="p-12px"
+                />
+              </el-scrollbar>
+            </div>
+          </el-tab-pane>
         </el-tabs>
 
         <div class="b-t-solid border-t-1px border-[var(--el-border-color)]">
@@ -133,6 +149,7 @@
             :normal-form="detailForm"
             :normal-form-api="fApi"
             :writable-fields="writableFields"
+            :agent-manifest="agentManifest"
             @success="refresh"
           />
         </div>
@@ -165,6 +182,11 @@ import approveSvg from '@/assets/svgs/bpm/approve.svg'
 import rejectSvg from '@/assets/svgs/bpm/reject.svg'
 import cancelSvg from '@/assets/svgs/bpm/cancel.svg'
 import PrintDialog from './PrintDialog.vue'
+// 🔴 跨模块复用（bpm → agent）：方案 §L1149 要求四处渲染共用同一个组件，
+//    在 bpm 里另抄一份「清单渲染」就是第 5 份会漂的副本 —— 而清单的渲染纪律
+//    （null 不等于「没有变更」、NOT_PROBED 不是「不通过」）抄漏一条就是让审批人放心点通过
+import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
+import type { ChangeManifestVO } from '@/api/agent/workflow'
 
 defineOptions({ name: 'BpmProcessInstanceDetail' })
 const props = defineProps<{
@@ -321,6 +343,30 @@ const handlePrint = async () => {
 
 /** 当前的 Tab */
 const activeTab = ref('form')
+
+/**
+ * agent 流程挂到 BPM 审批上时的变更清单（S3 建渲染，S6 供数据）。
+ *
+ * 🔴 键名 `agent_change_manifest`，由 S6 在启动流程实例时冻结进流程变量。**今天恒为空**，
+ *    所以「变更清单」页签压根不出现 —— 这是有意的：这不是「清单生成失败」，
+ *    而是「这条流程不是 agent 流程」，两种情况在界面上必须不一样，
+ *    给普通 OA 审批挂一句「清单不可用」只会让人以为平台坏了。
+ *
+ * 🔴 冻结再读回来可能是对象、也可能是 JSON 字符串（取决于 BPM 的变量序列化），两种都接。
+ *    解析失败一律当「没有」：这块渲染不出来顶多少一块信息，
+ *    绝不能因为一个变量把整个审批详情页搞挂。
+ */
+const agentManifest = computed<ChangeManifestVO | null>(() => {
+  const raw = processInstance.value?.formVariables?.agent_change_manifest
+  if (!raw) return null
+  if (typeof raw === 'object') return raw as ChangeManifestVO
+  try {
+    const parsed = JSON.parse(raw as string)
+    return parsed && typeof parsed === 'object' ? (parsed as ChangeManifestVO) : null
+  } catch {
+    return null
+  }
+})
 
 /** 初始化 */
 const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表

@@ -75,6 +75,12 @@ export interface AgentWorkflowDefValidateVO {
   errors: string[]
   /** 警告：不阻断，建议调整 */
   warnings: string[]
+  /**
+   * 变更清单（S2-f 出口 2）。走**附带版**：清单生成不出来时这里是 null，
+   * 但体检结果照常返回 —— 附加面板的 bug 不该把用户真正要的东西一起带走。
+   * 🔴 null 必须渲染成「清单不可用」，绝不能渲染成「本次不产生任何写操作」。
+   */
+  manifest?: ChangeManifestVO | null
 }
 
 /** Workflow 执行实例（执行历史用），对应后端 {@code AgentWorkflowExecutionRespVO} */
@@ -113,6 +119,275 @@ export interface AgentNodeExecutionVO {
   errorMsg?: string
   beginTime?: Date
   endTime?: Date
+}
+
+// ==================== 变更清单（重构 S2 产出 / S3 渲染，Req 3 的落点） ====================
+
+/**
+ * 变更清单：「点同意 / 点发布之后，平台将会做什么」
+ *
+ * 🔴 与后端 {@code ChangeManifest}（{@code framework/agent/core/manifest/}）一一对应。
+ * 三条**必须按后端语义渲染、不许前端自己编话**的地方：
+ * 1. 整个对象为 `null` → 「清单不可用」，**不是**「本次不产生任何写操作」。
+ *    后者是一句会让人放心点同意的假话（契约写在 {@code AgentWorkflowDefServiceImpl:344-346}）
+ * 2. `dryRun.outcome` 是**三态**：`NOT_PROBED` 要显示成黄色「本次没校验」，
+ *    **不是**红色「不通过」—— 那是把「没核实」说成了「核实过且不行」
+ * 3. `scope` 为 `null` 表示「没裁剪，这是整条流程」；非 null 时 `hidden*` 五个计数
+ *    **一个都不能少显示**（裁剪不许静默，否则审批人拿到的是一份「看起来完整」的残清单）
+ */
+export interface ChangeManifestVO {
+  manifestVersion: number
+  workflow: ManifestWorkflowRefVO
+  scope?: ManifestScopeVO | null
+  /** 一句话总述，风险色条旁边就是它 */
+  headline: string
+  /** NONE / LOW / MEDIUM / HIGH / IRREVERSIBLE */
+  riskLevel?: string | null
+  /** 风险等级的中文名（如「不可逆」）。⚠️ 给人看的后果在 riskNote，不是这里 */
+  riskDescription?: string | null
+  /** 一句人话后果，如「含不可逆操作：执行后无法自动回滚（MySQL 的 DDL 没有事务）」 */
+  riskNote?: string | null
+  changes: ManifestChangeItemVO[]
+  approvals: ManifestApprovalVO[]
+  /** 说不清的部分（工具不存在、子流程展不开…）。🔴 headline 里那个计数取自这里 */
+  unresolved: ManifestUnresolvedVO[]
+  /**
+   * 可追溯到不可信输入面的数据流。
+   * 🔴 **刻意没有** `stats.untrustedInputs` 计数 —— 它恒等于本列表长度，多一个键就多一处会漂的副本。
+   * 🔴 裁定⑩：这个条数**不进** headline / riskNote（会稀释「说不清」那个更强的信号，
+   *    且条数天然偏多，进了顶部用户很快学会忽略整句话），渲染时在风险色条旁给**独立计数**。
+   */
+  untrustedInputs: ManifestUntrustedInputVO[]
+  stats: ManifestStatsVO
+  generatedAt?: string | null
+}
+
+export interface ManifestWorkflowRefVO {
+  code?: string | null
+  name?: string | null
+  /** 🔴 null = 未落库的草稿（渲染方据此显示「草稿」而不是「版本 null」） */
+  version?: number | null
+  triggerType?: string | null
+}
+
+/** 裁剪记账：只覆盖 fromNodeId 及之后的动作，被裁掉多少全记在这里 */
+export interface ManifestScopeVO {
+  fromNodeId?: string | null
+  fromNodeName?: string | null
+  pruned: boolean
+  hiddenChanges: number
+  hiddenUnresolved: number
+  hiddenApprovals: number
+  hiddenReadTools: number
+  hiddenUntrusted: number
+  /** 后端已拼好的人话说明，直接显示，不要前端另编一句 */
+  note?: string | null
+}
+
+/** 变更项种类（后端 {@code ChangeKind} 的 10 个值） */
+export type ManifestChangeKindVO =
+  | 'TABLE_CREATE'
+  | 'TABLE_ALTER'
+  | 'TABLE_REGISTER'
+  | 'FORM_CREATE'
+  | 'FORM_UPDATE'
+  | 'FORM_PUBLISH'
+  | 'PROCESS_DEPLOY'
+  | 'DATA_WRITE'
+  | 'DATA_INTERFACE'
+  | 'GENERIC_TOOL'
+
+export interface ManifestChangeItemVO {
+  kind: ManifestChangeKindVO
+  nodeId?: string | null
+  nodeName?: string | null
+  /** 工具键（机器名） */
+  tool?: string | null
+  /** 工具中文展示名（S1 的名称目录）。查不到时后端原样回显工具键 */
+  toolDisplayName?: string | null
+  reversible: boolean
+  riskLevel?: string | null
+  riskDescription?: string | null
+  /** 一句话人话摘要。🔴 字段名是 summary 不是 title */
+  summary?: string | null
+  /**
+   * 「改了谁」。🔴 键随 kind 变，是开放 map：
+   * TABLE_CREATE/ALTER 是 `tableName`、TABLE_REGISTER 是 `tableNames`、
+   * FORM_CREATE 是 `code`/`name`/`mainTable`、FORM_PUBLISH/FORM_UPDATE 是 `formId`、
+   * PROCESS_DEPLOY 是 `key`/`name`、DATA_WRITE 是 `code`/`operation`/`pk`、DATA_INTERFACE 是 `code`
+   */
+  target: Record<string, any>
+  /** 明细。🔴 键随 kind 变，窄形状见下方 Manifest*DetailVO */
+  detail: Record<string, any>
+  /** 🔴 后端保证**永不为 null**（三态里至少是 NOT_PROBED） */
+  dryRun: ManifestDryRunVO
+  conflict?: ManifestConflictVO | null
+}
+
+/** TABLE_CREATE 的 detail（实测 {@code DataModelCreateChangeExtractor:49-72}） */
+export interface ManifestTableDetailVO {
+  modelName?: string | null
+  columns?: ManifestColumnVO[]
+  indexes?: ManifestIndexVO[]
+}
+
+export interface ManifestColumnVO {
+  columnName?: string | null
+  columnComment?: string | null
+  columnType?: string | null
+  length?: number | null
+  /** 🔴 与 length 是一对：只报 length 的话 DECIMAL(10,2) 会显示成「精度 10」，
+   *  而金额列的小数位恰恰是审批人最需要确认的那个数字 */
+  scale?: number | null
+  /** 🔴 后端用 raw 原样透传 ⟹ 可能是 boolean，也可能是字符串 "true"。渲染前必须自己归一 */
+  nullable?: unknown
+}
+
+export interface ManifestIndexVO {
+  indexName?: string | null
+  indexType?: string | null
+  columnNames?: string[]
+}
+
+/** TABLE_ALTER 的 detail */
+export interface ManifestTableAlterDetailVO {
+  addColumns?: ManifestColumnVO[]
+  modifyColumns?: ManifestColumnVO[]
+  dropColumns?: ManifestColumnVO[]
+}
+
+/** FORM_CREATE 的 detail（实测 {@code FormSaveDraftChangeExtractor:44-77}） */
+export interface ManifestFormDetailVO {
+  fields?: ManifestFormFieldVO[]
+  fieldCount?: number
+  /** 进查询区的字段标题（后端已挑好，直接展示） */
+  searchableFields?: string[]
+}
+
+export interface ManifestFormFieldVO {
+  field?: string | null
+  title?: string | null
+  /** 控件机器键 */
+  widget?: string | null
+  /** 控件中文名。⚠️ 已知缺陷 #49：LLM 造的 DSL 写 PascalCase（`Input`）而契约是 lowerCamel（`input`），
+   *  此时后端 getOrDefault 回落成原样，这里会是英文 */
+  widgetLabel?: string | null
+  jdbcType?: string | null
+  /** 🔴 raw 透传，可能是 boolean 也可能是字符串 */
+  required?: unknown
+  dictType?: string | null
+  searchable?: unknown
+  operator?: string | null
+  /** 匹配方式的中文名（「等于」「包含」…），后端已翻好 */
+  operatorLabel?: string | null
+}
+
+/** FORM_UPDATE 的 detail */
+export interface ManifestFormUpdateDetailVO {
+  patchKeys?: string[]
+  clearFields?: string[]
+  needsRepublish?: unknown
+}
+
+/**
+ * FORM_PUBLISH 的 detail。
+ * 🔴 `menu` 是**联合类型**（实测 {@code ChangeManifestDryRunner:624} 与 {@code :644} 两个分支）：
+ * - 表单已绑过菜单 → 一句**字符串**说明「本次只出新版本，不新建菜单」
+ * - 这次会新建菜单 → 一个 **对象** `{name, path, permissionCount}`
+ * 且**只有后者**才有 `permissions`（前者刻意不写，否则 headline 会报一件不会发生的事）。
+ */
+export interface ManifestPublishDetailVO {
+  parentMenuName?: string | null
+  parentMenuId?: number | null
+  roleIds?: number[]
+  /** 后端拼好的角色说明；未指定角色时是「仅超管可见」那类文案 */
+  roleNote?: string | null
+  formIdPending?: unknown
+  menu?: string | { name?: string | null; path?: string | null; permissionCount?: number }
+  permissions?: string[]
+}
+
+/** GENERIC_TOOL / DATA_INTERFACE 的 detail */
+export interface ManifestGenericDetailVO {
+  /** 入参预览（已截断：单值 200 字符、最多 20 个键）。占位符保持 DSL 原文，不解析 */
+  argsPreview?: Record<string, any>
+  /** 兜底路径标记：抽取器违约或未识别工具时为 true */
+  incomplete?: unknown
+}
+
+export interface ManifestDryRunVO {
+  /** 🔴 三态。PASSED=探过且能跑；REJECTED=探过且跑不通（**结论**）；NOT_PROBED=本次没探成（**不是结论**） */
+  outcome: 'PASSED' | 'REJECTED' | 'NOT_PROBED'
+  /** 三态都必填，渲染层照抄，不自己编话 */
+  reason?: string | null
+  warnings?: string[]
+  /** 只放字符串/数字/布尔/List/Map（清单要能被冻结进 BPM 流程变量再读回来） */
+  evidence?: Record<string, any>
+}
+
+export interface ManifestConflictVO {
+  type: 'TABLE_ALREADY_EXISTS' | 'TABLE_EXISTS_UNREGISTERED' | 'FORM_CODE_TAKEN'
+  message?: string | null
+}
+
+export interface ManifestApprovalVO {
+  nodeId?: string | null
+  nodeName?: string | null
+  /** hitl.confirm / hitl.bpm_approval */
+  type?: string | null
+  bpmProcessDefKey?: string | null
+  formVarsKeys?: string[]
+  /** 该闸口之后会出现哪些变更种类 */
+  downstreamKinds?: string[]
+  /** 审批人到底看不看得见这份清单（S6 注入流程变量后才有真意义） */
+  willSee: boolean
+}
+
+export interface ManifestUnresolvedVO {
+  nodeId?: string | null
+  nodeName?: string | null
+  type: 'TOOL_UNKNOWN' | 'TOOL_MISSING' | 'SUB_WORKFLOW'
+  tool?: string | null
+  reason?: string | null
+}
+
+export interface ManifestUntrustedInputVO {
+  /** 后端拼好的一句话，直接显示 */
+  summary?: string | null
+  /** 🔴 前三种（CHAT/WEBHOOK/FORM_EVENT）是**平台外**的人能直接投喂的，
+   *  后两种（RETRIEVAL/TOOL_RESULT）是平台内部产物 —— 标红时按这个分轻重 */
+  sourceKind: 'TRIGGER_CHAT' | 'TRIGGER_WEBHOOK' | 'TRIGGER_FORM_EVENT' | 'RETRIEVAL' | 'TOOL_RESULT'
+  sourceLabel?: string | null
+  sourceVar?: string | null
+  sinkKind?: string | null
+  sinkLabel?: string | null
+  sinkNodeId?: string | null
+  sinkNodeName?: string | null
+  sinkArg?: string | null
+  viaVar?: string | null
+  viaNodeId?: string | null
+  depth: number
+}
+
+/** 16 个计数（实测 {@code ChangeManifest.ManifestStats:412-487}，全是 int） */
+export interface ManifestStatsVO {
+  tables: number
+  alteredTables: number
+  registeredTables: number
+  forms: number
+  updatedForms: number
+  menus: number
+  permissions: number
+  processes: number
+  dataWrites: number
+  dataInterfaces: number
+  /** 🔴 != 0 就是「有写工具没配专用抽取器」的信号，值得在界面上说出来 */
+  genericTools: number
+  irreversibleCount: number
+  writeToolCount: number
+  readToolCount: number
+  dryRunRejected: number
+  dryRunNotProbed: number
 }
 
 /**
@@ -186,6 +461,26 @@ export const AgentWorkflowApi = {
    */
   validateDsl: (dsl: string): Promise<AgentWorkflowDefValidateVO> =>
     request.post({ url: '/agent/workflow-def/validate', data: { dsl } }),
+
+  /**
+   * 变更清单（S2-f 出口 1）：发布/审批前的影响面预览。只读不落库，但**含 infra/bpm 只读干跑**
+   * （`previewDdl` / `inspectFormDesign` / `getPhysicalTableList` / `previewPublishMenu`），故比普通查询慢。
+   *
+   * 🔴 `dsl` 与 `id` **二选一**：两个都给、或两个都不给，后端一律报 `1_041_006_019`，
+   *    **不会替你挑一个**。理由：清单是给人做同意/拒绝决定用的，「我传的是手上的草稿，
+   *    看到的却是库里那一版的影响面」比报错坏得多 —— 他会据一份不是自己那份的清单点同意。
+   * 🔴 `fromNodeId` 只接受**真实节点 id**（通常是 `hitl.*` 节点）。
+   *    **不许传 `"START"` / `"END"`**：今天传 `START` 会「碰巧」返回全流程（走的是
+   *    「找不到该节点 → fail-safe 不裁剪」那条兜底，理由是错的），而 S4a 会把它改成显式报错
+   *    （裁定⑭）。要看整条流程就**别传这个参数**（此时 `scope` 为 null）。
+   * 🔴 走**严格版**：生成不出来会报错，不会返回 `200 + null`。
+   *    这个端点的产品就是清单本身，兜成 null 会与「这流程不改任何东西」在界面上变成同一句话。
+   */
+  getManifest: (data: {
+    dsl?: string
+    id?: number
+    fromNodeId?: string
+  }): Promise<ChangeManifestVO> => request.post({ url: '/agent/workflow-def/manifest', data }),
 
   /** 发布：DRAFT → PUBLISHED（按 id 精确发布该版本，幂等）。后端 @RequestParam id，走 params */
   publishDef: (id: number): Promise<number> =>

@@ -163,6 +163,24 @@
           </ul>
         </el-alert>
       </template>
+
+      <!--
+        影响面（S3）：体检说的是「这条 DSL 合不合法」，影响面说的是「跑起来平台上会多出/改掉什么」。
+        🔴 不发第二个请求：S2-f 起 `/validate` 的响应本身就附带 manifest（附带版，可能为 null），
+           作者点完「体检」紧接着就能看见，不必再找一个按钮。
+        🔴 用 collapsible：展开后可能几十行，会把下面的画布顶出视野；含不可逆动作或干跑不通过时
+           组件内部会强制展开（口径与聊天草稿卡一致，都收在 ChangeManifestCard 里，不各写一套）。
+        🔴 方案 §L1153 原写「设计器右侧新增 tab，与沙箱面板并列」—— 实测那个位置不存在：
+           沙箱是一个**非模态 drawer**（本文件 :257-272），右侧属性面板里也没有 el-tabs。
+           故落在体检结果区，不按原文那个不存在的位置做（此偏差已回写方案）。
+      -->
+      <ChangeManifestCard
+        data-testid="designer-manifest"
+        :manifest="validateResult.manifest"
+        :error="validateResult.manifest ? '' : '体检时未能生成变更清单'"
+        collapsible
+        class="mt-8px"
+      />
     </div>
 
     <!--
@@ -285,6 +303,7 @@ import type { EditorDsl } from '../editorModel'
 import WorkflowPalette from './components/WorkflowPalette.vue'
 import WorkflowDesigner from './components/WorkflowDesigner.vue'
 import WorkflowPropertyPanel from './components/WorkflowPropertyPanel.vue'
+import ChangeManifestCard from '../components/ChangeManifestCard.vue'
 import SandboxPanel from './components/SandboxPanel.vue'
 import { useWorkflowEditor } from './useWorkflowEditor'
 import { createHistory } from './editorHistory'
@@ -521,9 +540,18 @@ const handleValidate = async () => {
   const res = await runValidate()
   if (!res) return
   if (res.passed) {
-    res.warnings.length
-      ? message.warning(`体检通过，但有 ${res.warnings.length} 条建议调整`)
-      : message.success('体检通过，没有发现问题')
+    // 🔴 「体检通过」说的是 DSL 结构合法，可这次点击同时带回了变更清单：
+    //    清单里干跑被拒 = 「照这份 DSL 真跑，平台会拒绝这次变更」。
+    //    此时还弹「没有发现问题」，就和正下方红色「干跑不通过」当面对质，
+    //    而用户会信 toast 不信卡片 —— 清单从此没人看。被拒时必须换一句话。
+    const rejected = res.manifest?.stats?.dryRunRejected ?? 0
+    if (rejected > 0) {
+      message.warning(`体检通过，但变更预演有 ${rejected} 项干跑不通过，详见下方清单`)
+    } else if (res.warnings.length) {
+      message.warning(`体检通过，但有 ${res.warnings.length} 条建议调整`)
+    } else {
+      message.success('体检通过，没有发现问题')
+    }
   } else {
     message.error(`体检未通过：还有 ${res.errors.length} 处需要修正`)
   }

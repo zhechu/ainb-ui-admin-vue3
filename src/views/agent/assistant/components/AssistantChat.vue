@@ -91,6 +91,7 @@
                 :run-result="item.runResult"
                 :run-error="item.runError"
                 :confirmable="!!item.hitl"
+                :manifest="item.manifest"
                 @confirm="() => handleConfirmWorkflow(item)"
                 @cancel="() => handleCancelWorkflow(item)"
               />
@@ -104,6 +105,10 @@
                 v-if="item.hitl"
                 :content="item.hitl.content"
                 :node-id="item.hitl.nodeId"
+                :node-name="item.hitl.nodeName"
+                :manifest="item.hitl.manifest"
+                :manifest-loading="item.hitl.manifestLoading"
+                :manifest-error="item.hitl.manifestError"
                 :running="item.hitl.running"
                 :decided="item.hitl.decided"
                 :error="item.hitl.error"
@@ -882,6 +887,9 @@ const loadMessages = async (conversationId: number) => {
           const preview = await parseWorkflowPreview(draft.dsl)
           msg.nodes = preview.nodes
           msg.edgesText = preview.edgesText
+          // 清单与节点预览同源同批（都在这个响应里），故必须在 cardStatus 之前落好：
+          // 卡片一出现就该带着「变更预演」，不能先渲染一张没有清单的卡再补
+          msg.manifest = draft.manifest ?? null
           // 摘要优先用消息正文（appendDraftMessage 落库时写进了 content），拿不到再退回草稿名
           msg.summary = item.content || draft.name
           // 卡片状态按定义状态：DRAFT 待确认 / PUBLISHED 已发布可运行 / DISABLED 已结束
@@ -910,10 +918,16 @@ const loadMessages = async (conversationId: number) => {
                 executionId: execPage.list[0].id,
                 // nodeId 不重建：同聊天路由的理由 —— currentNode 是最后跑完的节点，不是闸口
                 content: '流程走到人工确认闸口，已暂停等待您的决定。',
+                manifest: null,
+                manifestError: '',
+                manifestLoading: true,
                 running: false,
                 decided: null,
                 error: ''
               }
+              // 🔴 不 await：会话重建是一次 Promise.all，等清单会把整段历史的渲染一起拖住。
+              //    卡片自己先转圈，到了再换（fillManifest 内部已接住异常，不会产生未处理拒绝）
+              void fillManifest(msg.hitl, execPage.list[0].workflowDefId)
             }
           }
         } catch {
@@ -929,11 +943,26 @@ const loadMessages = async (conversationId: number) => {
             // nodeId 刻意不重建：VO 上的 currentNode 是<b>最后一个跑完的节点</b>，
             // 而 SAA 是在 hitl 节点<b>之前</b>挂起的，拿它当「卡在哪个节点」会把用户指错地方
             content: item.content || '',
+            manifest: null,
+            manifestError: '',
+            // 仍 INTERRUPTED 才去取清单：已终态的卡片显示「已处理」就够了，
+            // 为每条历史消息都查一次清单，会把打开会话变成一串无谓的请求
+            manifestLoading: exec.status === 'INTERRUPTED',
             running: false,
             // 仍 INTERRUPTED → 刷新后还能接着确认（这是把 execution_id 落库的全部意义）；
             // 已终态 → 只能诚实地说「已处理」：库里没记当时用户点的是同意还是拒绝
             decided: exec.status === 'INTERRUPTED' ? null : 'resolved',
             error: ''
+          }
+          if (exec.status === 'INTERRUPTED') {
+            /**
+             * 🔴 这里取到的是**全流程**清单（不传 fromNodeId ⟹ `scope == null`），
+             *    比直播时那份「按闸口裁剪过」的**范围更大**。这是重建路径的固有损失：
+             *    nodeId 不重建（上面那条理由）⟹ 没有 fromNodeId ⟹ 裁剪不出来。
+             *    宁可给用户看多了，也不能假装看全了 —— 卡片上 `scope` 为 null 时
+             *    不显示裁剪记账，用户看到的就是一份没有声称自己完整的清单。
+             */
+            void fillManifest(msg.hitl, exec.workflowDefId)
           }
         } catch {
           // 查不到执行实例就退化成普通消息，别让整个会话加载失败
@@ -1077,7 +1106,16 @@ const applyChatEvent = (msg: any, data: any) => {
       msg.hitl = {
         executionId: data.executionId,
         nodeId: data.nodeId,
+        // 显示名与进度句「正在执行：xx」同源；后端拿不到名字时回落成 nodeId
+        nodeName: data.nodeName,
         content: data.content || '',
+        // 🔴 清单搭事件过来，不另调 /manifest：刷新后 nodeId 是不重建的（见下面的注释），
+        //    没有 nodeId 就没有 fromNodeId，这份**按闸口裁剪过的**清单将再也拼不出来
+        manifest: data.manifest ?? null,
+        // 后端 buildManifestOrNull 失败会给 null。null 必须显示成「清单不可用」，
+        // 所以这里补一句原因，让卡片知道「取过、没取到」而不是「压根没打算取」
+        manifestError: data.manifest ? '' : '后端未能生成变更清单',
+        manifestLoading: false,
         running: false,
         decided: null as 'approved' | 'rejected' | 'resolved' | null,
         error: ''
@@ -1353,12 +1391,60 @@ const loadWorkflowDraft = async (item: any, defId: number) => {
     const preview = await parseWorkflowPreview(draft.dsl)
     item.nodes = preview.nodes
     item.edgesText = preview.edgesText
+    // 🔴 清单只在 workflow-draft 这一个响应里组装（S2-f 的「单一装配路径」），
+    //    WORKFLOW_DRAFT 事件里刻意不塞第二份 —— 两份副本迟早会漂
+    item.manifest = draft.manifest ?? null
     item.defStatus = draft.status
     item.cardStatus = draft.status === 'DRAFT' ? 'pending' : 'published'
     await scrollToBottom()
   } catch (e: any) {
     item.cardStatus = null
     message.error('加载流程草稿失败：' + (e?.message ?? '未知错误'))
+  }
+}
+
+/**
+ * 反查一份变更清单塞进确认卡（S3）：直播时清单搭 WORKFLOW_CONFIRM 事件过来，
+ * 但**刷新重建**与**草稿卡运行撞闸口**这两条路拿不到那个事件，只能自己查一次。
+ *
+ * 🔴 为什么必须按 `workflowDefId` 查、而不能用手头的草稿 defId：
+ *    `run-stream` 是按 code 跑的，后端选的是**已发布/主版本**，草稿可能根本不是那一版。
+ *    拿草稿 DSL 生成清单 = 给审批人看一份「不会发生的事」，比不给清单更坏。
+ * 🔴 `nodeId` 有就传（得到按闸口裁剪过的清单），没有就**别传**（`scope == null` 的全流程清单）。
+ *    绝不传 `"START"`：裁定⑭ 认定那是「理由错误的正确答案」，S4a 会把它改成显式报错。
+ * 🔴 走的是**严格版** `/manifest`：生成不出来会抛，这里接住落成 manifestError，
+ *    卡片据此显示「清单不可用」—— 不能显示成「本次没有变更」。
+ */
+const fillManifest = async (hitl: any, defId?: number | null, nodeId?: string | null) => {
+  if (!hitl || !defId) return
+  hitl.manifestLoading = true
+  try {
+    hitl.manifest = await AgentWorkflowApi.getManifest({
+      id: defId,
+      ...(nodeId ? { fromNodeId: nodeId } : {})
+    })
+    hitl.manifestError = ''
+  } catch (e: any) {
+    hitl.manifest = null
+    hitl.manifestError = e?.msg ?? e?.message ?? '查询失败'
+  } finally {
+    hitl.manifestLoading = false
+  }
+}
+
+/** 只有 executionId 时的入口：先查出**实际在跑的那一版**，再取清单 */
+const fillManifestByExecution = async (
+  hitl: any,
+  executionId?: number | null,
+  nodeId?: string | null
+) => {
+  if (!hitl || !executionId) return
+  try {
+    const exec = await AgentWorkflowApi.getExecution(executionId)
+    await fillManifest(hitl, exec?.workflowDefId, nodeId)
+  } catch (e: any) {
+    hitl.manifest = null
+    hitl.manifestError = e?.msg ?? e?.message ?? '查询失败'
   }
 }
 
@@ -1447,10 +1533,25 @@ const runWorkflow = (item: any): Promise<void> => {
                 executionId: data.executionId ?? item.runExecutionId,
                 nodeId: data.nodeId,
                 content: '流程走到人工确认闸口，已暂停等待您的决定。',
+                manifest: null,
+                manifestError: '',
+                manifestLoading: true,
                 running: false,
                 decided: null,
                 error: ''
               }
+              /**
+               * 🔴 这条路由的事件是 planner 的 `WorkflowEvent`，不是助手那条 `AgentChatEvent`，
+               *    后端不会在 INTERRUPTED 里塞清单，只能前端自己查。
+               *    走 fillManifestByExecution 而不是直接用手头的 `item.workflowDefId`：
+               *    run-stream 按 code 跑，后端选的是已发布/主版本，草稿不一定是那一版。
+               *    nodeId 这条路是**活的**，所以能拿到与直播同等口径的裁剪清单。
+               */
+              void fillManifestByExecution(
+                item.hitl,
+                data.executionId ?? item.runExecutionId,
+                data.nodeId
+              )
             }
             break
           case 'DONE':

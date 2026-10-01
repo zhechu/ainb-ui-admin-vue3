@@ -2,6 +2,9 @@ import request from '@/config/axios'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { getAccessToken, getTenantId } from '@/utils/auth'
 import { config } from '@/config/axios/config'
+// 🔴 类型-only 的循环引用（workflow/index.ts 反过来 import 本文件的 WorkflowEventVO）。
+//    `import type` 会被完全擦除，不产生运行时环 —— 别把它改成值导入。
+import type { ChangeManifestVO } from '@/api/agent/workflow'
 
 /**
  * plan-as-workflow 草稿（增量7b）
@@ -19,6 +22,12 @@ export interface AgentWorkflowDraftVO {
   /** DRAFT 待确认 / PUBLISHED 已发布可运行 / DISABLED 已停用 */
   status: 'DRAFT' | 'PUBLISHED' | 'DISABLED'
   version: number
+  /**
+   * 变更清单（S2-f 出口 3）：草稿卡直接渲染「这份草稿将会改什么」。走**附带版**，
+   * 生成不出来时是 null（附加面板的 bug 不能把用户卡死在一张打不开的确认卡上）。
+   * 🔴 null 要渲染成「清单不可用」，**不是**「本次不产生任何写操作」。
+   */
+  manifest?: ChangeManifestVO | null
 }
 
 /** 发布结果（确认 = 发布：DRAFT → PUBLISHED，无状态幂等） */

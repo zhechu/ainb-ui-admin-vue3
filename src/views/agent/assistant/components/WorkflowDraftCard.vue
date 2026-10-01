@@ -53,6 +53,31 @@
       </el-alert>
     </div>
 
+    <!-- 变更预演（S3 / Req 3）：节点预览说的是「流程长什么样」，这一块说的是
+         「点了确认并运行之后，平台上会多出/改掉什么」。AI 生成的草稿尤其需要它 ——
+         建表这类不可逆动作该在确认卡上就看见，而不是等运行完才发现多了一张表。
+         🔴 用 defStatus 当「草稿已加载」的信号：manifest 为 undefined 有两种可能
+            （还没取 / 取了但是 null），只有前者该什么都不画。 -->
+    <div v-if="defStatus" class="px-16px pt-10px">
+      <el-collapse v-model="manifestOpen" class="manifest-collapse">
+        <el-collapse-item name="manifest">
+          <template #title>
+            <span class="text-13px font-medium" data-testid="draft-manifest-title">
+              变更预演：这次运行将会改平台上的什么
+            </span>
+            <el-tag v-if="manifestRisk" :type="manifestRisk.tag" size="small" effect="plain" class="ml-8px">
+              {{ manifestRisk.text }}
+            </el-tag>
+          </template>
+          <ChangeManifestCard
+            data-testid="draft-manifest"
+            :manifest="manifest"
+            :error="manifest ? '' : '后端未能生成变更清单'"
+          />
+        </el-collapse-item>
+      </el-collapse>
+    </div>
+
     <!-- 只读节点预览：plan-as-workflow 产出的是一整份 DSL（DAG），这里列出节点顺序与类型。
          刻意没有勾选框 —— 与线性 plan 的「逐项勾选执行」不同，Workflow 是一个整体，确认即整份运行。
          AI助手 UX 修复：每个节点两行式（中文类型徽标 + 名称 + 完成勾 / 灰字一句话摘要），
@@ -194,6 +219,8 @@
 
 <script setup lang="ts">
 import { nodeTypeMeta, type SummaryNode } from '@/views/agent/workflow/nodeSummary'
+import type { ChangeManifestVO } from '@/api/agent/workflow'
+import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
 
 defineOptions({ name: 'WorkflowDraftCard' })
 
@@ -227,6 +254,12 @@ const props = defineProps<{
    *    「可在「流程执行」页恢复」那句指向空气的文案就是这么来的（2026-09-29 修）。
    */
   confirmable?: boolean
+  /**
+   * 变更清单（S3）：随 `GET /agent/planner/workflow-draft` 一起来，父组件从 `draft.manifest` 透传。
+   * 🔴 null = 后端没能生成，`ChangeManifestCard` 会显示「清单不可用」；
+   *    undefined = 草稿还没加载完（此时整块靠 `defStatus` 兜住不渲染）。两者不是一回事。
+   */
+  manifest?: ChangeManifestVO | null
 }>()
 
 defineEmits<{
@@ -240,6 +273,46 @@ defineEmits<{
 const expanded = ref<Set<string>>(new Set())
 /** 技术提示默认折叠，点「查看详情」才展开原文 */
 const showWarnings = ref(false)
+
+/**
+ * 变更预演默认展开与否：含不可逆动作 / 高风险 / 干跑不通过 → 展开，其余收起。
+ * 🔴 「建表这类不可逆动作该在确认卡上就看见」是这块区域存在的理由，
+ *    所以最危险的那几态不许默认藏着；反过来，一份只读流程默认摊开几十行明细，
+ *    会把下面的节点预览顶到很远，用户学会直接跳过整块。
+ */
+/**
+ * 🔴 类型必须是 `string[]` 而不是 boolean：非 accordion 的 el-collapse 用「当前展开项的 name 数组」
+ *    当 v-model，绑一个 `false` 上去它跟任何 `name` 都不相等 ⟹ 恒收起，且**一声不响**。
+ *    这正是本模块的头号缺陷形态（配了但不生效且无提示）：自动展开的逻辑写对了、也跑了，
+ *    只是它的产物 el-collapse 压根不认。vue-tsc 也不会报——那个 prop 的类型宽到能吞下 boolean。
+ */
+const manifestOpen = ref<string[]>([])
+watch(
+  () => props.manifest,
+  (m) => {
+    manifestOpen.value =
+      !!m &&
+      (m.riskLevel === 'IRREVERSIBLE' ||
+        m.riskLevel === 'HIGH' ||
+        (m.stats?.dryRunRejected ?? 0) > 0)
+        ? ['manifest']
+        : []
+  },
+  { immediate: true }
+)
+
+/** 折叠条上那枚风险徽标：不点开也能知道值不值得点开 */
+const manifestRisk = computed(() => {
+  const m = props.manifest
+  if (!m) return null
+  if ((m.stats?.dryRunRejected ?? 0) > 0) return { tag: 'danger' as const, text: '干跑不通过' }
+  if (m.riskLevel === 'IRREVERSIBLE') return { tag: 'danger' as const, text: '含不可逆动作' }
+  if (m.riskLevel === 'HIGH') return { tag: 'warning' as const, text: '高风险' }
+  // 🔴 只读工具压根不进 changes（后端 WorkflowChangeManifestBuilder:146 的纪律），
+  //    所以 changes 为空确实等于「不写任何东西」，这句绿标不是猜的
+  if (!m.changes?.length) return { tag: 'success' as const, text: '无写操作' }
+  return null
+})
 const toggle = (id: string) => {
   const next = new Set(expanded.value)
   next.has(id) ? next.delete(id) : next.add(id)
