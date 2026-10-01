@@ -31,7 +31,11 @@ test('数据建模流程字段预置生成 process_status', async ({ page }) => 
   await login(page)
 
   const ts = Date.now()
-  const tableName = `verify_ps_${ts}`
+  // 🔴 必须带 biz_ 前缀：DataModelForm 的 tableName 规则在【新建】时强制 /^biz_[a-z0-9_]*[a-z0-9]$/
+  //    （与后端建表口径一致）。不合规时 handlePreviewDdl 会在 validateForm 那一步静默 return ——
+  //    既不发请求也不弹提示，表现出来只是下面那句 waitForResponse 超时，
+  //    把排查方向引到网络上而不是校验上。这条 spec 曾因此白白红了一轮。
+  const tableName = `biz_verify_ps_${ts}`
 
   await page.goto('/infra/data-manage/data-model')
   await page.waitForLoadState('networkidle')
@@ -78,6 +82,9 @@ test('数据建模流程字段预置生成 process_status', async ({ page }) => 
   await page.screenshot({ path: `${SHOTS}/ps-02-coexist.png`, fullPage: true })
 
   // 🔍 探针：预览 DDL —— 走后端 SQL 构建，确认生成的建表语句同时含 status 与 process_status 两列
+  // 🔴 这句是「预览 DDL」真正的强制点：校验没过时按钮点了也什么都不发生（无请求、无提示），
+  //    所以先把「表头没有校验错误」摆到台面上，红的时候能直接看见是哪一条规则拦的。
+  await expect(page.locator('.el-form-item__error')).toHaveCount(0)
   let ddlText = ''
   const ddlResp = page.waitForResponse(
     (r) => r.url().includes('/infra/data-model/preview-ddl') && r.request().method() === 'POST',
