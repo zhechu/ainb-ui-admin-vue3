@@ -13,7 +13,8 @@ import {
  *
  * 钉住面板 schema 的命门：① 8 种可拖入类型都有 schema（拖出来的节点不会只剩裸 JSON）；② 字段键唯一、
  * kind 合法、select 必有选项来源；③ 字段键逐字对齐后端执行器读取的 config 键（抽查关键类型）；
- * ④ showIf 条件显隐正确（wait 按 waitType 分支）；⑤ 认不出的类型 fail-soft 返回空。全是纯函数，不碰 Vue。
+ * ④ showIf 条件显隐正确（wait 按 waitType 分支）；⑤ 认不出的类型 fail-soft 返回空；
+ * ⑥ 面板 hint 不许承诺运行期不会发生的事（hint 是用户唯一看得到的说明书，会被照做）。全是纯函数，不碰 Vue。
  */
 describe('nodeConfigSchema', () => {
   it('NODE_TYPE_OPTIONS 里每种类型都有结构化 schema', () => {
@@ -109,5 +110,27 @@ describe('nodeConfigSchema', () => {
     expect(fieldsFor(null)).toEqual([])
     expect(jsonHintFor('nonexistent.type')).toBe('')
     expect(jsonHintFor(undefined)).toBe('')
+  })
+
+  /**
+   * 🔴 面板 hint 是用户唯一看得到的那份说明书（WorkflowPropertyPanel:163 渲染的就是这里的 f.hint，
+   *    **不是** editor/nodeIoContract.ts 里那份 —— 那份的 InPort.hint 在前端根本没有消费者）。
+   *    所以「hint 承诺了运行期不会发生的事」是会被用户照做的，不是无害的文案瑕疵。
+   *
+   * formVars 的旧 hint 写着「值支持 {{$.变量}} 引用前序结果」，而后端 resolveConfig 用 configMap 原样取、
+   * createApproval 原样 setVariables 交给 Flowable，压根不过 StateTemplateResolver ⟹ 用户按提示写占位符，
+   * 审批表单里收到的就是字面串 {{$.xxx}}，全程无报错。
+   *
+   * 🔴 先肯定再否定：只有 tool.args 那条「确实支持」的断言先立住，formVars 那条「不支持」才有意义 ——
+   *    否则把两条 hint 一起改成什么都别说，否定式断言照样全绿。
+   */
+  it('面板 hint 不许承诺运行期不会发生的模板替换（args 支持 / formVars 不支持）', () => {
+    const argsHint = fieldsFor('tool').find((f) => f.key === 'args')?.hint ?? ''
+    expect(argsHint, 'args 的顶层字符串值确实走 StateTemplateResolver，hint 要说清支持').toContain('{{$.变量}}')
+    expect(argsHint, 'args 只解析顶层字符串值，不交代这点用户会把它嵌进对象里').toContain('嵌在对象/数组里的不替换')
+
+    const formVarsHint = fieldsFor('hitl.bpm_approval').find((f) => f.key === 'formVars')?.hint ?? ''
+    expect(formVarsHint, 'formVars 必须明说占位符不生效，不能只是「不提」').toContain('不会被替换')
+    expect(formVarsHint, 'formVars 的值原样进审批流程，不许再承诺支持引用').not.toContain('支持 {{$.变量}}')
   })
 })

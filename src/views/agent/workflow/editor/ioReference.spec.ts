@@ -14,8 +14,9 @@ import {
 /**
  * ioReference 纯逻辑单测（Phase E / Req5：类型化端口的引用构造 / 解析 / 上游可达性）
  *
- * 🔴 钉三件事：① 引用串构造/解析与既有 `{{$.var}}` 运行时同口径；② 上游产出收集沿反向边可达；
- *    ③ 可达性只出「警告」且与后端同口径——引用下游产出才警告，引用上游/并行汇合/声明变量都不误报。
+ * 🔴 钉四件事：① 引用串构造/解析与既有 `{{$.var}}` 运行时同口径；② 上游产出收集沿反向边可达；
+ *    ③ 可达性只出「警告」且与后端同口径——引用下游产出才警告，引用上游/并行汇合/声明变量都不误报；
+ *    ④ 契约里没登记默认名的产出键会整个掉出可达性判定（正反各钉一条，见文件末尾那个 describe）。
  * 全是纯函数，不碰 Vue。
  */
 describe('ioReference · 引用串构造/解析', () => {
@@ -195,8 +196,11 @@ describe('ioReference · 上游产出与可达性', () => {
     expect(docs).toHaveLength(1)
     expect(docs[0]).toMatchObject({ varName: 'out', dataType: 'object', example: '{{$.out}}' })
     expect(docs[0].dataTypeLabel).toBe('对象')
-    // 未配 outputVar 的 tool → 无产出（不误导用户）
-    expect(howDownstreamReferences({ id: 'a', type: 'tool', config: {} })).toHaveLength(0)
+    // 未配 outputVar 的 tool → 仍报出兜底名 tool_result（执行器真的会写这个键，瞒着用户才是误导）
+    const defaulted = howDownstreamReferences({ id: 'a', type: 'tool', config: {} })
+    expect(defaulted).toHaveLength(1)
+    expect(defaulted[0].varName).toBe('tool_result')
+    expect(defaulted[0].example).toBe('{{$.tool_result}}')
     // hitl.confirm 无 config → 默认 hitl_approved
     const hc = howDownstreamReferences({ id: 'h', type: 'hitl.confirm', config: {} })
     expect(hc).toHaveLength(1)
@@ -205,5 +209,57 @@ describe('ioReference · 上游产出与可达性', () => {
     // 控制流 / 未知类型 → 空
     expect(howDownstreamReferences({ id: 'p', type: 'parallel', config: {} })).toHaveLength(0)
     expect(howDownstreamReferences(null)).toHaveLength(0)
+  })
+})
+
+/**
+ * 🔴 契约默认名漂了会怎样：这两条钉的是「修好之后的收益」，不是「值对不对」。
+ *
+ * tool.outputVar 的 defaultName 曾写着 null，于是 producersOf 收不到 tool_result，
+ * validateReferences 对「没有登记产出的变量」是直接跳过的 —— 结果 {{$.tool_result}} 既不报警也不校验，
+ * 用户写对了没人确认、写错了（比如拼成 tool_results）也没人拦。补上默认名后它才真正进入可达性判定。
+ *
+ * 🔴 为什么必须正反各钉一条：`validateReferences → 0 条警告` 这个结果本身是二义的，
+ *    「查过了，确实可达」与「压根没查（变量未登记）」长得一模一样。实测把 defaultName 改回 null 后，
+ *    下面反向那份 DSL（tool 在 llm 下游，本该报警）同样返回 0 条 —— 二义性不是假设，是真会同时变绿。
+ *    反向那条把这个二义性拆开：它必须报出 1 条 unreachable，才证明正向那条的 0 是「查过且通过」。
+ *    （正向那条自己也有一道独立的闸：producersOf 必须登记到 'a'，实测同一变异下它先红。）
+ */
+describe('ioReference · 契约默认名让 {{$.tool_result}} 真正进入可达性判定', () => {
+  /** a(tool，未配 outputVar ⟹ 兜底写 tool_result) 在 b 的上游 */
+  const reachableDsl = (): EditorDsl => ({
+    nodes: [
+      { id: 'a', type: 'tool', name: '查数据', config: { toolId: 'data_interface_list' } },
+      { id: 'b', type: 'llm', name: '总结', config: { prompt: '总结 {{$.tool_result}}', outputVar: 'summary' } }
+    ],
+    edges: [
+      { from: 'START', to: 'a' },
+      { from: 'a', to: 'b' },
+      { from: 'b', to: 'END' }
+    ]
+  })
+
+  it('正向：未配 outputVar 的 tool 也登记为 tool_result 的产出者，下游引用它不报警', () => {
+    const dsl = reachableDsl()
+    expect([...(producersOf(dsl).get('tool_result') ?? [])]).toEqual(['a'])
+    expect(computeUpstreamOutputs(dsl, 'b').map((u) => u.varName)).toContain('tool_result')
+    expect(validateReferences(dsl)).toHaveLength(0)
+  })
+
+  it('反向：把顺序调过来，同一个引用立刻被判为不可达（证明上面那条真的查过）', () => {
+    const dsl: EditorDsl = {
+      nodes: [
+        { id: 'b', type: 'llm', name: '总结', config: { prompt: '总结 {{$.tool_result}}', outputVar: 'summary' } },
+        { id: 'a', type: 'tool', name: '查数据', config: { toolId: 'data_interface_list' } }
+      ],
+      edges: [
+        { from: 'START', to: 'b' },
+        { from: 'b', to: 'a' },
+        { from: 'a', to: 'END' }
+      ]
+    }
+    const warns = validateReferences(dsl)
+    expect(warns).toHaveLength(1)
+    expect(warns[0]).toMatchObject({ kind: 'unreachable', nodeId: 'b', varName: 'tool_result' })
   })
 })

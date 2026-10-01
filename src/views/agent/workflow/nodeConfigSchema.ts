@@ -71,7 +71,9 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       key: 'args',
       label: '工具入参',
       kind: 'kv',
-      hint: '参数名 → 值；值支持 {{$.变量}} 或 {{$.变量.字段}} 引用前序节点写入的结果。'
+      hint:
+        '参数名 → 值；顶层的字符串值可用 {{$.变量}} 或 {{$.变量.字段}} 引用前序节点写入的结果。' +
+        '⚠️ 嵌在对象/数组里的不替换（后端只解析顶层字符串值）。'
     },
     { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '给这一步的结果起个名字，供后面引用' }
   ],
@@ -162,7 +164,11 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       key: 'formVars',
       label: '审批表单参数',
       kind: 'kv',
-      hint: '发起审批时传给 BPM 流程的变量（参数名 → 值）；值支持 {{$.变量}} 引用前序结果。'
+      // 🔴 值按字面量原样传给审批流程：后端 resolveConfig 用 configMap("formVars") 原样取，
+      //    createApproval 再原样 setVariables 交给 Flowable，压根不过 StateTemplateResolver。
+      //    旧提示承诺「值支持 {{$.变量}}」是假的，且假得有害——用户按提示写占位符，
+      //    审批表单里收到的就是字面串 {{$.xxx}}，全程无报错。
+      hint: '发起审批时传给 BPM 流程的变量（参数名 → 值）；⚠️ 值按字面量原样传入，{{$.变量}} 不会被替换。'
     }
   ],
   wait: [

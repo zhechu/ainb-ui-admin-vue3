@@ -2,8 +2,23 @@
  * 节点「输入 / 输出端口」契约 —— 前端镜像（Phase E / Req5）
  *
  * 🔴 与后端 `framework.agent.core.engine.io.NodeIoContract` 逐字同构：同一份「端口目录」两处各存一份。
- *    前端这份用于首屏免请求地画类型化端口 / 渲染引用选择器；后端那份是权威，`GET /agent/workflow-def/node-io-contract`
- *    可拉来校准（见 io-contract e2e）。改端口必须两侧同步，否则画布端口与后端校验口径漂移。
+ *    前端这份用于首屏免请求地画类型化端口 / 渲染引用选择器；后端那份是权威。改端口必须两侧同步，
+ *    否则画布端口与后端校验口径漂移。
+ *
+ * ⚠️ 同步目前只靠人 + nodeIoContract.spec.ts 钉值：**没有**任何测试真去拉
+ *    `GET /agent/workflow-def/node-io-contract` 跟这份镜像做 diff（agent-workflow-io-contract.spec.ts
+ *    只验交互行为，不比对两份目录）。所以改完一侧务必手改另一侧，别指望测试会拦住漏改。
+ *    实测更彻底：`src/` 下**没有任何一处**调用那个后端端点（AgentWorkflowDefController:147 零前端调用者），
+ *    UI 用的就是这份镜像 ⟹ 两份漂了连运行期信号都没有。
+ *
+ * ⚠️ 本文件的 `InPort.hint` 在前端**没有消费者**（WorkflowPropertyPanel:163 渲染的是 nodeConfigSchema.ts
+ *    的 `f.hint`）。它存在的意义只是与后端那份保持同构，别以为改了这里用户就看得见；
+ *    面向用户的提示语要改 nodeConfigSchema.ts，那份的强制点在 nodeConfigSchema.spec.ts。
+ *
+ * 🔴 输出端口的 defaultName 必须等于后端执行器的常量值（tool_result / llm_output / script_result /
+ *    retrieved）。后端那侧写的是「引用执行器常量」，前端这侧只能抄字面量 —— 抄就会漂，故 spec 逐个钉死。
+ *    tool/llm 这两个值曾双双写着 null（= 必须用户命名），而运行期一直在兜底，
+ *    于是后端建 producers 表时看不见这两个键，合法的 {{$.tool_result}} 被误报成悬空引用。
  *
  * 🔴 与 editorModel / nodeConfigSchema / nodeSummary 同款纪律：纯数据 + 纯函数、不依赖 Vue 运行时，便于 vitest 单测。
  * 🔴 契约只描述「某类节点该往哪个 config 键填什么、跑完往哪个变量名写什么、类型是什么」，<b>绝不参与运行时</b>。
@@ -94,9 +109,17 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     group: '基础',
     inputs: [
       inp('toolId', '工具', T_STRING, LITERAL, true, '基础', '选择要调用的工具（键名）'),
-      inp('args', '工具入参', T_OBJECT, BOTH, false, '基础', '参数名 → 值；值可用 {{$.变量}} 引用上游结果')
+      inp(
+        'args',
+        '工具入参',
+        T_OBJECT,
+        BOTH,
+        false,
+        '基础',
+        '参数名 → 值；顶层的字符串值可用 {{$.变量}} 引用上游结果（⚠️ 嵌在对象/数组里的不替换）'
+      )
     ],
-    outputs: [outp('outputVar', null, T_OBJECT, '工具返回结果')]
+    outputs: [outp('outputVar', 'tool_result', T_OBJECT, '工具返回结果')]
   },
   llm: {
     type: 'llm',
@@ -109,7 +132,7 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
       inp('temperature', '温度', T_NUMBER, LITERAL, false, '模型', '越高越有创造力（0~2）'),
       inp('maxTokens', '最大 tokens', T_NUMBER, LITERAL, false, '模型', '限制单次输出长度')
     ],
-    outputs: [outp('outputVar', null, T_STRING, '模型生成的文本')]
+    outputs: [outp('outputVar', 'llm_output', T_STRING, '模型生成的文本')]
   },
   knowledge_retrieval: {
     type: 'knowledge_retrieval',
@@ -143,7 +166,15 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     label: '规则条件',
     group: '分支与并行',
     inputs: [
-      inp('branches', '分支规则', T_ARRAY, LITERAL, true, '分支', '按变量值分组；命中哪组就走哪条线（条件值可用 {{$.变量}}）'),
+      inp(
+        'branches',
+        '分支规则',
+        T_ARRAY,
+        LITERAL,
+        true,
+        '分支',
+        '按变量值分组；命中哪组就走哪条线（⚠️ 比较值按字面量处理，{{$.变量}} 不替换；变量名只认顶层键）'
+      ),
       inp('default', '默认分支', T_STRING, LITERAL, false, '分支', '都不命中时走哪条')
     ],
     outputs: []
@@ -191,7 +222,22 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     group: '人工介入',
     inputs: [
       inp('bpmProcessDefKey', 'BPM 流程标识', T_STRING, LITERAL, true, '基础', '指向已部署的审批流程'),
-      inp('formVars', '审批表单参数', T_OBJECT, BOTH, false, '表单', '发起审批时传的变量；值可用 {{$.变量}}')
+      // 🔴 LITERAL 而不是 BOTH：这些值压根不过 StateTemplateResolver。
+      //    后端 AgentBpmApprovalService.resolveConfig 用 node.configMap("formVars") 原样取，
+      //    createApproval 再原样 setVariables 交给 Flowable，于是 {{$.变量}} 会以字面串进审批表单。
+      //    标成 BOTH 的代价不止「提示骗人」：mode 决定属性面板要不要给这个字段挂「引用上游变量」选择器，
+      //    而选择器 emit 的是字符串、onPickRef 直接整体赋值 ⟹ formVars 这个对象被换成一个串
+      //    ⟹ configMap 返回 null ⟹ 用户配的变量全丢，且全程无提示。
+      //    真要让它可引用，得在挂起点从 checkpoint 取出状态再解析 —— 那是后端运行期改动，改这份契约没用。
+      inp(
+        'formVars',
+        '审批表单参数',
+        T_OBJECT,
+        LITERAL,
+        false,
+        '表单',
+        '发起审批时传的变量；⚠️ 值按字面量原样传给审批流程，{{$.变量}} 不会被替换'
+      )
     ],
     outputs: [
       outp('approveVar', 'bpm_approved', T_BOOLEAN, '审批是否通过'),
@@ -266,7 +312,7 @@ export const canReference = (port: InPort): boolean => port.mode === 'reference'
  * 该输入端口「引用上游变量」时写进 config 的形式 —— 🔴 两种 mode 落地形态不同，别搞混：
  *  - `reference`（如 queryVar / itemsVar）：后端按 <b>裸状态键</b>直取（`ctx.getString(queryVar)` /
  *    `state.value(itemsVar)`），故写<b>裸变量名</b>（如 `out`），不能包 `{{$.}}`，否则取不到值。
- *  - `both`（如 prompt / query / goal / args 值 / formVars 值）：后端走 StateTemplateResolver 解析
+ *  - `both`（如 prompt / query / goal / args 值）：后端走 StateTemplateResolver 解析
  *    <b>`{{$.var}}` 模板</b>，故写模板串（如 `{{$.out}}`）。
  *  - `literal`：只填字面量，不提供引用。
  */
