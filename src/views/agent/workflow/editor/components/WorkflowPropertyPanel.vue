@@ -161,9 +161,13 @@
               />
               <el-input v-else v-model="selConfig[f.key]" :placeholder="f.placeholder" @input="mutate" />
               <div v-if="f.hint" class="wf-panel__hint">{{ f.hint }}</div>
-              <!-- 可引用上游的字段：挂「＋引用上游变量」入口，点选即写入（形态随字段：裸名 / {{$.var}}） -->
+              <!-- 可引用上游的字段：挂「＋引用上游变量」入口，点选即写入（形态随字段：裸名 / {{$.var}}）
+                   🔴 用 canPickRef 而非 canRefField：选择器 emit 一个字符串、onPickRef 整体赋值，
+                      挂在 kv/tags 这类容器字段上会把对象换成一个串（tool.args ⟹ 工具无参调用且零报错）。
+                      容器字段的可引用粒度是「每个值」，走 KeyValueEditor 的值输入框手打，hint 里已写明。
+                      类型色点 / 类型名仍用 canRefField —— 那是展示，不写值。见缺陷 #47。 -->
               <VariableRefPicker
-                v-if="canRefField(f.key)"
+                v-if="canPickRef(f)"
                 :upstream="upstreamVars"
                 :form="pickFormFor(f.key)"
                 :model-value="selConfig[f.key]"
@@ -585,6 +589,7 @@ const {
   outputExample,
   pickFormFor,
   canRefField,
+  canPickRef,
   isRequiredField,
   fieldColor,
   fieldTypeLabel,

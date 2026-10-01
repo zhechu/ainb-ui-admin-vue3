@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NODE_TYPE_META } from '../nodeSummary'
+import { NODE_CONFIG_SCHEMA, type FieldKind } from '../nodeConfigSchema'
 import {
   NODE_IO_CONTRACTS,
   allContracts,
@@ -9,6 +10,7 @@ import {
   dataTypeColor,
   canReference,
   referenceForm,
+  showsWholeValueRefPicker,
   resolveOutVarName,
   resolvedOutputsOf,
   type IoDataType,
@@ -22,6 +24,13 @@ import {
  *    四个 defaultName 钉死后端执行器常量）；② 端口 → 变量名解析与后端 blankToDefault 同口径；
  *    ③ mode 不许漂（它决定属性面板要不要挂「引用上游变量」选择器，挂错会把对象字段整体换成字符串）。
  *    全是纯数据 + 纯函数，不碰 Vue。
+ *
+ * 🔴 末尾那一组「挂载域」用例是缺陷 #47 的强制点，也是对 ③ 的自我更正：
+ *    ③ 只钉了 mode 一个维度，而 #47 恰恰是 mode **正确**（tool.args 确实是 both，值里的
+ *    {{$.变量}} 后端真解析）却在与 `kind` 组合时炸的 —— 强制点存在、扫描域窄了一维，
+ *    ③ 的注释一字不差地描述了这个失效模式，却拦不住它。故这组用例改成
+ *    **穷举全部 (类型 × 字段) 组合**再逐个问「整体替换成一个字符串对不对」，
+ *    而不是抽查几个已知字段（正查已知点永远返回「没问题」）。
  *
  * ⚠️ 本文件的 InPort.hint 断言只保「这份镜像与后端那份一致」；用户在面板上真正看到的是
  *    nodeConfigSchema.ts 的 hint，那份的强制点在 nodeConfigSchema.spec.ts。
@@ -128,12 +137,15 @@ describe('nodeIoContract', () => {
   })
 
   /**
-   * 🔴 formVars 的 mode 是承重结构，不是文案：它决定属性面板要不要给这个字段挂「引用上游变量」选择器。
+   * 🔴 formVars 的 mode 是**事实陈述**，不是文案：后端 AgentBpmApprovalService.resolveConfig 用
+   *   configMap("formVars") 原样取，createApproval 再原样 setVariables 交给 Flowable ——
+   *   压根不过 StateTemplateResolver。所以标成 both 就是撒谎，用户按提示写 {{$.变量}}，
+   *   审批表单里收到的就是字面串。
    *
-   * 后端 AgentBpmApprovalService.resolveConfig 用 configMap("formVars") 原样取，createApproval 再原样
-   * setVariables 交给 Flowable —— 压根不过 StateTemplateResolver。标成 both 的代价不止「提示骗人」：
-   * 选择器 emit 的是字符串，onPickRef 直接整体赋值 ⟹ formVars 这个对象被换成一个串 ⟹ configMap 返回 null
-   * ⟹ 用户配的变量全丢，且全程无提示。
+   * ℹ️ 这里曾写着「mode 决定挂不挂选择器，标成 both 会把 formVars 对象换成一个串」。
+   *   那半句在缺陷 #47 修好后已不成立：挂不挂选择器由 showsWholeValueRefPicker 的**形态**白名单决定
+   *   （kv/tags 一律不挂），mode 只回答「值到底解不解析模板」。两道闸各管一件事，
+   *   tool.args 正是靠这个区分才两全（mode 必须 both，但形态是 kv 所以照样不挂）。见下面那组挂载域用例。
    *
    * 🔴 后一条断言是前一条的肯定式对照：断言「不许引用」时，必须同时钉住「同类形状的那个端口确实可以引用」。
    *    否则把 args 和 formVars 一起降成 literal 也能让上一条变绿 —— 那就把真能力也砍了，而测试不会吭声。
@@ -265,5 +277,105 @@ describe('nodeIoContract', () => {
     const modes = new Set<IoMode>()
     for (const c of allContracts()) for (const ip of c.inputs) modes.add(ip.mode)
     expect([...modes].sort()).toEqual(['both', 'literal', 'reference'])
+  })
+})
+
+/**
+ * 「引用上游变量」选择器的**挂载域**（缺陷 #47 的强制点）
+ *
+ * 🔴 病根：面板原先用 `canRefField(key)`（只看契约 mode）决定挂不挂选择器，而选择器 emit 的是
+ *    **一个字符串**、宿主 `onPickRef` 直接 `config[key] = 值` 整体赋值。`tool.args` 的 mode 是 both
+ *    ——这半边完全正确（顶层字符串值里的 {{$.变量}} 由 ToolNodeExecutor 解析）——但它的编辑器形态是
+ *    kv（对象），于是点一下选择器，整个 args 对象变成 `"{{$.x}}"` ⟹ 后端 `configMap("args")`
+ *    拿到 null ⟹ 工具**无参调用**，且从点击到执行全程零报错。
+ *
+ * 🔴 纪律：**从产出品反查，不从强制点正查**。所以这里先把「面板会 v-for 到的每一个 (类型 × 字段)」
+ *    全列出来，再逐个问「整体替换成一个字符串对不对」，而不是只抽查已知出过事的 tool.args。
+ */
+describe('showsWholeValueRefPicker：选择器挂载域（#47）', () => {
+  /** 面板 `v-for="f in visibleFields"` 的完整取值域（visibleFields 是 NODE_CONFIG_SCHEMA[type] 的子集） */
+  const ALL_FIELDS = Object.entries(NODE_CONFIG_SCHEMA).flatMap(([type, fields]) =>
+    fields.map((field) => ({ type, field }))
+  )
+  const pathOf = (type: string, key: string) => `${type}.${key}`
+
+  /** FieldKind 全集。新增形态必须登记到这里，否则下面「白名单外一个都不挂」这句话没覆盖到它 */
+  const ALL_KINDS: FieldKind[] = ['text', 'textarea', 'number', 'select', 'switch', 'tags', 'kv']
+
+  const portOf = (type: string, key: string) => contractOf(type)?.inputs.find((i) => i.key === key)
+
+  it('扫描域自检：schema 里真实用到的形态都登记在 ALL_KINDS 里', () => {
+    expect(ALL_FIELDS.length).toBeGreaterThan(0)
+    for (const { type, field } of ALL_FIELDS) {
+      expect(ALL_KINDS, `${pathOf(type, field.key)} 的形态 ${field.kind} 未登记进 ALL_KINDS`).toContain(
+        field.kind
+      )
+    }
+  })
+
+  it('🔴 只有自由文本能挂选择器：其余形态一律不挂（含尚无字段使用的 switch）', () => {
+    // 借 llm.prompt 的可引用端口（both→template）单独拨动 kind 这一维，隔离出形态的影响
+    const allowed = ALL_KINDS.filter((kind) => showsWholeValueRefPicker('llm', { key: 'prompt', kind }))
+    expect(allowed, '选择器整体赋值一个字符串，只有 text/textarea 接得住').toEqual(['text', 'textarea'])
+  })
+
+  it('🔴 挂上选择器的字段穷举在案，且每个的数据类型都是标量文本', () => {
+    const picked = ALL_FIELDS.filter(({ type, field }) => showsWholeValueRefPicker(type, field)).map(
+      ({ type, field }) => pathOf(type, field.key)
+    )
+    // 这份清单就是「整体替换」语义被允许的全部落点；新增/减少都必须在此显式表态
+    expect(picked.sort()).toEqual([
+      'agent_loop.goal',
+      'condition.llm.prompt',
+      'iteration.itemsVar',
+      'knowledge_retrieval.query',
+      'knowledge_retrieval.queryVar',
+      'llm.prompt',
+      'llm.systemPrompt'
+    ])
+    for (const { type, field } of ALL_FIELDS) {
+      if (!showsWholeValueRefPicker(type, field)) continue
+      const dt = portOf(type, field.key)!.dataType
+      expect(dt, `${pathOf(type, field.key)} 不是标量文本，整体替换会写坏`).toBe('string')
+    }
+  })
+
+  it('🔴 端口可引用但形态是容器的字段：清单只有 tool.args，且它不挂选择器', () => {
+    const isFreeText = (kind: FieldKind) => kind === 'text' || kind === 'textarea'
+    const containers = ALL_FIELDS.filter(
+      ({ type, field }) => referenceForm(portOf(type, field.key)) !== 'none' && !isFreeText(field.kind)
+    )
+    // 穷举式而非举例式：这里多出一个名字，就说明有人新开了一个「可引用的容器字段」，
+    // 必须先决定它的引用粒度（每个值？每一项？）再放行，不能顺手挂上整体替换式选择器。
+    expect(containers.map(({ type, field }) => pathOf(type, field.key))).toEqual(['tool.args'])
+    for (const { type, field } of containers) {
+      expect(
+        showsWholeValueRefPicker(type, field),
+        `${pathOf(type, field.key)} 是容器字段，整体替换会把对象/数组换成一个字符串`
+      ).toBe(false)
+    }
+  })
+
+  it('#47 回归：tool.args 契约侧仍是 both（可引用粒度是「每个值」，别顺手改成 literal）', () => {
+    const args = NODE_CONFIG_SCHEMA.tool.find((f) => f.key === 'args')!
+    expect(args.kind).toBe('kv')
+    // 契约没错：ToolNodeExecutor 解析顶层字符串值里的 {{$.变量}}，所以 mode 必须是 both
+    expect(referenceForm(portOf('tool', 'args'))).toBe('template')
+    // 错的是挂载：整体替换会把 args 对象换成字符串 ⟹ configMap 拿到 null ⟹ 工具无参调用
+    expect(showsWholeValueRefPicker('tool', args)).toBe(false)
+  })
+
+  it('hitl.bpm_approval.formVars 两端都关死（mode=literal，因为值压根不过模板解析）', () => {
+    const formVars = NODE_CONFIG_SCHEMA['hitl.bpm_approval'].find((f) => f.key === 'formVars')!
+    expect(formVars.kind).toBe('kv')
+    expect(referenceForm(portOf('hitl.bpm_approval', 'formVars'))).toBe('none')
+    expect(showsWholeValueRefPicker('hitl.bpm_approval', formVars)).toBe(false)
+  })
+
+  it('认不出的类型 / 契约里没有的键 fail-soft 返回 false（绝不抛）', () => {
+    expect(showsWholeValueRefPicker('magic', { key: 'prompt', kind: 'textarea' })).toBe(false)
+    expect(showsWholeValueRefPicker(undefined, { key: 'prompt', kind: 'textarea' })).toBe(false)
+    // outputVar 是输出端口的配置键，不在 inputs 里 ⟹ 不挂选择器
+    expect(showsWholeValueRefPicker('tool', { key: 'outputVar', kind: 'text' })).toBe(false)
   })
 })

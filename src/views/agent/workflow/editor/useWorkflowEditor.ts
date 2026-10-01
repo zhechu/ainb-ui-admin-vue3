@@ -49,6 +49,7 @@ import { fieldsFor, jsonHintFor, isFieldVisible, type ConfigField } from '../nod
 import {
   contractOf,
   referenceForm,
+  showsWholeValueRefPicker,
   dataTypeColor,
   dataTypeLabel,
   resolvedOutputsOf,
@@ -607,7 +608,18 @@ export function useWorkflowEditor(
   const refFormFor = (key: string): 'bare' | 'template' | 'none' => referenceForm(inPortFor(key)) as any
   const canRefField = (key: string): boolean => refFormFor(key) !== 'none'
   /**
-   * 引用选择器用的窄化形态：仅在 canRefField 为真时渲染选择器，故这里恒为 bare/template。
+   * 该字段可否挂「整体替换式」引用选择器（= canRefField **且** 编辑器形态是自由文本）。
+   *
+   * 🔴 与 canRefField 分成两个谓词是必需的，不是冗余：canRefField 只看契约，驱动**展示**
+   *    （类型色点 + 「对象」这类类型名，`tool.args` 该显示）；本函数还看 `f.kind`，驱动**能不能写**。
+   *    选择器 emit 一个字符串、onPickRef 整体赋值，所以挂在 kv/tags 字段上会把容器换成一个串 ——
+   *    `tool.args` 变成 `"{{$.x}}"` ⟹ 后端 configMap 拿到 null ⟹ 工具无参调用且零报错（P1 缺陷 #47）。
+   *    `args` 的可引用粒度是**每个值**（顶层字符串值由 ToolNodeExecutor 解析），不是整个对象；
+   *    按值引用照旧靠 KeyValueEditor 的值输入框手打，hint 里已写明。
+   */
+  const canPickRef = (f: ConfigField): boolean => showsWholeValueRefPicker(selectedNode.value?.type, f)
+  /**
+   * 引用选择器用的窄化形态：仅在 canPickRef 为真时渲染选择器，故这里恒为 bare/template。
    * 单列一个函数是为了让模板 :form 绑定拿到精确类型（refFormFor 的联合含 'none'，选择器 prop 不接受）。
    */
   const pickFormFor = (key: string): 'bare' | 'template' => (refFormFor(key) === 'bare' ? 'bare' : 'template')
@@ -1009,6 +1021,7 @@ export function useWorkflowEditor(
     refFormFor,
     pickFormFor,
     canRefField,
+    canPickRef,
     isRequiredField,
     fieldColor,
     fieldTypeLabel,

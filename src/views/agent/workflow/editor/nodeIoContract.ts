@@ -29,6 +29,7 @@
  */
 
 import type { EditorDslNode } from '../editorModel'
+import type { ConfigField, FieldKind } from '../nodeConfigSchema'
 
 /** 端口可承载的数据类型（仅用于 UI 展示与提示，不做运行期强校验） */
 export type IoDataType = 'string' | 'number' | 'boolean' | 'object' | 'array'
@@ -225,10 +226,13 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
       // 🔴 LITERAL 而不是 BOTH：这些值压根不过 StateTemplateResolver。
       //    后端 AgentBpmApprovalService.resolveConfig 用 node.configMap("formVars") 原样取，
       //    createApproval 再原样 setVariables 交给 Flowable，于是 {{$.变量}} 会以字面串进审批表单。
-      //    标成 BOTH 的代价不止「提示骗人」：mode 决定属性面板要不要给这个字段挂「引用上游变量」选择器，
-      //    而选择器 emit 的是字符串、onPickRef 直接整体赋值 ⟹ formVars 这个对象被换成一个串
-      //    ⟹ configMap 返回 null ⟹ 用户配的变量全丢，且全程无提示。
       //    真要让它可引用，得在挂起点从 checkpoint 取出状态再解析 —— 那是后端运行期改动，改这份契约没用。
+      //
+      // ℹ️ 这里曾写着「标成 BOTH 会让选择器把 formVars 对象换成一个串」——那半句现在由
+      //    showsWholeValueRefPicker 的**形态**白名单结构性挡住（kv 一律不挂选择器），不再依赖 mode。
+      //    两道闸各管一件事，别混：mode 管「值到底解不解析模板」（formVars=不解析，故 LITERAL 是事实），
+      //    形态管「能不能被整体赋值一个字符串」（kv/tags 都不能）。tool.args 正是靠这个区分才两全 ——
+      //    它 mode 必须是 BOTH（值真解析），但形态是 kv 所以照样不挂选择器。见缺陷 #47。
       inp(
         'formVars',
         '审批表单参数',
@@ -319,6 +323,36 @@ export const canReference = (port: InPort): boolean => port.mode === 'reference'
 export type RefForm = 'none' | 'bare' | 'template'
 export const referenceForm = (port: InPort | undefined): RefForm =>
   port?.mode === 'reference' ? 'bare' : port?.mode === 'both' ? 'template' : 'none'
+
+/**
+ * 允许被「整体替换式」引用选择器写值的编辑器形态 —— 只有自由文本两种。
+ *
+ * 🔴 选择器 emit 的是**一个字符串**，宿主 `onPickRef` 直接 `config[key] = 值` 整体赋值。
+ *    对 text/textarea 这是对的；对 kv（对象）就把整个对象换成一个串 ⟹ 后端
+ *    `configMap("args")` 拿到 null ⟹ 工具变成**无参调用**，且全程零报错（这正是 P1 缺陷 #47）。
+ *    tags（数组）同理；select/number/switch 的值必须落在选项/数值/布尔域里，塞模板串就是脏值。
+ *
+ * 🔴 白名单刻意**不随 FieldKind 自动扩张**：新增一种形态时默认不挂选择器。
+ *    漏挂 = 用户少一个点选入口，是看得见的小遗憾；漏判 = 静默毁掉配置，是看不见的大坑。
+ *    强制点在 nodeIoContract.spec.ts 的「全字段扫描」那条。
+ */
+const WHOLE_VALUE_REF_KINDS: ReadonlySet<FieldKind> = new Set<FieldKind>(['text', 'textarea'])
+
+/**
+ * 该字段是否应挂「整体替换式」引用选择器 = 端口允许引用（mode≠literal）**且** 形态是自由文本。
+ *
+ * 🔴 与 `canReference` 分工：后者只看契约、决定**展示**（类型色点 + 类型名，`tool.args` 该显示「对象」），
+ *    本函数额外看编辑器形态、决定**能不能写**。#47 的根因就是这两件事被 `canRefField` 一个谓词包办了 ——
+ *    契约侧 `args` 是 `both` 完全正确（值里的 `{{$.变量}}` 后端确实解析），错在面板把「可引用」
+ *    直接当成「可整体替换」，而 `args` 的可引用粒度是**每个值**，不是整个对象。
+ */
+export const showsWholeValueRefPicker = (
+  type: string | null | undefined,
+  field: Pick<ConfigField, 'key' | 'kind'>
+): boolean => {
+  const port = contractOf(type)?.inputs.find((i) => i.key === field.key)
+  return referenceForm(port) !== 'none' && WHOLE_VALUE_REF_KINDS.has(field.kind)
+}
 
 /**
  * 解析某输出端口在具体节点上的「实际变量名」：优先取 config[configKey]，空则回落 defaultName，仍空则 ''（= 未命名）。
