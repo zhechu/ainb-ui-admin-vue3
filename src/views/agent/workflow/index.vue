@@ -424,9 +424,12 @@ const handlePublish = async (row: AgentWorkflowDefVO) => {
   // 预检放在确认之后：/validate 含最多 15 秒的 infra/bpm 只读干跑，放前面会让点了取消的人也白等一趟。
   // 🔴 必须另打一次 GET /get?id：分页接口刻意把 dsl 置成 null（一份 DSL 几十 KB，一页 20 行就是兆级负载），
   //    row.dsl 是空的，拿它去预检会永远判成「流程内容为空」。
+  // 🔴 第二个参数把身份带上（台账 #81）：后端要按它数「这条流程名下真跑过几次」，据此给**已落地的撞车**
+  //    降一档。少了它，一条早已上线的建表流程永远探到「表名已被占用」（占用的正是它自己建的那张表），
+  //    于是既不能重新发布、回滚出的草稿也发不出去 —— 降档在 UI 上压根触发不了。
   const verdict = await precheckPublish(
     async () => (await AgentWorkflowApi.getDef(row.id)).dsl,
-    (dsl) => AgentWorkflowApi.validateDsl(dsl)
+    (dsl) => AgentWorkflowApi.validateDsl(dsl, row.id)
   )
   if (verdict.action === 'block') {
     gateRow.value = row

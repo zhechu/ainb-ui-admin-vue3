@@ -1484,7 +1484,10 @@ const handleConfirmWorkflow = async (item: any) => {
       if (!item.workflowDefId) throw new Error('missing workflowDefId')
       return (await AgentPlannerApi.getWorkflowDraft(item.workflowDefId)).dsl
     },
-    (dsl) => AgentWorkflowApi.validateDsl(dsl)
+    // 🔴 带上草稿卡那条定义的 id（台账 #81）：后端按它数执行史，给**已落地的撞车**降一档。
+    //    这条路径上的草稿是 LLM 一次生成的、通常还没跑过 ⟹ 拿到 0 次 ⟹ 一档都不降，正是该有的行为；
+    //    而「确认并运行」之后再次点它时，它已经真跑过了，那时降档才开始起作用。
+    (dsl) => AgentWorkflowApi.validateDsl(dsl, item.workflowDefId)
   )
   if (verdict.action === 'block') {
     gateDefId.value = item.workflowDefId

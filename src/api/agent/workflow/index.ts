@@ -458,9 +458,18 @@ export const AgentWorkflowApi = {
    * 校验 DSL（保存/发布前预检，只读不落库）。
    * 双层校验：基础结构（收集式，一次列全）+ 基础通过后的编译器深层干跑。
    * 返回结构化 {passed,errors,warnings}，JSON 本身不合法也算一条 error（不抛 HTTP 异常）。
+   *
+   * 🔴 `id` 是**可选的身份**，只用来取「这条流程名下真跑过几次」，据此给**已落地的撞车**降一档
+   *    （台账 #81：一条早已上线的建表流程，今天再探一次必然得到「表名已被占用」—— 占用的正是它自己
+   *    建的那张表；不降档它就永远无法重新发布，回滚出来的草稿也发不出去）。
+   * 🔴 **与 `getManifest` 的 `id` 语义不同，别照搬那边的二选一规则**：这里 `dsl` 永远是被打分的对象，
+   *    `id` 只是身份，两者**同时传才是发布预检的正常用法**（传手上这一版的 dsl + 它所在行的 id）。
+   *    只传 dsl 则永远拿不到执行史，降档在 UI 上压根触发不了；只传 id 则体检的是库里那一版，
+   *    不是用户正要发布的那一版。
+   * ⚠️ 未保存的草稿没有 id，传 `undefined` 即可（后端按「没跑过」算 = 一档都不降，fail-close）。
    */
-  validateDsl: (dsl: string): Promise<AgentWorkflowDefValidateVO> =>
-    request.post({ url: '/agent/workflow-def/validate', data: { dsl } }),
+  validateDsl: (dsl: string, id?: number): Promise<AgentWorkflowDefValidateVO> =>
+    request.post({ url: '/agent/workflow-def/validate', data: { dsl, id } }),
 
   /**
    * 变更清单（S2-f 出口 1）：发布/审批前的影响面预览。只读不落库，但**含 infra/bpm 只读干跑**

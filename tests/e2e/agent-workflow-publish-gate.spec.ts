@@ -21,6 +21,15 @@ import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpe
  *       （S4b 用户决定 1：error 一律拒，不给二次确认强推的口子）。</li>
  * </ol>
  *
+ * <h3>🔴 台账 #81 又补了两个断言，防的是「降档」这一档的两种反向失效</h3>
+ * <ol start="4">
+ *   <li>预检的请求体里**真的带着这一行的 id**：{@code validateDsl(dsl)} 少写第二个实参时
+ *       TS 不报错、请求照样 200、结论照样正确，只是后端永远拿不到执行史 ⟹ 降档一次都不触发。
+ *       这个失效在接口层面完全看不出来，只有断言请求体能抓住。</li>
+ *   <li>warnings-only 时**照发**、但要把条数说出来：防降过头（warning 被当 error 拦，
+ *       等于把降档白降）与防降完就闭嘴（用户以为干干净净，真跑到那一节点还是被拒）。</li>
+ * </ol>
+ *
  * <h3>数据自净</h3>
  * 全程只碰自己造的那一行 DRAFT 与自己建的那一个会话。code / 标题在 beforeAll **之前**就定好，
  * afterAll 按 code 反查再删 —— 不认「创建成功后才知道的 id」。
@@ -159,7 +168,7 @@ test.describe.serial('S4b 发布闸门（前端预检）', () => {
    *
    * 🔴 拦而不是放行：这几条用例要证的是「有没有发请求」，不是「后端会不会拒」。
    *    放行会真的翻状态，夹具就删不掉了；而「后端会拒」由
-   *    AgentWorkflowDefServicePublishGateTest（9 条）+ 3 处变异探针覆盖，不必在这里再证一次。
+   *    AgentWorkflowDefServicePublishGateTest（11 条）+ 3 处变异探针覆盖，不必在这里再证一次。
    * 🔴 假应答而不是 abort：abort 会让前端走进 catch 弹一条错误通知，
    *    正对照那一步就断不出「发布成功」这条 toast 了。
    */
@@ -221,6 +230,51 @@ test.describe.serial('S4b 发布闸门（前端预检）', () => {
     await dialog.locator('[data-testid="publish-gate-go-design"]').click()
     await page.waitForURL(/\/agent-workflow\/editor/, { timeout: 20_000 })
     expect(page.url()).toContain(`id=${defId}`)
+  })
+
+  /**
+   * 台账 #81：预检必须把「这一行的 id」一起带上
+   *
+   * 🔴 这条断言防的失效是**静默**的：`validateDsl(dsl)` 少写第二个实参，TS 不报错（`id?` 可选）、
+   *    请求照样 200、体检结论照样正确 —— 只是后端永远拿不到执行史，于是「已落地的撞车」降档
+   *    在 UI 上**一次都不会触发**。症状是：一条早就上线、真跑过几十次的建表流程，
+   *    回滚出来的草稿永远发不出去，而后端那一侧的降档单测全绿（它本身是对的，只是没人喂它身份）。
+   * 🔴 所以只能在这里断言**请求体**：这是唯一能看见「身份有没有被传上去」的地方。
+   * 🔴 顺带钉住 `GET /get?id=`：列表行里的 dsl 是 null（分页接口刻意置空，几十 KB×20 行的负载），
+   *    预检必须另打一次 /get 才拿得到内容 —— 少了它，症状是永远判成「流程内容为空」。
+   * 🔴 用 `route.continue()` 而不是假应答：这条要验的是「真请求里带了什么」，
+   *    假应答会把真链路（含 15 秒干跑）整个绕过去，那就只验了自己的 mock。
+   */
+  test('预检请求体带上行的 id（台账 #81：少了它，降档在 UI 上永远触发不了）', async ({ page }) => {
+    const validateBodies: Record<string, unknown>[] = []
+    const getCalls: string[] = []
+    await page.route('**/agent/workflow-def/validate**', async (route) => {
+      validateBodies.push(route.request().postDataJSON())
+      await route.continue()
+    })
+    await page.route('**/agent/workflow-def/get?id=**', async (route) => {
+      getCalls.push(route.request().url())
+      await route.continue()
+    })
+
+    await login(page)
+    const row = await findRow(page)
+    await row.getByRole('button', { name: /发\s*布/ }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: /确\s*定/ }).click()
+    // 等闸门弹出 = 预检确实跑完了（此刻 DSL 还是 BAD_TOOL 那份，必然 block）
+    await expect(gateDialog(page)).toBeVisible({ timeout: 60_000 })
+
+    expect(getCalls, '预检没有另打 GET /get?id —— 列表行里的 dsl 是 null，拿它体检等于没体').toHaveLength(1)
+    expect(getCalls[0]).toContain(`id=${defId}`)
+    expect(validateBodies, '预检没有打 /validate').toHaveLength(1)
+    expect(
+      validateBodies[0]?.id,
+      `/validate 请求体没带 id（降档就此永远失效）：${JSON.stringify(validateBodies[0])}`
+    ).toBe(defId)
+    // 🔴 dsl 与 id **同时**在体内才是发布预检的正常用法。这两个字段的语义与 /manifest 那边不同
+    //    （那里是「预览哪一份」的互斥二选一），照搬那条规则会让预检两头不讨好：
+    //    只传 dsl 拿不到执行史，只传 id 体检的是库里那一版而非用户正要发的这一版。
+    expect(validateBodies[0]?.dsl, '/validate 请求体的 dsl 是空的').toContain(BAD_TOOL)
   })
 
   /**
@@ -332,6 +386,62 @@ test.describe.serial('S4b 发布闸门（前端预检）', () => {
     await expect(page.locator('.el-message').filter({ hasText: '发布成功' }).first()).toBeVisible({
       timeout: 15_000
     })
+  })
+
+  /**
+   * 台账 #81 的「降档」档位：只有 warning、没有 error ⟹ **照发**，但要把「有几条建议」说出来
+   *
+   * 🔴 为什么这一档非验不可：#81 把「已落地的撞车」从 error 降成 warning，而降档最容易写反的方向
+   *    有两个 —— ① 降过头（连 V4 坏 DDL、V12 缺 process_instance_id 也降，那是真跑不通的，
+   *    放过去等于让闸门失效）；② 降完之后**界面上什么都不说**，用户以为这条流程干干净净，
+   *    结果真执行到那一节点还是被拒。①由后端单测守着（fold_nonConflictRejections_neverDowngrade
+   *    EvenWithHistory），②只能在这里守：它是纯 UI 行为，接口层面看不出来。
+   * 🔴 用 page.route 假应答而不是造真夹具：真造一条「已落地的撞车」需要
+   *    一张真物理表 + 一条真执行记录，前者会往库里留一张删不掉的表，
+   *    后者要真跑一次流程（本文件的前置是 0 LLM token）。
+   *    「后端会不会真的降档」由 AgentWorkflowDefServicePublishGateTest + /audit-all 真跑 A/B 覆盖，
+   *    这里只验「前端拿到 warnings-only 的结果后怎么表现」。
+   * 🔴 排在正对照之后：本用例不改库里的 DSL，只拦 /validate 的应答，故与顺序无关；
+   *    但放在这里可以让「三档」在文件里连成一段可读的对照：block / publish / publish-with-warnings。
+   */
+  test('降档档位：只有 warning 时照发，且要说清「有几条建议调整」', async ({ page }) => {
+    await page.route('**/agent/workflow-def/validate**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: '',
+          data: {
+            passed: true,
+            errors: [],
+            // 抄后端 foldDryRunRejections 降档时的真实文案骨架：证据（跑过几次）+「放行不等于修好了」
+            warnings: [
+              '节点(建设备表) 的「建表」要用的东西平台上已经有了（表 biz_x 已存在），而本流程已真跑过 3 次'
+            ]
+          }
+        })
+      })
+    })
+    const publishCalls = await spyPublish(page, '/agent/workflow-def/publish')
+
+    await login(page)
+    const row = await findRow(page)
+    await row.getByRole('button', { name: /发\s*布/ }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: /确\s*定/ }).click()
+
+    // 🔴 判据①：不弹闸门对话框。warning 不是阻断项 —— 弹出来就等于把降档白降了
+    await expect
+      .poll(() => publishCalls.length, {
+        timeout: 60_000,
+        message: 'warnings-only 却没有发出 publish 请求 —— warning 被当成 error 拦了（降档写反）'
+      })
+      .toBe(1)
+    await expect(gateDialog(page)).toHaveCount(0)
+    // 🔴 判据②：但必须说出来。条数要真数出来，写成「有一些建议」等于没说
+    await expect(
+      page.locator('.el-message').filter({ hasText: '体检通过，但有 1 条建议调整' }).first()
+    ).toBeVisible({ timeout: 15_000 })
   })
 
   /**

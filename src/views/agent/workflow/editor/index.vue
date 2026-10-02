@@ -528,7 +528,12 @@ const runValidate = async (): Promise<AgentWorkflowDefValidateVO | null> => {
   }
   validating.value = true
   try {
-    const res = await AgentWorkflowApi.validateDsl(dsl)
+    // 🔴 带上当前这条定义的 id（台账 #81）：后端按它数「本 code 名下真跑过几次」，
+    //    据此给**已落地的撞车**降一档（表名被占用的正是它自己早先建的那张表）。
+    //    体检的是画布上这份**未保存**的 dsl，身份取的却是库里那一行 —— 两者刻意不同源，
+    //    这正是 /validate 的 id 与 /manifest 的 id 语义不同的地方（见 api 里的注释）。
+    //    设计器只会带着有效 id 进来（onMounted 里无 id 直接回列表），故这里不必再判空。
+    const res = await AgentWorkflowApi.validateDsl(dsl, formData.value.id)
     validateResult.value = res
     return res
   } finally {
