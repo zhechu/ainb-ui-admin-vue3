@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NODE_TYPE_OPTIONS } from './editorModel'
+import { NODE_TYPE_OPTIONS, defaultConfig } from './editorModel'
 import {
   NODE_CONFIG_SCHEMA,
   fieldsFor,
@@ -11,7 +11,9 @@ import {
 /**
  * nodeConfigSchema 纯逻辑单测（增量16A / P4 编辑器第二子刀：结构化节点配置面板）
  *
- * 钉住面板 schema 的命门：① 8 种可拖入类型都有 schema（拖出来的节点不会只剩裸 JSON）；② 字段键唯一、
+ * 钉住面板 schema 的命门：① NODE_TYPE_OPTIONS 里每种可拖入类型都有 schema（拖出来的节点不会只剩裸 JSON；
+ * 该列表由 nodeSummary 的 NODE_TYPE_META 派生，故这里**不写死数量** —— 头注曾写「8 种」而真实是 13 种）；
+ * ② 字段键唯一、
  * kind 合法、select 必有选项来源；③ 字段键逐字对齐后端执行器读取的 config 键（抽查关键类型）；
  * ④ showIf 条件显隐正确（wait 按 waitType 分支）；⑤ 认不出的类型 fail-soft 返回空；
  * ⑥ 面板 hint 不许承诺运行期不会发生的事（hint 是用户唯一看得到的说明书，会被照做）。全是纯函数，不碰 Vue。
@@ -132,5 +134,35 @@ describe('nodeConfigSchema', () => {
     const formVarsHint = fieldsFor('hitl.bpm_approval').find((f) => f.key === 'formVars')?.hint ?? ''
     expect(formVarsHint, 'formVars 必须明说占位符不生效，不能只是「不提」').toContain('不会被替换')
     expect(formVarsHint, 'formVars 的值原样进审批流程，不许再承诺支持引用').not.toContain('支持 {{$.变量}}')
+  })
+
+  /**
+   * 🔴 iteration.itemVar 的 hint 是同一类缺陷的第二个实例，且比 formVars 更隐蔽：
+   *    它教作者引用一个**字面名叫 itemVar 的键**，而运行期当前项写在作者自己填的那个名字下
+   *    （IterationGraphBuilder 用 configStr("itemVar") 取到名字、再 delta.put 那个名字）。
+   *    照旧 hint 写 ⟹ 取到空值，且**全程零报错**（模板解析不出来就是空串）。
+   *
+   * 旧文案：placeholder「每项写入的变量名，缺省 item」+ hint「循环体节点用 {{$.itemVar}} 取当前项。」
+   *    —— 同一条错话在两个仓里有四份副本（本文件、editor/nodeIoContract.ts 的镜像 hint、
+   *    后端 NodeIoContract 的 hint、UntrustedInputTracer 的注释），#97 一并改掉。
+   */
+  it('面板 hint 不许教作者引用「字段键名」本身（iteration.itemVar 是写入目标，不是读取来源）', () => {
+    const itemVar = fieldsFor('iteration').find((f) => f.key === 'itemVar')!
+    // 肯定：必须说清「引用的是你自己填的那个名」，并交代必填（后端缺它直接编译失败）
+    expect(itemVar.hint, 'hint 要点明引用的是作者填的名字，不是键名 itemVar').toContain('{{$.这里填的名字}}')
+    expect(itemVar.hint, '后端 IterationGraphBuilder 缺 itemVar 直接编译失败，hint 不许让它看着可选').toContain(
+      '必填'
+    )
+    // 🔴 否定：这一条就是「四份副本都清干净了吗」的强制点 —— 把任何一份改回旧文案都会红
+    expect(itemVar.hint, '不许再教作者引用字面的 itemVar 键').not.toContain('{{$.itemVar}}')
+    expect(itemVar.placeholder ?? '', 'placeholder 同理').not.toContain('{{$.itemVar}}')
+
+    // 🔴 hint 里点名的「预填值」必须与 defaultConfig 的真实预填一致，不许两头各写一个字面量。
+    //    改了 defaultConfig 的预填而忘了改 hint，这条会红（反之亦然）——
+    //    否则「保持预填值时就是 {{$.item}}」会变成一句指向不存在缺省的假话。
+    expect(itemVar.hint).toContain(`{{$.${defaultConfig('iteration').itemVar}}}`)
+    // placeholder 也不许再承诺「缺省」：后端没有这个缺省，有的只是前端拖出节点时的预填
+    expect(itemVar.placeholder ?? '').toContain('预填')
+    expect(itemVar.placeholder ?? '').not.toContain('缺省')
   })
 })

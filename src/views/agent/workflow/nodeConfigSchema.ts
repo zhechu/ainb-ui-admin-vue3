@@ -53,8 +53,13 @@ export interface ConfigField {
 }
 
 /**
- * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的 10 种 type。
+ * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的每一种 type（当前 13 种）。
  * 顺序即渲染顺序（常用/必填在前）。
+ *
+ * 🔴 这里曾写「10 种」，与 #101(a) 里 knownTypesHint 手抄 10 型是同一条错话。数量别凭记忆改：
+ *    强制点是 nodeConfigSchema.spec.ts 的第一条 —— 它遍历 NODE_TYPE_OPTIONS（由 nodeSummary 的
+ *    NODE_TYPE_META 派生，不是抄的），逐个要求本表有非空字段 ⟹ 加一种类型而忘了给它写 schema 会红。
+ *    反方向（本表多出一个 NODE_TYPE_META 没有的键）**没有**强制点，是已知缺口。
  */
 // 🔴 label 面向业务人员：刻意不带后端 config 键名（如 outputVar/toolId）。
 //    键名对配流程的人是噪音，字段含义靠 label + hint 说清即可；键逐字对齐后端的约束在 key 上，不在 label 上。
@@ -255,7 +260,18 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
   ],
   iteration: [
     { key: 'itemsVar', label: '要遍历的列表', kind: 'text', placeholder: '要遍历的数组变量名，如 orders' },
-    { key: 'itemVar', label: '每项存到', kind: 'text', placeholder: '每项写入的变量名，缺省 item', hint: '循环体节点用 {{$.itemVar}} 取当前项。' },
+    // 🔴 placeholder/hint 曾是一条错话的两份副本（台账 #97）：hint 教作者写「{{$. + 这一格的键名」，
+    //    而当前项其实写在**作者自己填的那个名字**下。照旧 hint 写必然取到空值，且不报错。
+    //    ⚠️ placeholder 那句「缺省 item」不是后端兜底（后端 IterationGraphBuilder 缺它直接编译失败、
+    //    全模块零个 "item" 字面量），说的是 editorModel.defaultConfig 拖出节点时的**前端预填**。
+    //    故这里写清是「预填」而不是「缺省」：AI 生成的 / 手写的 DSL 不走 defaultConfig，没有这个预填。
+    {
+      key: 'itemVar',
+      label: '每项存到',
+      kind: 'text',
+      placeholder: '每项写入的变量名（拖出来时已预填 item）',
+      hint: '循环体节点用 {{$.这里填的名字}} 取当前项（保持预填值时就是 {{$.item}}）。必填，留空编译不过。'
+    },
     {
       key: 'body',
       label: '循环体节点',

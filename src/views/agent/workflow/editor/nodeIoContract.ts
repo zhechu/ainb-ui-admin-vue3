@@ -188,7 +188,19 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
       inp('prompt', '判定提示词', T_STRING, BOTH, true, '基础', '可用 {{$.变量}}；让模型据此判断走哪个分支'),
       inp('choices', '候选分支', T_ARRAY, LITERAL, true, '基础', '模型只能从这些候选里选一个'),
       inp('default', '默认分支', T_STRING, LITERAL, false, '基础', '都没命中时的兜底'),
-      inp('modelId', '模型', T_NUMBER, LITERAL, false, '模型', '留空=用默认模型')
+      inp('modelId', '模型', T_NUMBER, LITERAL, false, '模型', '留空=用默认模型'),
+      // 🔴 这两个曾漏登记（台账 #97）：运行期真的把它们塞进请求，而 schema 早就有这两个格子
+      //    ⟹ 用户在面板上改了、生效了，契约却看不见，fieldDataType 只能给兜底类型。
+      inp('temperature', '温度', T_NUMBER, LITERAL, false, '模型', '越高越有创造力（0~2）'),
+      inp(
+        'maxTokens',
+        '最大 tokens',
+        T_NUMBER,
+        LITERAL,
+        false,
+        '模型',
+        '限制单次输出长度；⚠️ 缺省 32 —— 判定只需吐一个分支名，故比 llm 节点（缺省不限）小得多'
+      )
     ],
     outputs: [outp('outputVar', null, T_STRING, '模型选中的分支')]
   },
@@ -196,7 +208,33 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     type: 'parallel',
     label: '并行',
     group: '分支与并行',
-    inputs: [inp('join', '汇聚方式', T_STRING, LITERAL, false, '基础', '当前仅支持「全部完成后汇聚」')],
+    inputs: [
+      inp(
+        'join',
+        '汇聚方式',
+        T_STRING,
+        LITERAL,
+        false,
+        '基础',
+        '当前仅支持「全部完成后汇聚」（填别的值编译期就拒，不静默降级）'
+      ),
+      // 🔴 与 condition.* 的 branches **同名不同义**：那边是「分支判定规则」的对象数组
+      //    （{target, conditions[]}），这边是「节点 id 链」的数组的数组。故 hint 分开写、不共用一句（台账 #97 裁定②）。
+      //    ⚠️ 不改键名：两处运行期读者读的都是 branches 这个字面量，改名要么破坏存量已发布 DSL、
+      //    要么得再加一层双读兼容（就是 agent_loop 的 goal/prompt 现在这副样子）。
+      //    ℹ️ schema 刻意**没有**这个字段：List<List<String>> 留给底部 DSL JSON 兜底编辑（见 nodeConfigSchema.ts 头注）。
+      inp(
+        'branches',
+        '并行分支',
+        T_ARRAY,
+        LITERAL,
+        true,
+        '基础',
+        '每个元素是一条「节点 id 链」，即数组的数组（如 [["a","b"],["c"]]）；' +
+          '⚠️ 与条件节点的「分支规则」同名不同义 —— 这里填节点 id，不是判定规则。' +
+          '分支节点的连边由引擎生成，不要手写进 edges[]'
+      )
+    ],
     outputs: []
   },
   iteration: {
@@ -205,8 +243,35 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     group: '分支与并行',
     inputs: [
       inp('itemsVar', '要遍历的列表', T_STRING, REFERENCE, true, '基础', '一个数组变量名'),
-      inp('itemVar', '每项存到', T_STRING, LITERAL, false, '基础', '循环体内用 {{$.itemVar}} 取当前项'),
-      inp('body', '循环体节点', T_ARRAY, LITERAL, true, '高级', '参与循环的节点 id；不要把它们连进主 edges')
+      // 🔴 required 原是 false，而运行期 IterationGraphBuilder 缺它**直接编译失败**（与 itemsVar 同款 fail-fast）。
+      //    ⚠️ 后端 src/main 零个 "item" 兜底字面量，但**前端有一个**：editorModel.defaultConfig 把 itemVar 预填成 'item'
+      //    ⟹ schema 那句 placeholder「缺省 item」不是凭空捏造，说的是这个前端预填；已改成「拖出来时已预填 item」，
+      //    因为 AI 生成的 / 手写的 DSL 不走 defaultConfig、拿不到预填。
+      //    旧 hint 教作者引用一个字面名叫 itemVar 的键，而当前项其实写在作者自己填的那个名字下 —— 照它写必取空值且不报错。
+      //    ⚠️ mode 仍是 LITERAL 而不是 REFERENCE：这一格是给新变量**起名**（写入目标），不是「取哪个上游变量」，
+      //    挂引用选择器只会让用户挑一个不相干的上游名。
+      //    ⚠️ 改成 true 会让面板上「每项存到」多出红星（useWorkflowEditor.isRequiredField 反查的就是这个 required），这是**对的**。
+      //    🔴 本文件的 InPort.hint 在前端没有消费者，故「四份副本都清干净了吗」的强制点落在 nodeConfigSchema.spec.ts。
+      inp(
+        'itemVar',
+        '每项存到',
+        T_STRING,
+        LITERAL,
+        true,
+        '基础',
+        '给每轮取出的那一项起个变量名（必填，没有缺省值）；循环体节点用 {{$.你填的这个名}} 取当前项'
+      ),
+      inp('body', '循环体节点', T_ARRAY, LITERAL, true, '高级', '参与循环的节点 id；不要把它们连进主 edges'),
+      inp(
+        'concurrency',
+        '并发度',
+        T_NUMBER,
+        LITERAL,
+        false,
+        '高级',
+        '⚠️ 暂只支持 1（串行遍历）；填 >1 编译期明确拒绝、不静默降成串行' +
+          '（并发 foreach 需运行时按列表长度动态 fan-out，而引擎的并行分支是编译期静态的）'
+      )
     ],
     outputs: []
   },
@@ -264,11 +329,62 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     label: '自主循环',
     group: '高级',
     inputs: [
-      inp('goal', '目标', T_STRING, BOTH, true, '基础', '模型要自主完成什么；可用 {{$.变量}}'),
+      inp(
+        'goal',
+        '目标',
+        T_STRING,
+        BOTH,
+        true,
+        '基础',
+        '模型要自主完成什么；可用 {{$.变量}}。⚠️ 与「初始目标变量」二选一：两个都不填编译期就拒'
+      ),
+      // 🔴 prompt 是 goal 的**兼容别名**，运行期两个都读（goal 优先、prompt 兜底存量 DSL）。
+      //    登记它不是因为界面上有这个格子（schema 只有 goal），而是「运行期读了就得登记」（台账 #97）。
+      inp(
+        'prompt',
+        '目标（旧写法）',
+        T_STRING,
+        BOTH,
+        false,
+        '高级',
+        'goal 的兼容别名，两者都填时以 goal 为准；新流程请填「目标」，不要再写这个键'
+      ),
+      // 🔴 label 逐字是「循环目标」：后端 UntrustedInputTracer 把它当汇的标签用，且测试钉着这四个字。
+      inp(
+        'inputVar',
+        '循环目标',
+        T_STRING,
+        REFERENCE,
+        false,
+        '基础',
+        '「目标」留空时，直接取这个变量的值当初始调查目标（原样进对话历史的第一条 user 消息）'
+      ),
       inp('tools', '可用只读工具', T_ARRAY, LITERAL, false, '基础', '只能放只读（查询类）工具'),
-      inp('maxSteps', '最大步数', T_NUMBER, LITERAL, false, '高级', '防止无限循环，缺省 5')
+      inp('maxSteps', '最大步数', T_NUMBER, LITERAL, false, '高级', '防止无限循环，缺省 5'),
+      inp('modelId', '模型', T_NUMBER, LITERAL, false, '模型', '留空=用默认模型'),
+      inp('temperature', '温度', T_NUMBER, LITERAL, false, '模型', '越高越有创造力（0~2）'),
+      inp('maxTokens', '最大 tokens', T_NUMBER, LITERAL, false, '模型', '限制单步输出长度'),
+      // 🔴 LITERAL 而不是 BOTH，理由与 llm.systemPrompt **相反**：同名不同义。
+      //    LlmNodeExecutor 对 systemPrompt 走 StateTemplateResolver，而 AgentLoopGraphBuilder
+      //    把它原样拼在通用 ReAct 协议后面 —— 中间没有任何解析。
+      inp(
+        'systemPrompt',
+        '补充说明',
+        T_STRING,
+        LITERAL,
+        false,
+        '提示',
+        '追加在通用循环协议之后的任务说明；⚠️ 不过模板解析，{{$.变量}} 不会被替换' +
+          '（与「大模型」节点的系统提示词同名不同义，那个会替换）'
+      )
     ],
-    outputs: [outp('outputVar', null, T_STRING, '最终答案')]
+    outputs: [
+      outp('outputVar', null, T_STRING, '最终答案'),
+      // 🔴 登记成**输出**端口会连带接进后端两个从 outputs 派生的读者：V19「写而未声明」与污点传播的写集（台账 #99 的域）。
+      //    前端这侧的效应是 resolvedOutputsOf 会把它算成一个产出 ⟹ 配了名字的轨迹变量出现在下游的引用选择器里，
+      //    这是对的（运行期真会写这个键）。
+      outp('trajectoryVar', null, T_ARRAY, '调查轨迹（可选，不配就不输出）')
+    ]
   },
   sub_workflow: {
     type: 'sub_workflow',
@@ -276,7 +392,32 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     group: '高级',
     inputs: [
       inp('workflowId', '子流程', T_STRING, LITERAL, true, '基础', '选择一条已发布的流程'),
-      inp('version', '指定版本', T_NUMBER, LITERAL, false, '高级', '留空=用主版本')
+      inp('version', '指定版本', T_NUMBER, LITERAL, false, '高级', '留空=用主版本'),
+      // 🔴 label 逐字是「子流程入参」：后端 UntrustedInputTracer 用它当汇标签，且测试钉着这四个字。
+      inp(
+        'inputMap',
+        '子流程入参',
+        T_OBJECT,
+        BOTH,
+        false,
+        '高级',
+        '{子流程里的变量名: 父流程取值表达式}；值可用 {{$.父流程变量}}，' +
+          '整个值就是一个占位符时保原始类型（数组/对象/数字不被转成字符串）'
+      ),
+      // 🔴 LITERAL 是**刻意的**，且与 inputMap 相反：outputMap 的值同样是模板、同样过解析，
+      //    但解析的是**子流程跑完之后的 state**，写 {{$.父流程变量}} 取不到值。
+      //    三值词汇表表达不了「可解析但换作用域」（后端 MODE_LITERAL 的 javadoc 记着这个建模缺口），
+      //    而两个消费者对 LITERAL 的处置恰好都对：前端不挂选择器（挂了必然填错），污点溯源不把它当父流程的汇。
+      inp(
+        'outputMap',
+        '子流程出参',
+        T_OBJECT,
+        LITERAL,
+        false,
+        '高级',
+        '{父流程变量名: 子流程结果表达式}；⚠️ 这里的 {{$.x}} 指的是**子流程里**的 x，' +
+          '不能用来引用父流程的上游结果'
+      )
     ],
     outputs: []
   }
