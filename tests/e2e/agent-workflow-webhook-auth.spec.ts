@@ -16,11 +16,23 @@ import { openWorkflowCreatePanel } from './helpers/workflow'
  * 逐字一致。只验「拦住」不验「放行」的测试，会在过度拦截时照样全绿。
  *
  * <p>前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。
- * 数据自净：建出的草稿在用例内按 id 删除（草稿态可删）。
+ *
+ * <h3>数据自净为什么是两层</h3>
+ * 用例内那次删除是**产品断言**（草稿态可删，对应 {@code AgentWorkflowDefServiceImpl:235} 的守卫），
+ * 但它排在第 8 步——前面任何一步失败，用例就中止在那儿，草稿留在库里。
+ * 这不是假想：{@code agent-workflow-editor.spec.ts} 同样是「删在最后」，实测已经漏过一行
+ * （id=161，DRAFT，2026-10-01），而它的头注释也写着「数据自净」。
+ * ⟹ 兜底放在 {@code afterAll}，**按 code 反查**而不是按 id：id 要等第 6 步跳转成功才知道，
+ * 而「建出来了但没跳过去」正是最需要兜底的那条路径。
+ * 反查走 {@code version-list}，它经 {@code BaseDO} 的 {@code @TableLogic} 自动带 {@code deleted=0}，
+ * 故第 8 步已删成功时这里查到空集、什么都不做。
  */
 
 const EDITOR_URL = /\/agent-workflow\/editor\?id=(\d+)/
 const LIST_URL = /\/ai\/agent\/workflow$/
+
+/** 本次跑造的 code，供 afterAll 兜底反查；用例一开始就赋值，故任何一步失败都能清 */
+let createdCode: string | null = null
 
 /** 面板里按 label 取一个 el-form-item（面板是页内条件渲染，同时只有一份 form.el-form） */
 const formItem = (page: Page, label: string): Locator =>
@@ -32,6 +44,22 @@ const visibleDropdown = (page: Page): Locator => page.locator('.el-select-dropdo
 test.describe('webhook 触发器：鉴权方式只剩 hmac/token，验签密钥常驻必填', () => {
   test.setTimeout(150_000)
 
+  test.afterAll(async ({ request }) => {
+    if (!createdCode) return
+    const token = await apiLogin(request)
+    const res = await request.get(`${API_BASE_URL}/agent/workflow-def/version-list?code=${createdCode}`, {
+      headers: apiHeaders(token)
+    })
+    const body = await res.json()
+    expect(body.code, JSON.stringify(body)).toBe(0)
+    for (const item of body.data ?? []) {
+      const del = await request.delete(`${API_BASE_URL}/agent/workflow-def/delete?id=${item.id}`, {
+        headers: apiHeaders(token)
+      })
+      expect((await del.json()).code, `兜底清理失败：id=${item.id}`).toBe(0)
+    }
+  })
+
   test('下拉无「不鉴权」项、缺省 hmac、缺密钥建不出草稿、补上密钥能建且 DSL 与界面一致', async ({
     page,
     request
@@ -40,6 +68,7 @@ test.describe('webhook 触发器：鉴权方式只剩 hmac/token，验签密钥�
     await gotoWithAuth(page, '/ai/agent/workflow')
 
     const code = `wf_e2e_wh${Date.now().toString(36)}`
+    createdCode = code
     const name = `E2E webhook 鉴权 ${code}`
     const path = `e2e_hook_${Date.now().toString(36)}`
     const secret = `e2e-only-${Date.now().toString(36)}`
@@ -104,7 +133,8 @@ test.describe('webhook 触发器：鉴权方式只剩 hmac/token，验签密钥�
     expect(trigger.type).toBe('trigger.webhook')
     expect(trigger.config).toMatchObject({ path, authType: 'hmac', secret })
 
-    // 8. 自净：草稿态可删，删掉免得给 /audit-all 的 scanned 留一行探针垃圾
+    // 8. 自净第一层（产品断言）：草稿态可删 —— 对应 deleteDef:235 的守卫。
+    //    删成功后 afterAll 按 code 反查到空集，兜底那一层自然不动手。
     const del = await request.delete(`${API_BASE_URL}/agent/workflow-def/delete?id=${id}`, {
       headers: apiHeaders(token)
     })
