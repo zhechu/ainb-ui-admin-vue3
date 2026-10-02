@@ -21,7 +21,9 @@ export const CODE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/
  * 🔴 webhook 触发器：把 trigger 换成
  *     { type: 'trigger.webhook', config: { path: 'order_hook', authType: 'hmac', secret: '<随机密钥>' } }
  *    发布后入站地址为 POST /admin-api/agent/webhook/{path}，调用方须带标准 tenant-id 头；
- *    authType=none/hmac/token，hmac/token 时 secret 必填（发布时校验）。
+ *    authType <b>只能是 hmac/token</b>（平台已无「不鉴权」这一档），secret 无条件必填。
+ *    校验发生在 createDef/updateDef <b>落库前</b>（不是发布时）：WorkflowTriggerExtractor 直接抛
+ *    WORKFLOW_TRIGGER_CONFIG_INVALID；入站时 AgentWebhookTriggerServiceImpl 再验一次签。
  */
 export const DEFAULT_DSL = JSON.stringify(
   {

@@ -57,9 +57,17 @@ function buildDsl(): string {
     name: WF_NAME,
     description: 'S3 e2e：建表（合规/不合规各一）+ 建表单草稿 + 一个只读工具，0 LLM token',
     // 🔴 只能用 webhook：后端 WorkflowTriggerExtractor 认 chat/form_event/schedule/webhook 四种，
-    //    其中只有 webhook + authType=none 不需要额外造前置数据。
-    //    它同时是「外部输入源」，故下面 n_read 的 {{$.input}} 能被污点溯源认出来
-    trigger: { type: 'trigger.webhook', config: { path: WEBHOOK_PATH, authType: 'none' } },
+    //    而本例要验的是「污点溯源认得出外部输入源」—— 只有 trigger.webhook 会产生 TRIGGER_WEBHOOK 这个源，
+    //    故下面 n_read 的 {{$.input}} 能被认出来。
+    // 🔴 #72 起 authType 只能是 hmac/token 且 secret 必填（落库前就拒）。这里给一个字面量 secret：
+    //    它与 path 一样只是 DSL 里的一个字符串，不需要任何前置数据。
+    //    （本例从不真的 POST /agent/webhook/{path}，所以密钥是什么无所谓，也就无需造签名。）
+    //    ⚠️ 原来这里写的是 authType:'none'，注释声称「只有 none 不需要额外造前置数据」——
+    //    那句前提是假的：secret 同样是字面量；何况 schedule 也只靠一个 cron 字符串。
+    trigger: {
+      type: 'trigger.webhook',
+      config: { path: WEBHOOK_PATH, authType: 'hmac', secret: 'e2e-only-not-a-real-secret' }
+    },
     variables: [
       { key: 'input', type: 'string', merge: 'replace', required: false },
       { key: 'output', type: 'object', merge: 'replace' }
@@ -245,6 +253,16 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
 
     // 🔴 toast 不许在清单干跑被拒时还说「没有发现问题」：那会和卡片里的红色「干跑不通过」
     //    当面对质，而用户会信 toast 不信卡片 —— 清单从此没人看。warning 型是这条的强制点
+    //
+    // ⚠️ 本条**当前是红的**，且红的原因与本文件被 #72 改过的那一格（trigger 的 authType）无关，
+    //    已归因证死、登记为 #86，别在这儿把它 weaken 掉：
+    //    editor/index.vue 那句 warning 只在 `res.passed` 为真时才可能弹，而
+    //    AgentValidateResult.isPassed() == errors.isEmpty()，WorkflowDslValidator.foldDryRunRejections
+    //    又对每个干跑 REJECTED **无条件** addError（且 ServiceImpl 调它时刻意不看 basic.isPassed()）
+    //    ⟹「passed 为真 且 dryRunRejected>0」是**不可达**的，那个分支是 S4a-c 之后留下的死代码。
+    //    实测同一份 DSL 只换 authType：hmac → 3 errors、none → 4 errors，两种 passed 都是 false，
+    //    所以断言在 #72 前后同样红（#72 之前更糟：authType:'none' 连 beforeAll 建草稿都过不了，4 条全红）。
+    //    断言保持原样是刻意的 —— 它编码的是 S3 当初的契约，改它之前得先裁定 #86 里那两条路走哪条。
     await expect(page.locator('.el-message--warning')).toContainText('干跑不通过')
 
     // ---------- 头部：headline / riskNote / 版本 / 触发器 ----------

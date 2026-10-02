@@ -72,9 +72,16 @@ function buildDsl(): string {
     name: WF_NAME,
     description: 'S1 e2e：一个 tool 节点 + 一个 sub_workflow 节点，验名称中文化，全链路 0 LLM token',
     // 🔴 只能用 webhook：后端 `WorkflowTriggerExtractor` 认 chat/form_event/schedule/webhook 四种，
-    //    写 trigger.input 会被 create 直接拒（「不支持的触发器类型」）。webhook + authType=none 是
-    //    四种里唯一不需要额外造前置数据的（chat 要一个已发布 Agent，form_event 要一张已发布表单）。
-    trigger: { type: 'trigger.webhook', config: { path: WEBHOOK_PATH, authType: 'none' } },
+    //    写 trigger.input 会被 create 直接拒（「不支持的触发器类型」）。本例要验 triggerLabel 的中文化，
+    //    换成别的触发方式就会连带改掉期望文案，故沿用 webhook。
+    // 🔴 #72 起 authType 只能是 hmac/token 且 secret 必填（落库前就拒）。这里给一个字面量 secret：
+    //    它与 path 一样只是 DSL 里的一个字符串，不需要任何前置数据；本例也从不真的 POST 那个入站地址。
+    //    ⚠️ 原来这里写的是 authType:'none'，注释声称「四种里唯一不需要额外造前置数据」——
+    //    那句前提是假的：secret 同样是字面量，而 schedule 也只靠一个 cron 字符串。
+    trigger: {
+      type: 'trigger.webhook',
+      config: { path: WEBHOOK_PATH, authType: 'hmac', secret: 'e2e-only-not-a-real-secret' }
+    },
     variables: [
       { key: 'input', type: 'string', merge: 'replace', required: false },
       { key: 'output', type: 'object', merge: 'replace' }

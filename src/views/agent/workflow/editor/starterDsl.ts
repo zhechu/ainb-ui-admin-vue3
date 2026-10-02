@@ -11,7 +11,7 @@
  *   · chat        → { type:'trigger.chat',       config:{ inputVar:'input', agentId } }（agentId 可空=仅手动运行）
  *   · form_event  → { type:'trigger.form_event', config:{ formCode, eventType } }（eventType ∈ create/update/delete）
  *   · schedule    → { type:'trigger.schedule',   config:{ cron } }（Spring 6 段 cron）
- *   · webhook     → { type:'trigger.webhook',    config:{ path, authType, secret? } }（authType ∈ none/hmac/token）
+ *   · webhook     → { type:'trigger.webhook',    config:{ path, authType, secret } }（authType ∈ hmac/token，secret 必填）
  *   · none        → 不写 trigger 块（纯手动 / API run-stream 触发）
  *
  * 🔴 createDef **不**做图校验（只 JSON 解析 + trigger 投影），故「空白」模板（nodes/edges 皆空）能建成草稿；
@@ -45,9 +45,9 @@ export interface WorkflowTriggerMeta {
   cron?: string
   /** webhook：URL 安全 path（字母/数字/下划线/连字符，1~64） */
   path?: string
-  /** webhook：none/hmac/token，缺省 none */
+  /** webhook：hmac/token（必填；平台已无「不鉴权」档），缺省 hmac */
   authType?: string
-  /** webhook：hmac/token 时必填的验签密钥 */
+  /** webhook：验签密钥，无条件必填（authType 只剩 hmac/token 两档） */
   secret?: string
 }
 
@@ -79,13 +79,13 @@ export function buildTriggerBlock(trigger: WorkflowTriggerMeta): Record<string, 
     case 'schedule':
       return { type: 'trigger.schedule', config: { cron: trigger.cron ?? '' } }
     case 'webhook': {
+      // 🔴 authType 只剩 hmac/token 两档、secret 无条件必填（后端 applyWebhook 落库前就拒，
+      // 入站 verifyAuth 对缺省/none/未知值也一律拒）：缺省给 hmac，secret 原样带上。
+      // 空串也照写 —— 「缺密钥」这句人话报错由后端权威给出，前端不另造一套口径（否则两份必然漂）
       const config: Record<string, any> = {
         path: trigger.path ?? '',
-        authType: trigger.authType || 'none'
-      }
-      // 仅 hmac/token 需要 secret；none 不写（写了也无害，但从简）
-      if (config.authType !== 'none' && trigger.secret) {
-        config.secret = trigger.secret
+        authType: trigger.authType || 'hmac',
+        secret: trigger.secret ?? ''
       }
       return { type: 'trigger.webhook', config }
     }

@@ -196,15 +196,25 @@ describe('triggerCases 目录完整性', () => {
   })
 
   /**
-   * 案例预填的鉴权方式必须真能发布。
+   * 案例预填的鉴权方式必须真能落库、真能发布。
    *
-   * 🔴 V15 已经把 authType=none（以及留空）判成 error（WorkflowDslValidator:1410-1421）：
-   *    入站地址是 @PermitAll 的，而「安全全靠 path 不可猜」在本平台不成立 ——
-   *    path 是作者手填的一格，两个仓库里都没有任何随机串生成。
-   *    预填一个发不出去的值，等于把用户直接送到体检报错面前。
+   * 🔴 #72 起「不鉴权」这一档已从平台整个删掉，三处同改：设计器下拉没有它、
+   *    后端 WorkflowTriggerExtractor 落库前就拒、入站 verifyAuth 也一律拒；V15 仍然报 error
+   *    （管的是存量 DSL 与直改数据库这两种来路）。根因是「安全全靠 path 不可猜」在本平台不成立 ——
+   *    path 是作者手填的一格，两个仓库里都没有任何随机串生成，而且它会进日志、进前端 URL、进浏览器历史。
+   *    预填一个落不了库的值，等于把用户直接送到一句报错面前。
    */
-  it('webhook 案例预填的鉴权方式能过 V15', () => {
+  it('webhook 案例预填的鉴权方式能过 V15 与落库校验', () => {
     expect(TRIGGER_CASES.webhook.triggerDefaults.authType).toMatch(/^(hmac|token)$/)
+  })
+
+  /**
+   * 🔴 刻意断言「没有 secret 预填」：密钥是凭据，预填一个字面量等于鼓励所有租户共用一个弱密钥，
+   *    还会明文显示在弹窗里。留空 + 提交前必填校验，逼作者自己生成一条。
+   *    本条守的是「别有人日后好心加个 secret: 'changeme'」。
+   */
+  it('webhook 案例不预填 secret（凭据不给字面量默认值）', () => {
+    expect(TRIGGER_CASES.webhook.triggerDefaults).not.toHaveProperty('secret')
   })
 
   it('triggerTypeLabel 认不出的类型原样返回，绝不吐 undefined 让页面渲染空白', () => {
@@ -401,7 +411,7 @@ describe('buildStarterDsl("case") 端到端组装', () => {
       chat: { type: 'chat', agentId: 'bot' },
       form_event: { type: 'form_event', formCode: 'f', eventType: 'create' },
       schedule: { type: 'schedule', cron: '0 0 2 * * ?' },
-      webhook: { type: 'webhook', path: 'p', authType: 'none' }
+      webhook: { type: 'webhook', path: 'p', authType: 'hmac', secret: 's3cr3t' }
     })[t]
 
   for (const t of ALL_TYPES) {

@@ -139,13 +139,22 @@
         </el-form-item>
         <el-form-item label="鉴权方式" prop="authType">
           <el-select v-model="formData.authType" class="w-full">
-            <el-option label="无（仅靠不可猜的 path）" value="none" />
             <el-option label="HMAC-SHA256 签名" value="hmac" />
             <el-option label="静态令牌 Token" value="token" />
           </el-select>
+          <!--
+            🔴 这里原来还有第三项「无（仅靠不可猜的 path）」，已删除：那句 label 是假话。
+            path 是作者手填的一格，平台不生成随机串，而且它会进日志、进前端 URL、进浏览器历史与代理缓存；
+            而免签的 hook 会以**发布者身份**把请求体一路灌进 state → prompt → BPM formVars。
+            后端两处同族拦截：WorkflowTriggerExtractor（落库前拒）、AgentWebhookTriggerServiceImpl（入站一律拒）。
+          -->
+          <div class="form-tip">
+            入站接口免登录，故必须验签：hmac 校验请求头 X-Webhook-Signature（对原始请求体做 HMAC-SHA256
+            的十六进制串，可带 sha256= 前缀）；token 校验 X-Webhook-Token 与密钥是否一致。
+          </div>
         </el-form-item>
-        <el-form-item v-if="formData.authType !== 'none'" label="验签密钥" prop="secret">
-          <el-input v-model="formData.secret" clearable placeholder="hmac/token 模式必填的密钥" show-password />
+        <el-form-item label="验签密钥" prop="secret">
+          <el-input v-model="formData.secret" clearable placeholder="必填：调用方据此签名 / 携带令牌" show-password />
         </el-form-item>
       </template>
 
@@ -236,7 +245,8 @@ const defaultFormData = (): WorkflowFormData => ({
   eventType: 'create',
   cron: '',
   path: '',
-  authType: 'none',
+  // 🔴 缺省 hmac（原来缺省 'none' 不鉴权，该档已从平台删除，见模板里那段注释）
+  authType: 'hmac',
   secret: '',
   description: ''
 })
@@ -307,8 +317,8 @@ const validateTrigger = (_rule: any, _value: any, callback: (err?: Error) => voi
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(d.path.trim())) {
       return callback(new Error('Path 只能是字母/数字/下划线/连字符（1~64 位，不含斜杠或点）'))
     }
-    if (d.authType !== 'none' && !d.secret?.trim()) {
-      return callback(new Error('hmac/token 模式必须填写验签密钥'))
+    if (!d.secret?.trim()) {
+      return callback(new Error('必须填写验签密钥（webhook 已不支持不鉴权）'))
     }
   }
   callback()
@@ -346,7 +356,7 @@ const collectTrigger = (): WorkflowTriggerMeta => {
         type: 'webhook',
         path: d.path.trim(),
         authType: d.authType,
-        secret: d.authType === 'none' ? undefined : d.secret.trim()
+        secret: d.secret.trim()
       }
     default:
       return { type: 'none' }
@@ -372,7 +382,13 @@ const applyTriggerFromDsl = (dslText: string) => {
     if (short === 'schedule') formData.value.cron = config.cron ?? ''
     if (short === 'webhook') {
       formData.value.path = config.path ?? ''
-      formData.value.authType = config.authType ?? 'none'
+      // 🔴 存量 DSL 可能写着 authType:'none'（该档已删）或压根没这一格。这里归一到 hmac：
+      // 下拉里已经没有 'none' 这一项，不归一的话 el-select 会把裸值当 label 显示，作者看不出自己配错了；
+      // 归一后 secret 为空 → validateTrigger 挡住提交，逼作者补上密钥，正是这条流程该走的补救路径
+      const auth = String(config.authType ?? '')
+        .trim()
+        .toLowerCase()
+      formData.value.authType = auth === 'token' ? 'token' : 'hmac'
       formData.value.secret = config.secret ?? ''
     }
   } catch {

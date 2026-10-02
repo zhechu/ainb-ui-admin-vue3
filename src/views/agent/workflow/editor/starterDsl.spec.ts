@@ -36,14 +36,35 @@ describe('buildTriggerBlock', () => {
     })
   })
 
-  it('webhook：authType 缺省 none、不写 secret；hmac 才带 secret', () => {
+  /**
+   * 🔴 #72：这条原来叫「webhook：authType 缺省 none、不写 secret；hmac 才带 secret」，
+   * 把「缺省即不鉴权」同时写进了**用例标题**和**断言** —— 测试锁死了错误契约，
+   * 于是「单测全绿」反而成了修复的阻力。改契约必须连标题一起改，
+   * 否则下一个人只会照着旧标题把它改回去。
+   */
+  it('webhook：authType 缺省 hmac、secret 无条件写（空也写）；不再有「不鉴权」这一档', () => {
     expect(buildTriggerBlock({ type: 'webhook', path: 'order_hook' })).toEqual({
       type: 'trigger.webhook',
-      config: { path: 'order_hook', authType: 'none' }
+      config: { path: 'order_hook', authType: 'hmac', secret: '' }
     })
     expect(
       buildTriggerBlock({ type: 'webhook', path: 'hook', authType: 'hmac', secret: 's3cr3t' })?.config
     ).toEqual({ path: 'hook', authType: 'hmac', secret: 's3cr3t' })
+    expect(
+      buildTriggerBlock({ type: 'webhook', path: 'hook', authType: 'token', secret: 'tok-1' })?.config
+    ).toEqual({ path: 'hook', authType: 'token', secret: 'tok-1' })
+  })
+
+  /**
+   * 🔴 刻意**不**在前端把 authType:'none' 悄悄改写成 'hmac'：悄悄改写会让作者以为自己配对了，
+   * 正是本模块要消灭的「保存成功但落库的不是你以为的那份」。原样交给后端，
+   * 由 WorkflowTriggerExtractor 那句 WORKFLOW_TRIGGER_CONFIG_INVALID 做唯一权威口径（避免两份校验漂移）。
+   * UI 上这条路径已经走不到（下拉只剩两项、回显时也归一化），本条守的是「别有人日后加个自动改写」。
+   */
+  it('webhook：authType:"none" 原样写进 DSL，不被前端悄悄改写（交给后端权威拒）', () => {
+    expect(
+      buildTriggerBlock({ type: 'webhook', path: 'hook', authType: 'none', secret: 's3cr3t' })?.config
+    ).toEqual({ path: 'hook', authType: 'none', secret: 's3cr3t' })
   })
 
   it('none：返回 undefined（不写 trigger 块）', () => {
