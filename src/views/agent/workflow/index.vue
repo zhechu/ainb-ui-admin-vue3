@@ -235,6 +235,8 @@
     <WorkflowVersionDrawer ref="versionRef" @success="getList" />
     <!-- Req 3：五种触发方式的经典案例参考手册（只看不建，与新增面板里的内联卡片同源） -->
     <TriggerCaseDialog ref="caseRef" />
+    <!-- S4b：发布体检不通过时逐条列出「改哪儿」，与后端闸门同一份判据 -->
+    <PublishGateDialog ref="gateRef" @design="goDesignFromGate" />
   </template>
 
   <!-- ==================== 新增 / 编辑元信息（页内面板） ==================== -->
@@ -255,6 +257,8 @@ import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
 import WorkflowForm from './components/WorkflowForm.vue'
 import TriggerCaseDialog from './editor/components/TriggerCaseDialog.vue'
+import PublishGateDialog from './components/PublishGateDialog.vue'
+import { precheckPublish } from './publishGate'
 import { triggerTypeLabel } from './editor/triggerCases'
 
 defineOptions({ name: 'AgentWorkflow' })
@@ -402,14 +406,51 @@ const handleFormSuccess = async (id?: number, isCreate?: boolean) => {
 const caseRef = ref()
 const openCases = () => caseRef.value?.open()
 
-/** 发布：DRAFT → PUBLISHED */
+/**
+ * 发布：先本地预检，过了才 DRAFT → PUBLISHED
+ *
+ * 🔴 S4b 之后后端发布闸门（`assertPublishable`）会拒掉体检不通过的流程，而那条拒绝文案
+ *    被 axios 拦截器吞成一个 4.5 秒自动消失的通知（台账 #91：`Promise.reject('error')` 是字面量）。
+ *    所以「逐条说清改哪儿」只能在这里、发请求之前做完 —— 预检不是省一次往返的优化，是唯一可读的通道。
+ */
+const gateRef = ref()
+const gateRow = ref<AgentWorkflowDefVO>()
 const handlePublish = async (row: AgentWorkflowDefVO) => {
   try {
     await message.confirm(`确认发布流程「${row.name || row.code}」(v${row.version})？发布后可被执行。`)
+  } catch {
+    return // 用户取消
+  }
+  // 预检放在确认之后：/validate 含最多 15 秒的 infra/bpm 只读干跑，放前面会让点了取消的人也白等一趟。
+  // 🔴 必须另打一次 GET /get?id：分页接口刻意把 dsl 置成 null（一份 DSL 几十 KB，一页 20 行就是兆级负载），
+  //    row.dsl 是空的，拿它去预检会永远判成「流程内容为空」。
+  const verdict = await precheckPublish(
+    async () => (await AgentWorkflowApi.getDef(row.id)).dsl,
+    (dsl) => AgentWorkflowApi.validateDsl(dsl)
+  )
+  if (verdict.action === 'block') {
+    gateRow.value = row
+    gateRef.value?.open(verdict.errors, verdict.warnings)
+    return
+  }
+  if (verdict.action === 'publish-blind') {
+    // 降级照发：预检这一层坏了（多半是 403，台账 #70）不该变成一道没人授权过的新闸门，
+    // 后端闸门仍是权威。但要说出来 —— 万一真被拒了，用户至少知道「刚才没预检成」，
+    // 而不是对着一条读不到内容的通知发愣。
+    message.warning(`${verdict.reason}，将直接尝试发布；若被拒请到设计器里点「体检」看具体原因`)
+  } else if (verdict.warnings.length) {
+    message.warning(`体检通过，但有 ${verdict.warnings.length} 条建议调整`)
+  }
+  try {
     await AgentWorkflowApi.publishDef(row.id)
     message.success('发布成功')
     await getList()
   } catch {}
+}
+
+/** 拦截清单上的「去设计器修改」：跳那条流程的整页设计器，页内体检面板会再列一次同样的清单 */
+const goDesignFromGate = () => {
+  if (gateRow.value) openEditor(gateRow.value)
 }
 
 /** 停用：PUBLISHED → DISABLED */

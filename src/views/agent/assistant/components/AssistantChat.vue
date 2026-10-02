@@ -319,6 +319,11 @@
         </div>
       </div>
     </div>
+
+    <!-- S4b：「确认并运行」被发布闸门拦下时，逐条列出要改什么。
+         🔴 挂在根节点下而不是卡片里：卡片在 v-for 内，一次只会有一条流程在确认，
+            挂一份全局的比每条消息各挂一个对话框省得多，且 el-dialog 本来就 append-to-body。 -->
+    <PublishGateDialog ref="gateRef" @design="goDesignFromGate" />
   </div>
 </template>
 
@@ -349,6 +354,8 @@ import {
   ensureLoaded as ensureNameCatalog,
   nameResolver
 } from '@/views/agent/workflow/nameCatalog'
+import PublishGateDialog from '@/views/agent/workflow/components/PublishGateDialog.vue'
+import { precheckPublish } from '@/views/agent/workflow/publishGate'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
 import WorkflowDraftCard from './WorkflowDraftCard.vue'
@@ -1448,23 +1455,65 @@ const fillManifestByExecution = async (
   }
 }
 
+/** 🔴 S4b 发布闸门的界面出口：聊天里只有一份，挂在根节点下（见模板注释） */
+const { push } = useRouter()
+const gateRef = ref()
+/** 被拦下的那条草稿的 defId，供「去设计器修改」跳转用；设计器认的是 query.id */
+const gateDefId = ref<number>()
+
 /**
- * 确认并运行：先发布（DRAFT→PUBLISHED，幂等），再跑既有 run-stream
+ * 确认并运行：先体检、再发布（DRAFT→PUBLISHED，幂等），最后跑既有 run-stream
  *
  * 刻意不复用 hitl 的挂起/恢复 —— 那套绑定「活的执行 + DB checkpoint 线程」，
  * 与聊天里一张轻确认卡不匹配。这里走无状态确认：发布是幂等的纯状态跃迁，运行是一次全新执行。
  */
 const handleConfirmWorkflow = async (item: any) => {
   if (!item.workflowCode) return
+  // 🔴 发布前先自己体一遍（S4b）。后端闸门确实会拒，但**拒回来的那段文字到不了这里**：
+  //    axios 拦截器把业务错误 reject 成字面量 'error'（台账 #91），`e.message` 恒为 undefined，
+  //    所以原来那句 catch 恒等于「发布失败：未知错误」—— 既没说原因，也没说去哪儿看，
+  //    而这条路径上的草稿恰恰是 LLM 一次生成的、最可能不过体检的那种。
+  //    这个预检因此不是「优化」，它是这条路径唯一能把「改哪儿」说给人听的通道。
+  // ⚠️ 但 /validate 要 agent:workflow:query，那是这条路径今天没有的一个权限要求，
+  //    403 时按 publish-blind 降级照发（见 publishGate.ts），修 #70 时两个权限要一起给。
+  const verdict = await precheckPublish(
+    async () => {
+      // 🔴 抛而不是返回 null：defId 缺失时我们**不知道** DSL 是空的，
+      //    返回 null 会被判成「流程内容为空」—— 一句错的诊断比一句「没体成」更难查。
+      //    抛出去 ⟹ publish-blind ⟹ 照发，让后端闸门去做唯一的真判据。
+      if (!item.workflowDefId) throw new Error('missing workflowDefId')
+      return (await AgentPlannerApi.getWorkflowDraft(item.workflowDefId)).dsl
+    },
+    (dsl) => AgentWorkflowApi.validateDsl(dsl)
+  )
+  if (verdict.action === 'block') {
+    gateDefId.value = item.workflowDefId
+    gateRef.value?.open(verdict.errors, verdict.warnings)
+    return
+  }
+  if (verdict.action === 'publish-blind') {
+    message.warning(`${verdict.reason}，将直接尝试发布`)
+  }
   try {
     const published = await AgentPlannerApi.publishWorkflow(item.workflowCode)
     item.defStatus = published.status || 'PUBLISHED'
     item.cardStatus = 'published'
-  } catch (e: any) {
-    message.error('发布失败：' + (e?.message ?? '未知错误'))
+  } catch {
+    // 🔴 不再拼 `e.message`（#91：恒为 undefined）。给一条走得通的路，比给一句假的错误信息有用：
+    //    闸门拒了而预检没拦住，多半是预检自己没体成（上面那句 warning 已经说过），
+    //    或者是预检与发布之间有人改了库 —— 两种都得去列表页那套完整体检里才看得清。
+    message.error(
+      '发布被后端拒绝。请到「流程编排」列表页找到这条流程，点「设计」→「体检」查看逐条原因。'
+    )
     return
   }
   await runWorkflow(item)
+}
+
+const goDesignFromGate = () => {
+  if (gateDefId.value) {
+    push({ name: 'AgentWorkflowEditor', query: { id: String(gateDefId.value) } })
+  }
 }
 
 /**
