@@ -16,6 +16,13 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *
  * 前置：后端 48080（已 apply xpy-2026-09-29-agent-prompt-template.sql 并重启）+ 前端 dev server。
  * 数据自净：管理页用例建一条 e2e 专用模板、末尾删除。
+ *
+ * 🔴 2026-10-03（S7 用例库）改过本 spec 的定位方式，原因不是「顺手清理」：
+ *   S7 给模板表最左边加了一列「展开用例子表」，所有列的位置一次性右移一位，
+ *   原先按 `td:nth-child(n)` 写的断言会**静默指到隔壁列**（第 3 列从「分类」变成「模板名称」）——
+ *   有的照样通过（断言的是文本包含，隔壁列也有中文），有的报一个指向错误列的失败。
+ *   同一次改动还给每行加了可展开的子表，子表也是 el-table，全局 `.el-table__row` 会连它一起命中。
+ *   两处都换成 data-testid / row-class-name 定位，从此不随列序与嵌套层级漂。
  */
 
 const LIST_URL = /\/ai\/agent\/prompt-template$/
@@ -23,6 +30,18 @@ const NAME_PREFIX = 'e2e模板-'
 /** 种子数据里一定存在的两条（xpy-2026-09-29-agent-prompt-template.sql 每个租户各插一份） */
 const SEED_NAME = '这个功能在哪配'
 const SEED_CATEGORY = '平台使用'
+
+/**
+ * 外层模板表的行。
+ *
+ * 🔴 不能写全局 `.el-table__row`：展开的用例子表也是 el-table，会被一并命中。
+ *   届时「按名称过滤后应只剩 1 行」这类计数断言会在某个管理员展开过子表之后莫名变红，
+ *   而红的原因指向另一张表，极难查。外层表挂了 row-class-name="tpl-row"，子表没有。
+ */
+const tplRows = (page: Page) => page.locator('tr.tpl-row')
+
+/** 行内某个单元格：用 data-testid 而不是 td:nth-child(n)，理由见文件头注释 */
+const cell = (row: Locator, testid: string) => row.locator(`[data-testid="${testid}"]`)
 
 const formItem = (scope: Locator | Page, label: string): Locator =>
   scope.locator(`.el-form-item:has(.el-form-item__label:text-is("${label}"))`).first()
@@ -49,29 +68,28 @@ test.describe('提示词模板（管理页）', () => {
     await expect(page.getByText('提示词模板', { exact: true }).first()).toBeVisible({ timeout: 15000 })
 
     // ---------- 种子数据在列表里，且分页渲染 ----------
-    await expect(page.locator('.el-table__row').first()).toBeVisible({ timeout: 15000 })
-    await expect(page.locator('.el-table__row').filter({ hasText: SEED_NAME }).first()).toBeVisible()
+    await expect(tplRows(page).first()).toBeVisible({ timeout: 15000 })
+    await expect(tplRows(page).filter({ hasText: SEED_NAME }).first()).toBeVisible()
     await expect(page.locator('.el-pagination')).toBeVisible()
     await expect(page.locator('.el-pagination__total')).toContainText(/共\s*\d+\s*条/)
 
-    // ---------- 占位符列：正文里的 {{x}} 被拆出来单独展示 ----------
-    // 列序：1 序号 / 2 模板名称 / 3 分类 / 4 正文 / 5 占位符 / 6 排序 / 7 状态 / 8 创建时间 / 9 操作
-    const seedRow = page.locator('.el-table__row').filter({ hasText: SEED_NAME }).first()
-    await expect(seedRow.locator('td:nth-child(3)')).toContainText(SEED_CATEGORY)
-    const seedPlaceholders = await seedRow.locator('td:nth-child(5) .el-tag').allInnerTexts()
+    // ---------- 分类 / 占位符 / 状态三列（按 data-testid 定位，不按列序） ----------
+    const seedRow = tplRows(page).filter({ hasText: SEED_NAME }).first()
+    await expect(cell(seedRow, 'tpl-category')).toContainText(SEED_CATEGORY)
+    const seedPlaceholders = await cell(seedRow, 'tpl-placeholders').locator('.el-tag').allInnerTexts()
     expect(seedPlaceholders.map((p) => p.trim()), '种子模板「这个功能在哪配」应识别出 {{想做的事}}').toContain(
       '想做的事'
     )
-    await expect(seedRow.locator('td:nth-child(7)')).toContainText('开启')
+    await expect(cell(seedRow, 'tpl-status')).toContainText('开启')
 
     // ---------- 搜索：按名称过滤 ----------
     await formItem(page, '名称').locator('input').fill(SEED_NAME)
     await page.getByRole('button', { name: /搜\s*索/ }).click()
     await expect
-      .poll(async () => page.locator('.el-table__row').count(), { timeout: 15000 })
+      .poll(async () => tplRows(page).count(), { timeout: 15000 })
       .toBe(1)
     await page.getByRole('button', { name: /重\s*置/ }).click()
-    await expect(page.locator('.el-table__row').filter({ hasText: SEED_NAME }).first()).toBeVisible({
+    await expect(tplRows(page).filter({ hasText: SEED_NAME }).first()).toBeVisible({
       timeout: 15000
     })
 
@@ -89,7 +107,7 @@ test.describe('提示词模板（管理页）', () => {
     }
 
     // ---------- 需求7：新增走【页内面板】，不是弹窗 ----------
-    await page.getByRole('button', { name: '新增', exact: true }).first().click()
+    await page.locator('[data-testid="tpl-create"]').click()
     await expect(page.locator('.panel-title').filter({ hasText: '新增模板' })).toBeVisible({ timeout: 15000 })
     await expect(page.locator('.el-dialog')).toHaveCount(0)
     // 右侧那块「聊天面板里的样子」实时预览——它不是装饰，是让管理员存之前就看到用户会看到什么
@@ -118,12 +136,12 @@ test.describe('提示词模板（管理页）', () => {
     await expect(page.locator('.panel-title')).toHaveCount(0, { timeout: 25000 })
 
     // ---------- 新模板出现在列表 ----------
-    const row = page.locator('.el-table__row').filter({ hasText: name }).first()
+    const row = tplRows(page).filter({ hasText: name }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
-    await expect(row.locator('td:nth-child(5) .el-tag')).toHaveCount(2)
+    await expect(cell(row, 'tpl-placeholders').locator('.el-tag')).toHaveCount(2)
 
     // ---------- 编辑：正文回显、改完存回 ----------
-    await row.getByRole('button', { name: '编辑' }).click()
+    await row.locator('[data-testid="tpl-edit"]').click()
     await expect(page.locator('.panel-title').filter({ hasText: '编辑模板' })).toBeVisible({ timeout: 15000 })
     await expect(formItem(page, '模板名称').locator('input')).toHaveValue(name)
     // 🔴 正文必须原样回显：回显不出来就等于「存了但看不见」，用户会以为没存上
@@ -133,15 +151,16 @@ test.describe('提示词模板（管理页）', () => {
     await formItem(page, '模板正文').locator('textarea').fill('改后正文 {{新占位符}}')
     await page.locator('.panel-header').getByRole('button', { name: /保\s*存/ }).click()
     await expect(page.locator('.panel-title')).toHaveCount(0, { timeout: 25000 })
-    await expect(page.locator('.el-table__row').filter({ hasText: name }).first().locator('td:nth-child(5)')).toContainText(
-      '新占位符',
-      { timeout: 20000 }
-    )
+    // 🔴 断言打在【占位符】这一列而不是【正文】列：正文里本来就写着 "{{新占位符}}" 这串字，
+    //    拿正文列断言的话，即使占位符识别整个坏掉（列里显示「无」）这条也照样绿
+    await expect(
+      cell(tplRows(page).filter({ hasText: name }).first(), 'tpl-placeholders')
+    ).toContainText('新占位符', { timeout: 20000 })
 
     // ---------- 删除（数据自净） ----------
-    await page.locator('.el-table__row').filter({ hasText: name }).first().getByRole('button', { name: '删除' }).click()
+    await tplRows(page).filter({ hasText: name }).first().locator('[data-testid="tpl-delete"]').click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
-    await expect(page.locator('.el-table__row').filter({ hasText: name })).toHaveCount(0, { timeout: 25000 })
+    await expect(tplRows(page).filter({ hasText: name })).toHaveCount(0, { timeout: 25000 })
   })
 })
 

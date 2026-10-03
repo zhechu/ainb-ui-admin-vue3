@@ -241,12 +241,23 @@
               <Icon icon="ep:collection" class="mr-4px" /> 模板
             </el-button>
           </template>
-          <div v-loading="templateLoading" class="agent-tpl-body">
+          <div v-loading="templateLoading || caseLoading" class="agent-tpl-body">
+            <!--
+              S7：模板 / 示例 两个页签。
+              🔴 为什么是页签而不是把示例挂在每条模板下面：这个 popover 只有 300~420px 宽、
+                 40 条模板已经要滚六七屏，再给每条塞一行可展开的示例，找一条模板的成本翻倍。
+                 页签把「我想问点什么」（模板）和「别人是怎么问的」（示例）分成两个动作，
+                 各自都能一屏扫完。分组标题仍用模板名，两者的对应关系没丢。
+            -->
+            <el-radio-group v-model="tplTab" size="small" class="mb-8px w-full" @change="onTplTabChange">
+              <el-radio-button value="template" class="flex-1">模板</el-radio-button>
+              <el-radio-button value="case" class="flex-1" data-testid="tpl-tab-case">示例</el-radio-button>
+            </el-radio-group>
             <el-input
               v-model="templateKeyword"
               size="small"
               clearable
-              placeholder="搜名称 / 正文 / 分类"
+              :placeholder="tplTab === 'template' ? '搜名称 / 正文 / 分类' : '搜标题 / 正文 / 所属模板'"
               class="mb-8px"
             >
               <template #prefix>
@@ -259,23 +270,55 @@
                  小屏（悬浮球抽屉）也不会顶出屏幕。空间不够时 popper 会自己翻到下方，不用管。
             -->
             <el-scrollbar max-height="min(56vh, 520px)">
-              <div v-if="!groupedTemplates.length" class="agent-tpl-empty">
-                {{ templateList.length ? '没有匹配的模板' : '还没有可用的模板，管理员可在「提示词模板」页新建' }}
-              </div>
-              <div v-for="g in groupedTemplates" :key="g.category" class="agent-tpl-group">
-                <div class="agent-tpl-group-title">{{ g.category }}</div>
-                <div
-                  v-for="t in g.items"
-                  :key="t.id"
-                  class="agent-tpl-item"
-                  @click="applyTemplate(t)"
-                >
-                  <div class="agent-tpl-item-name">{{ t.name }}</div>
-                  <div v-if="t.description" class="agent-tpl-item-desc">{{ t.description }}</div>
+              <!-- ==================== 模板页签 ==================== -->
+              <template v-if="tplTab === 'template'">
+                <div v-if="!groupedTemplates.length" class="agent-tpl-empty">
+                  {{ templateList.length ? '没有匹配的模板' : '还没有可用的模板，管理员可在「提示词模板」页新建' }}
                 </div>
-              </div>
+                <div v-for="g in groupedTemplates" :key="g.category" class="agent-tpl-group">
+                  <div class="agent-tpl-group-title">{{ g.category }}</div>
+                  <div
+                    v-for="t in g.items"
+                    :key="t.id"
+                    class="agent-tpl-item"
+                    data-testid="tpl-item"
+                    @click="applyTemplate(t)"
+                  >
+                    <div class="agent-tpl-item-name">{{ t.name }}</div>
+                    <div v-if="t.description" class="agent-tpl-item-desc">{{ t.description }}</div>
+                  </div>
+                </div>
+              </template>
+              <!-- ==================== 示例页签 ==================== -->
+              <template v-else>
+                <div v-if="!groupedCases.length" class="agent-tpl-empty">
+                  {{ caseList.length ? '没有匹配的示例' : '还没有可用的示例，管理员可在「提示词模板」页展开某条模板维护' }}
+                </div>
+                <div v-for="g in groupedCases" :key="g.templateId" class="agent-tpl-group">
+                  <div class="agent-tpl-group-title">{{ g.templateName }}</div>
+                  <div
+                    v-for="c in g.items"
+                    :key="c.id"
+                    class="agent-tpl-item"
+                    data-testid="case-item"
+                    :data-case-id="c.id"
+                    @click="applyCase(c)"
+                  >
+                    <div class="agent-tpl-item-name">{{ c.title }}</div>
+                    <!-- 🔴 摘要只显示第一行：完整正文点进去就在输入框里了，
+                         这里全展开会把 40 条示例变成一篇没法扫读的文章 -->
+                    <div class="agent-tpl-item-desc">{{ firstLineOf(c.content) }}</div>
+                  </div>
+                </div>
+              </template>
             </el-scrollbar>
-            <div class="agent-tpl-foot">点一条模板即插入到输入框，占位符替换后再发送</div>
+            <div class="agent-tpl-foot">
+              {{
+                tplTab === 'template'
+                  ? '点一条模板即插入到输入框，占位符替换后再发送'
+                  : '点一条示例即插入到输入框，正文已填好，可以直接发'
+              }}
+            </div>
           </div>
         </el-popover>
         <span class="text-12px text-[var(--el-text-color-secondary)] flex-shrink-0">Agent</span>
@@ -343,6 +386,10 @@ import {
   UNCATEGORIZED,
   type AgentPromptTemplateVO
 } from '@/api/agent/promptTemplate'
+import {
+  AgentPromptTemplateCaseApi,
+  type AgentPromptTemplateCaseVO
+} from '@/api/agent/promptTemplateCase'
 import { AgentPlannerApi } from '@/api/agent/planner'
 import type { AgentWorkflowDraftVO } from '@/api/agent/planner'
 import { AgentWorkflowApi } from '@/api/agent/workflow'
@@ -548,6 +595,18 @@ const templateLoading = ref(false)
 const templateKeyword = ref('')
 const templateList = ref<AgentPromptTemplateVO[]>([])
 
+/**
+ * 弹层当前页签：template=模板骨架（要自己填占位符），case=填好的示例（可直接发）
+ *
+ * <p>S7 加第二个页签，而不是把示例挂在每条模板下面：popover 只有 300~420px 宽、
+ * 40 条模板已经要滚六七屏，再给每条塞一行可展开的示例，找一条模板的成本翻倍。
+ */
+const tplTab = ref<'template' | 'case'>('template')
+const caseLoading = ref(false)
+const caseList = ref<AgentPromptTemplateCaseVO[]>([])
+/** 本次弹层内已经拉过示例：来回切页签不必重复请求 */
+const caseLoaded = ref(false)
+
 const loadTemplates = async () => {
   templateLoading.value = true
   try {
@@ -565,6 +624,32 @@ const loadTemplates = async () => {
 onMounted(loadTemplates)
 
 /**
+ * 拉「示例」页签的数据。失败处置与 {@link loadTemplates} 同款：静默、且保留旧列表。
+ *
+ * <p>🔴 懒加载 —— 只在第一次切到「示例」时才请求。绝大多数用户只点模板，
+ *    为他们在 onMounted 上多挂一个请求不值当；这两个列表都只有几十行，切过去再拉感知不到延迟。
+ */
+const loadCases = async () => {
+  caseLoading.value = true
+  try {
+    caseList.value = (await AgentPromptTemplateCaseApi.getSimpleCaseList()) ?? []
+    caseLoaded.value = true
+  } catch {
+    // 同 loadTemplates：这个端点也是 hasAnyPermissions('agent:assistant:use',
+    // 'agent:prompt-template:query')，走到这一支多半是网络抖动或后端还没重启（新端点未注册）。
+    // 示例只是便利品，不该弹错打断对话；也刻意不清空，清空会被读成「示例被谁删了」
+  } finally {
+    caseLoading.value = false
+  }
+}
+
+/** 切页签：清掉上一个页签的搜索词（两个页签的匹配字段不同，留着会看起来像「什么都没搜却空了」） */
+const onTplTabChange = () => {
+  templateKeyword.value = ''
+  if (tplTab.value === 'case' && !caseLoaded.value) loadCases()
+}
+
+/**
  * 每次展开都重取一遍
  *
  * <p>🔴 不能只在 onMounted 拉：管理员常在另一个标签页存完模板就切回来点按钮，
@@ -574,6 +659,10 @@ onMounted(loadTemplates)
 const openTemplatePopover = () => {
   templatePopoverVisible.value = true
   templateKeyword.value = ''
+  // 🔴 回到「模板」页签并作废示例缓存：按钮上写的就是「模板」，点开却停在上次看的示例会像跳错了地方；
+  //    作废缓存则与上面重取模板同一个理由 —— 管理员可能刚在另一页存完示例
+  tplTab.value = 'template'
+  caseLoaded.value = false
   loadTemplates()
 }
 
@@ -622,26 +711,70 @@ const groupedTemplates = computed(() => {
 })
 
 /**
- * 把模板正文插入输入框（不发送）
+ * 「示例」页签：按所属模板分组（组内沿用后端 templateId + sort + id 的升序）
+ *
+ * <p>🔴 组的先后按 {@link templateList} 的顺序出，不自己再排一遍：模板列表已经是
+ * 「分类 + 排序」的口径，两个页签的分组顺序一致，用户切过来才不会觉得东西被重新洗过。
+ * <p>🔴 在 templateList 里找不到 templateId 的用例整组丢掉。后端 /simple-list 本就只返回
+ * 「用例开启**且它的模板也开启**」的行，出现落单只可能是两次请求之间那条模板被下架了 ——
+ * 此时显示成「未知模板」比不显示更让人困惑，而且点进去插入的正文对应的是一条已经不再引导的路。
+ */
+const groupedCases = computed(() => {
+  const kw = templateKeyword.value.trim().toLowerCase()
+  const nameOf = new Map(templateList.value.map((t) => [t.id, t.name ?? '']))
+  const byTemplate = new Map<number, AgentPromptTemplateCaseVO[]>()
+  for (const c of caseList.value) {
+    const tplName = nameOf.get(c.templateId)
+    if (tplName === undefined) continue
+    if (kw) {
+      const hit =
+        (c.title ?? '').toLowerCase().includes(kw) ||
+        (c.content ?? '').toLowerCase().includes(kw) ||
+        tplName.toLowerCase().includes(kw)
+      if (!hit) continue
+    }
+    if (!byTemplate.has(c.templateId)) byTemplate.set(c.templateId, [])
+    byTemplate.get(c.templateId)!.push(c)
+  }
+  return templateList.value
+    .filter((t) => byTemplate.has(t.id))
+    .map((t) => ({ templateId: t.id, templateName: t.name, items: byTemplate.get(t.id)! }))
+})
+
+/**
+ * 示例条目上那行摘要，只取正文的第一个非空行
+ *
+ * <p>正文常常是多段的，整段塞进一行会被 ellipsis 截成看不出所以然的前二十个字；
+ * 完整正文点一下就在输入框里了，这里只需要让人认出「这条像我的场景」。
+ */
+const firstLineOf = (content?: string): string =>
+  (content ?? '').split('\n').find((l) => l.trim())?.trim() ?? ''
+
+/**
+ * 把一段文本插入输入框（**不发送**）。模板与示例共用这一条路径。
  *
  * <p>🔴 追加而不是覆盖：用户可能已经打了一半，直接赋值会把他的字吃掉。
  * <p>🔴 插完只聚焦、不发送：模板里的 {{占位符}} 需要用户替换，替他发出去等于让模型
  * 照字面量回答「{{订单号}}」——不报错，只是答非所问，是最难查的那类问题。
+ * <p>🔴 共用一个函数而不是两边各写一份：字数上限、追加语义、光标落点这三件事漂了任何一件，
+ * 表现都是「模板能插、示例插不进去」这类只在其中一条路径上复现的怪事。
+ *
+ * @returns 是否真的插进去了（空正文或超上限时返回 false，调用方据此决定要不要接着提示占位符）
  */
-const applyTemplate = (tpl: AgentPromptTemplateVO) => {
-  const text = tpl.content ?? ''
+const insertIntoInput = (raw: string | undefined, label: string): boolean => {
+  const text = raw ?? ''
   if (!text.trim()) {
-    message.warning('这条模板的正文是空的，请到「提示词模板」里补上')
-    return
+    message.warning(`这条${label}的正文是空的，请到「提示词模板」里补上`)
+    return false
   }
   const current = inputText.value ?? ''
   const merged = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${text}` : text
   if (merged.length > INPUT_MAX_LENGTH) {
     message.warning(
       `插入后会达到 ${merged.length} 字，超过输入框 ${INPUT_MAX_LENGTH} 字上限。` +
-        `请先清空输入框，或到「提示词模板」里精简这条模板`
+        `请先清空输入框，或到「提示词模板」里精简这条${label}`
     )
-    return
+    return false
   }
   inputText.value = merged
   templatePopoverVisible.value = false
@@ -653,11 +786,37 @@ const applyTemplate = (tpl: AgentPromptTemplateVO) => {
       el.setSelectionRange(el.value.length, el.value.length)
     }
   })
+  return true
+}
+
+const applyTemplate = (tpl: AgentPromptTemplateVO) => {
+  const text = tpl.content ?? ''
+  if (!insertIntoInput(text, '模板')) return
   const phs = placeholdersOf(text)
   if (phs.length) {
     const shown = phs.slice(0, 3).join('、')
     message.info(
       `已插入，还有 ${phs.length} 处占位符要替换：${shown}${phs.length > 3 ? ' 等' : ''}`
+    )
+  }
+}
+
+/**
+ * 把一条示例的正文插入输入框（不发送）
+ *
+ * <p>🔴 占位符提示与模板**刻意不同措辞**。示例正文本该是填好的，但里面仍可能合法地出现
+ * {{...}}：工作流 DSL 的取值表达式就长这样（{{$.input.tableName}}），一条教用户问 DSL 的示例
+ * 必须能把它写出来。所以这里不说「要替换」（对 DSL 示例是错的指控），只说「确认一下」。
+ * 反过来也不能干脆不提示：一条没填完的示例被原样发出去，模型会照字面量回答「{{订单号}}」，
+ * 不报错、只是答非所问。多一条可以忽略的提示，比这个便宜。
+ */
+const applyCase = (c: AgentPromptTemplateCaseVO) => {
+  const text = c.content ?? ''
+  if (!insertIntoInput(text, '示例')) return
+  const phs = placeholdersOf(text)
+  if (phs.length) {
+    message.info(
+      `已插入。正文里还有 ${phs.length} 处 {{…}}，发出去前确认一下是该填的值、还是要问的写法`
     )
   }
 }
