@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
 
 /**
@@ -25,8 +25,19 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *   写死的话，将来有人把「查询表单列表」改成「表单字段清单」，这条用例会红——
  *   而 L1 一点没坏。要红的是「展示名等于机器键」（三级回落失效），那才是本刀要守的。
  *
- * 前置：后端 48080 + 前端 dev server 同时在跑；库里至少有一条已发布流程（sub_workflow 那一格要用）。
- * 数据自净：beforeAll 建的草稿在 afterAll 删除（DRAFT 可删）。
+ * 前置：后端 48080 + 前端 dev server 同时在跑。
+ * 🔴 **「库里至少有一条已发布流程」不再是硬前置**（2026-10-03 改）：原先它断在 `beforeAll` 里，
+ *   而 `AgentNameCatalogServiceImpl#buildWorkflows` 只读 `listPublishedSimple()` ⟹ 清库之后
+ *   （台账 #126）目录里 `workflows` 恒为空，`beforeAll` 当场炸，4 条用例变成「1 failed + 3 did not run」——
+ *   其中「设计器下拉」与「G7 目录失败要可见」两条**压根不需要**那个前置，却被一起带走了。
+ *   现在的处置：目录里真有已发布流程 ⟹ 照旧用真的（后端那半边也被验到）；一条都没有 ⟹ 用
+ *   `page.route` 把目录响应里**追加**一条合成流程（其余字段仍是 `route.fetch()` 拿回来的真响应），
+ *   于是前端那半边（resolver 把 `workflowId` 翻成「中文名（机器键）」）在空库上也照样验得到。
+ *   ⚠️**合成那条不验后端**：`listPublishedSimple()` 返回什么、`workflows` 数组怎么合流，空库时
+ *   本 spec 一律不覆盖，跑的时候会打一行「合成目录」的告示，别把绿读成「后端也验过了」。
+ *   🔴**刻意不走「自己建一条并发布」**：`deleteDef` 只放 DRAFT，PUBLISHED 没有任何接口路径能删
+ *   ⟹ 每跑一次就往库里永久留一行，正是 #126 刚清掉的那种脏数据。
+ * 数据自净：beforeAll 建的草稿在 afterAll 删除（DRAFT 可删）；合成流程只活在路由响应里，不落库。
  */
 
 const TS = Date.now().toString().slice(-8)
@@ -54,9 +65,24 @@ let defId: number
 /** form_list 的中文展示名，从目录现读（见文件头「不写死」的理由） */
 let toolLabel: string
 let toolGroup: string
-/** 拿库里现成的一条已发布流程当 sub_workflow 的目标，省掉「再建一条并发布」的前置与清理 */
+/**
+ * sub_workflow 那一格的目标流程 code / 中文名。
+ * ~~拿库里现成的一条已发布流程当目标，省掉「再建一条并发布」的前置与清理~~
+ * 🔴 有现成的就用现成的（后端那半边一并验到）；一条都没有就退回**合成**那条，见 `syntheticSub`。
+ *    「省掉前置与清理」这半句仍然成立 —— 合成那条只活在路由响应里，压根不落库。
+ */
 let subCode: string
 let subName: string
+/**
+ * `true` = 库里一条已发布流程都没有 ⟹ `subCode`/`subName` 是合成的，
+ * 需要 sub_workflow 那两条用例先 `page.route` 把它追加进目录响应。
+ * 🔴 它同时是** coverage 的告示牌**：为真时后端那半边（`listPublishedSimple()` → `workflows`）
+ *    本 spec 一律没验，两条用例会各打一行说明，不许把绿读成「后端也过了」。
+ */
+let syntheticSub = false
+/** 合成目标用的 code / 名。刻意与 WF_CODE 不同名，免得在画布上分不清哪格是哪格 */
+const SYNTHETIC_SUB_CODE = `e2e_synth_sub_${TS}`
+const SYNTHETIC_SUB_NAME = `E2E合成子流程${TS}`
 /** RISKY_TOOL_KEY 的展示名与风险描述（色点的 title 就是拿 riskDescription 拼的） */
 let riskyLabel: string
 let riskyDesc: string
@@ -126,6 +152,35 @@ function sseBody(): string {
   return events.map((data) => `data: ${JSON.stringify({ code: 0, data })}\n\n`).join('')
 }
 
+/**
+ * 合成目录 route：拿 `route.fetch()` 的真响应，只在 `data.workflows` 里**追加**一条合成子流程，
+ * 其余字段原样透传 —— 前端 resolver 那半边（把 workflowId 翻成「中文名（机器键）」）空库上照样验得到。
+ * 🔴 它**不造假后端**：`listPublishedSimple()` 真返回什么，本 spec 一概不验（见文件头）。
+ * 🔴 只在本用例自己的 page 上挂，不进 beforeAll —— 这样 #4/G7 那条 403 路由才不会被它污染。
+ */
+async function routeSyntheticCatalog(page: Page): Promise<void> {
+  await page.route('**/agent/workflow-def/name-catalog', async (route) => {
+    const resp = await route.fetch()
+    const text = await resp.text()
+    let payload: { code: number; data?: { workflows?: { code: string; name: string }[] } | null }
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      // 非 JSON 响应（不该发生）：原样透传，别在合成逻辑里再添一个失败面
+      await route.fulfill({ status: resp.status(), headers: resp.headers(), body: text })
+      return
+    }
+    if (payload?.code !== 0 || !payload.data) {
+      // 业务码非 0 或没 data：目录本来就是坏的，原样透传（G7 那条用例走的是另一个 route，不经过这里）
+      await route.fulfill({ status: resp.status(), headers: resp.headers(), body: text })
+      return
+    }
+    payload.data.workflows = payload.data.workflows ?? []
+    payload.data.workflows.push({ code: SYNTHETIC_SUB_CODE, name: SYNTHETIC_SUB_NAME })
+    await route.fulfill({ json: payload })
+  })
+}
+
 test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草稿卡三处都出中文', () => {
   test.setTimeout(180_000)
 
@@ -177,9 +232,19 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     expect(risky!.requireConfirm, `${RISKY_TOOL_KEY} 不再 requireConfirm，色点 title 的后半句前提不成立`).toBe(true)
 
     const wf0 = cat.data?.workflows?.[0]
-    expect(wf0, '库里一条已发布流程都没有，sub_workflow 那一格没法验（先发布任意一条流程再跑）').toBeTruthy()
-    subCode = wf0!.code
-    subName = wf0!.name || subCode
+    if (wf0) {
+      // 有现成的已发布流程：用它，后端 `listPublishedSimple()` 那半边一并验到
+      subCode = wf0.code
+      subName = wf0.name || subCode
+    } else {
+      // 空库：退回合成目标。合成那条只活在 page.route 的响应里（见文件头），不落库。
+      syntheticSub = true
+      subCode = SYNTHETIC_SUB_CODE
+      subName = SYNTHETIC_SUB_NAME
+      console.log(
+        `[display-name] 目录里没有已发布流程：sub_workflow 那一格退回合成目标 ${SYNTHETIC_SUB_CODE}，后端半边未覆盖`
+      )
+    }
 
     const created = (await (
       await request.post(`${API_BASE_URL}/agent/workflow-def/create`, {
@@ -201,6 +266,10 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
   })
 
   test('只读画布：节点摘要出「中文名（机器键）」，工具与子流程两格都翻译到', async ({ page }) => {
+    if (syntheticSub) {
+      await routeSyntheticCatalog(page)
+      console.log('[display-name] 只读画布：sub_workflow 用合成目录，后端半边未覆盖')
+    }
     await login(page)
     await gotoWithAuth(page, '/ai/agent/workflow')
 
@@ -305,6 +374,10 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     await page.route('**/agent/assistant/send-stream', (route) =>
       route.fulfill({ status: 200, contentType: 'text/event-stream', body: sseBody() })
     )
+    if (syntheticSub) {
+      await routeSyntheticCatalog(page)
+      console.log('[display-name] 聊天草稿卡：sub_workflow 用合成目录，后端半边未覆盖')
+    }
 
     await login(page)
     await gotoWithAuth(page, '/ai/agent/assistant')
