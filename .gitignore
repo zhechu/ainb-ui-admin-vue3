@@ -14,3 +14,5 @@ output/
 .playwright-cli/
 test-results/
 playwright-report/
+# T1/T2 真发矩阵的人工评审证据（每轮重新生成，见 prompt-template-chat-matrix.spec.ts）
+_evidence/
