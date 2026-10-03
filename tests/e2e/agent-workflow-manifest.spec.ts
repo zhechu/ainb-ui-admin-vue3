@@ -251,19 +251,15 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     const card = page.getByTestId('designer-manifest')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // 🔴 toast 不许在清单干跑被拒时还说「没有发现问题」：那会和卡片里的红色「干跑不通过」
-    //    当面对质，而用户会信 toast 不信卡片 —— 清单从此没人看。warning 型是这条的强制点
+    // 🔴 toast 不许在清单干跑被拒时还说「没有发现问题」：干跑被拒时 passed 恒为 false
+    //    （WorkflowDslValidator.foldDryRunRejections 无条件把每条 REJECTED 折进 errors），
+    //    所以用户看到的第一句话必须是 error 型「体检未通过」，而不是 success 的「没有发现问题」。
+    //    红色「干跑不通过」明细仍在卡片里，由下面的 manifest-conflict / manifest-tables 各断言钉住。
     //
-    // ⚠️ 本条**当前是红的**，且红的原因与本文件被 #72 改过的那一格（trigger 的 authType）无关，
-    //    已归因证死、登记为 #86，别在这儿把它 weaken 掉：
-    //    editor/index.vue 那句 warning 只在 `res.passed` 为真时才可能弹，而
-    //    AgentValidateResult.isPassed() == errors.isEmpty()，WorkflowDslValidator.foldDryRunRejections
-    //    又对每个干跑 REJECTED **无条件** addError（且 ServiceImpl 调它时刻意不看 basic.isPassed()）
-    //    ⟹「passed 为真 且 dryRunRejected>0」是**不可达**的，那个分支是 S4a-c 之后留下的死代码。
-    //    实测同一份 DSL 只换 authType：hmac → 3 errors、none → 4 errors，两种 passed 都是 false，
-    //    所以断言在 #72 前后同样红（#72 之前更糟：authType:'none' 连 beforeAll 建草稿都过不了，4 条全红）。
-    //    断言保持原样是刻意的 —— 它编码的是 S3 当初的契约，改它之前得先裁定 #86 里那两条路走哪条。
-    await expect(page.locator('.el-message--warning')).toContainText('干跑不通过')
+    //    #86 路径 A（2026-10-03 裁定）：editor/index.vue 里那段「passed 为真 且 dryRunRejected>0」
+    //    的 warning 分支是 S4a-c 之后留下的死代码，已删；本断言相应从「warning 干跑不通过」
+    //    改为「error 体检未通过」，不再期待那个不可达的 toast。
+    await expect(page.locator('.el-message--error').last()).toContainText('体检未通过')
 
     // ---------- 头部：headline / riskNote / 版本 / 触发器 ----------
     const headline = card.getByTestId('manifest-headline')

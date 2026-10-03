@@ -545,14 +545,12 @@ const handleValidate = async () => {
   const res = await runValidate()
   if (!res) return
   if (res.passed) {
-    // 🔴 「体检通过」说的是 DSL 结构合法，可这次点击同时带回了变更清单：
-    //    清单里干跑被拒 = 「照这份 DSL 真跑，平台会拒绝这次变更」。
-    //    此时还弹「没有发现问题」，就和正下方红色「干跑不通过」当面对质，
-    //    而用户会信 toast 不信卡片 —— 清单从此没人看。被拒时必须换一句话。
-    const rejected = res.manifest?.stats?.dryRunRejected ?? 0
-    if (rejected > 0) {
-      message.warning(`体检通过，但变更预演有 ${rejected} 项干跑不通过，详见下方清单`)
-    } else if (res.warnings.length) {
+    // 🔴 「体检通过」说的是 DSL 结构合法，且此时干跑被拒条数恒为 0：
+    //    WorkflowDslValidator.foldDryRunRejections 无条件把每条 REJECTED 折进 errors，
+    //    ⟹「passed 为真 且 dryRunRejected>0」不可达。原先这里那个 warning 分支是
+    //    S4a-c 之后留下的死代码（#86 路径 A 裁定：删，不复活）。
+    //    干跑被拒时 passed 必为 false，用户看到的是下面的 error toast + 卡片里的红色明细。
+    if (res.warnings.length) {
       message.warning(`体检通过，但有 ${res.warnings.length} 条建议调整`)
     } else {
       message.success('体检通过，没有发现问题')
