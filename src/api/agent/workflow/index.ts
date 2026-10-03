@@ -41,6 +41,23 @@ export interface AgentWorkflowDefVO {
   ownerUserId?: number
   createTime?: Date
   updateTime?: Date
+  /**
+   * 这一行能不能就地编辑（S5-c 起由服务端派生下发，修 G14）
+   *
+   * 🔴 **不要在前端重写这条判据**（即不要写 `status === 'DRAFT'`）。后端强制点
+   *   （`updateDef` / `deleteDef` 抛 `WORKFLOW_DEF_NOT_DRAFT`）与本字段共用
+   *   `WorkflowDefStatusEnum.isDraft` 同一个方法；前端再抄一份 `'DRAFT'` 字面量，
+   *   等状态机加一档（如 ARCHIVED）就会出现「按钮亮着、点了被拒」——正是 G14 要收敛的那份重复。
+   * 🔴 声明成可选是为了**失败朝安全那一侧倒**：拿不到这一格时 `v-if="row.editable"` 自然为假
+   *   ⟹ 按「不可编辑」渲染，与后端对 status 为空的处理同方向。
+   *   故消费方一律写 `row.editable`（真值判断），**不要**写 `row.editable !== false`。
+   */
+  editable?: boolean
+  /**
+   * `editable=false` 时后端给的现成说明；`editable=true` 时为 null。
+   * 🔴 直接渲染这一句，不要前端另编文案：状态机加一档时后端会跟着改，前端抄的那句会留在旧状态上。
+   */
+  editDeniedReason?: string | null
 }
 
 export interface AgentWorkflowDefPageReqVO extends PageParam {
@@ -65,6 +82,73 @@ export interface AgentWorkflowDefSaveVO {
   /** 🔴 没有 remark：description 已承担说明职责，两个近义字段只会让人不知道填哪个（列已从表里删除） */
   description?: string
   /** 🔴 刻意没有 source：来源由服务端按入口写死，允许前端传就等于允许把自动生成的行伪装成手动 */
+}
+
+/**
+ * 复制时服务端对一格冲突配置的处理结果，对应后端 {@code WorkflowCopyRewriter.Rewrite}（record）。
+ *
+ * 🔴 **`from === to` 不是「没变化」这么平淡**，它是「刻意没改，但你要知道」：
+ *   审批流未复制仍指向源流程的 BPM key、webhook 密钥沿用了源流程、建表名加完后缀不合规所以保留原值……
+ *   这些是<b>待办</b>，渲染时必须与「服务端替你改了」分开列，否则用户会把它们当成已完成项划掉。
+ * 🔴 `from`/`to` 里**永远不会是密钥**（后端 webhook secret 那一行填的是掩码文案），
+ *   故可以放心直接插值渲染；但仍一律用文本插值，不用 v-html。
+ */
+export interface WorkflowCopyRewriteVO {
+  /** 这一格在 DSL 里的位置，如 `nodes[save].config.args.code` */
+  path: string
+  /** 源值 */
+  from: string
+  /** 新值；与 from 相同即未改写 */
+  to: string
+  /** 为什么这么处理。写给「要据此决定发不发布」的人看，故必须整条显示，不能截断成 tooltip */
+  reason: string
+}
+
+/**
+ * 复制定义的入参，对应后端 {@code AgentWorkflowDefCopyReqVO}。
+ *
+ * 🔴 **刻意没有 `dsl` 字段**：复制的 DSL 只能由后端从源定义读出来再改写。
+ *   前端自己拼一份 DSL 传进「复制」就是 G11 的形状 —— 前端不知道 webhook path / 建表名 /
+ *   BPM key 会跟源流程抢同一份不可逆的外部资源。
+ * 🔴 也不要在这里校验 code 格式：后端正则的 message 已经是给人看的中文，
+ *   前端再抄一份 `CODE_PATTERN` 字面量，两处漂移就表现为「前端放过了、后端拒了」。
+ */
+export interface AgentWorkflowDefCopyVO {
+  /** 源定义编号；草稿/已发布/已停用都能作为复制蓝本 */
+  id: number
+  newCode: string
+  newName: string
+  /** 留空表示沿用源流程的描述 */
+  newDescription?: string
+  /**
+   * 是否自动改写冲突配置。
+   * 🔴 **不传 = 改写**（后端按 `!Boolean.FALSE.equals(...)` 判）。只有「显式关掉」才该关掉：
+   *   默认朝「不会撞车」那一边倒。关掉之后照样逐格回显，因为用户主动选择自己处理时
+   *   更需要一份完整清单。
+   */
+  rewriteConflicts?: boolean
+}
+
+/**
+ * 复制结果，对应后端 {@code AgentWorkflowDefCopyRespVO}。
+ *
+ * 🔴 `rewritten` 是这一步**唯一**的用户可见信号：复制走 `insertNewVersion`，
+ *   全方法**不跑** `validateDsl`（S4b 的发布闸门在发布期，复制在建草稿期）
+ *   ⟹ 复制可以产出一份**必然发不出去**的草稿而不报任何错。
+ *   故前端必须把清单弹出来，不能只 toast 一句「复制成功」。
+ * ⚠️ `rewritten` 为**空数组是正常的**：那表示这份 DSL 里没有任何会撞车的配置（比如一条纯 LLM 问答流程）。
+ *   它与「清单不可用」（`manifest === null` 那种情况）**不是一回事**，绝不能渲染成后者的措辞。
+ */
+export interface AgentWorkflowDefCopyResultVO {
+  /** 新草稿的编号 */
+  id: number
+  code: string
+  name: string
+  /** 新编码下恒为 1 */
+  version: number
+  /** 一律 DRAFT，即使源是 PUBLISHED */
+  status: string
+  rewritten: WorkflowCopyRewriteVO[]
 }
 
 /** DSL 校验结果，对应后端 {@code AgentWorkflowDefValidateRespVO} */
@@ -476,6 +560,17 @@ export const AgentWorkflowApi = {
   /** 新建定义（落 DRAFT 草稿），返回新定义 id */
   createDef: (data: AgentWorkflowDefSaveVO): Promise<number> =>
     request.post({ url: '/agent/workflow-def/create', data }),
+
+  /**
+   * 复制定义：读源 DSL → 服务端改写冲突项 → 落成**新编码下的**新草稿（S5-b/S5-d）。
+   *
+   * 🔴 权限归 `agent:workflow:create`（产物是一个新 DRAFT，与「新建流程」同类写动作，后端不新设权限点）。
+   * 🔴 复制**不等于**发布：产物恒为 DRAFT，要生效仍需走 {@link AgentWorkflowApi.publishDef}。
+   * 🔴 与 {@link AgentWorkflowApi.rollback} 的区别：回滚是**同 code 下**追加一个新版本（版本快照语义），
+   *   复制是**另起一个 code**（两条独立流程）。用户面对不可编辑流程时，两者都是出路，但语义不同。
+   */
+  copyDef: (data: AgentWorkflowDefCopyVO): Promise<AgentWorkflowDefCopyResultVO> =>
+    request.post({ url: '/agent/workflow-def/copy', data }),
 
   /** 修改定义（仅 DRAFT 可改；后端 update 对非草稿抛 WORKFLOW_DEF_NOT_DRAFT） */
   updateDef: (data: AgentWorkflowDefSaveVO): Promise<boolean> =>

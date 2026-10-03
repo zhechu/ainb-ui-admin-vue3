@@ -16,6 +16,12 @@
  *
  * 🔴 createDef **不**做图校验（只 JSON 解析 + trigger 投影），故「空白」模板（nodes/edges 皆空）能建成草稿；
  * 图是否合法留到设计器里「体检」与「发布」时校验（发布要求体检通过）。这正是「先建空白草稿 → 进设计器画」的预期体验。
+ *
+ * 🔴 **「复制已有」不在本模块**（S5-f 修 G11）：复制品的 DSL 只能由服务端 `POST /agent/workflow-def/copy`
+ * 从源定义读出来再改写。前端自己深拷一份 DSL 就是 G11 的形状 —— 前端不知道 `datamodel_create.tableName`、
+ * `form_save_draft.code`、`process_create_and_deploy.key`、webhook `path` 会跟源流程抢同一份**不可逆**的外部资源，
+ * 而这些在发布期一个都不报。故 {@link buildStarterDsl} 的入参类型是 {@link BuildableTemplate}（不含 'copy'），
+ * 编译期就把这条路堵死；'copy' 只作为「起步模板」单选值存在，选中后由复制对话框接管。
  */
 
 import { TRIGGER_CASES } from './triggerCases'
@@ -31,6 +37,16 @@ export type WorkflowTriggerType = 'none' | 'chat' | 'form_event' | 'schedule' | 
  *    既示范了该触发方式的载荷怎么取，也示范了这类流程通常长什么样。
  */
 export type StarterTemplate = 'blank' | 'case' | 'copy'
+
+/**
+ * 真正能由前端构造出 DSL 的模板 = {@link StarterTemplate} 去掉 'copy'。
+ *
+ * 🔴 这不是为了好看的别名，是 **G11 的编译期强制点**：{@link buildStarterDsl} 只收这个类型，
+ *    所以「前端拼一份复制品 DSL」写不出来（写出来就是编译错）。复制一律走服务端 `/copy`，
+ *    因为只有后端知道哪些格子会跟源流程抢不可逆的外部资源、以及该怎么改写。
+ *    守着这一格的是 starterDsl.spec.ts 里那条 `@ts-expect-error` 用例。
+ */
+export type BuildableTemplate = Exclude<StarterTemplate, 'copy'>
 
 /** 触发方式的配置元信息（按 type 取用对应字段；无关字段忽略） */
 export interface WorkflowTriggerMeta {
@@ -57,8 +73,6 @@ export interface StarterMeta {
   name: string
   description?: string
   trigger: WorkflowTriggerMeta
-  /** copy 模板专用：被复制流程的 DSL 原文（JSON 字符串） */
-  copyDsl?: string
 }
 
 /**
@@ -138,22 +152,15 @@ const blankBase = (): Record<string, any> => ({
  * 构造起步 DSL 原文（JSON 字符串，2 空格缩进）。
  *
  * - blank：空画布起步；
- * - case：当前触发方式的经典案例（完整可跑、开箱可过体检）；
- * - copy：深拷贝 {@code meta.copyDsl} 的结构（nodes/edges/variables/settings），重置 id/name/description。
+ * - case：当前触发方式的经典案例（完整可跑、开箱可过体检）。
  *
- * 三种模板都会：写入 code/name/description、按触发方式注入 trigger 块（none 则删除 trigger）。
- * copy 模板若 copyDsl 缺失或非法，退化为**当前触发方式的经典案例**——仍是一份能过体检的完整流程，
- * 而不是悄悄给个空画布让人误以为复制成功了。
+ * 两种模板都会：写入 code/name/description、按触发方式注入 trigger 块（none 则删除 trigger）。
+ *
+ * 🔴 **没有 'copy' 这一档**（S5-f 修 G11）：复制品的 DSL 由服务端 `/copy` 从源定义读出来再改写冲突项，
+ *    前端不拼装。入参类型 {@link BuildableTemplate} 就是这件事的强制点。
  */
-export function buildStarterDsl(template: StarterTemplate, meta: StarterMeta): string {
-  let base: Record<string, any>
-  if (template === 'copy') {
-    base = tryParse(meta.copyDsl) ?? caseBase(meta.trigger.type)
-  } else if (template === 'blank') {
-    base = blankBase()
-  } else {
-    base = caseBase(meta.trigger.type)
-  }
+export function buildStarterDsl(template: BuildableTemplate, meta: StarterMeta): string {
+  const base: Record<string, any> = template === 'blank' ? blankBase() : caseBase(meta.trigger.type)
 
   base.dslVersion = base.dslVersion || '1.0'
   base.id = meta.code

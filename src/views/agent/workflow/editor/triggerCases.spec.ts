@@ -430,16 +430,4 @@ describe('buildStarterDsl("case") 端到端组装', () => {
       }
     })
   }
-
-  it('copy 源非法时退化为当前触发方式的案例（仍是完整流程，不是空画布）', () => {
-    const dsl = JSON.parse(
-      buildStarterDsl('copy', {
-        code: 'wf_x',
-        name: 'n',
-        trigger: { type: 'schedule', cron: '0 0 2 * * ?' },
-        copyDsl: 'not-json'
-      })
-    )
-    expect(dsl.nodes.map((n: any) => n.id)).toEqual(TRIGGER_CASES.schedule.body().nodes.map((n) => n.id))
-  })
 })

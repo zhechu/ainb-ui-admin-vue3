@@ -143,7 +143,13 @@
           width="180"
           :formatter="dateFormatter"
         />
-        <el-table-column label="操作" align="center" min-width="440" fixed="right">
+        <!--
+          🔴 min-width 不能按「刚好放下」给：这一列的按钮折行**不报错**，只是悄悄折成两行。
+             e2e（tests/e2e/agent-workflow-copy.spec.ts 的「操作列不换行」）实测：
+             草稿行 8 钮需宽 436px、已发布行 6 钮需宽 434px ⟹ 原来的 440 只剩 4px 余量，
+             任何一个按钮文案变长就折行。取 520（余量 ~84px）。改这一列的按钮请同步改这个数。
+        -->
+        <el-table-column label="操作" align="center" min-width="520" fixed="right">
           <template #default="scope">
             <el-button
               link
@@ -170,17 +176,31 @@
               版本
             </el-button>
             <!-- Req 2：设计与编辑分开——「设计」跳整页设计器画画布；「编辑」在页内面板只改元信息+触发方式 -->
+            <!--
+              🔴 S5-d（修 G14 的前端那半）：「设计」去掉 v-if="status === 'DRAFT'"，改为**常显**。
+                 非草稿行进的是同一个设计器，只是它自己按服务端下发的 editable 落成只读态
+                 （editor/index.vue 的 readonly 也改成读 editable，不再自己判 'DRAFT'）。
+                 文案按 editable 切：设计 / 查看设计 —— 让用户在点之前就知道会不会改得动。
+              🔴 权限从 agent:workflow:update **放宽**到 agent:workflow:query：只读查看不该要写权限。
+                 S5-a 量过这次放宽是安全的（授权脚本第 3 步是从 query 持有者派生出写授权，
+                 故 update 持有者 ⊆ query 持有者，只会让更多人看见）。
+                 ⚠️ 但台账 #109：hasPermi 对 *:*:* 短路、e2e 恒以 admin 登录 ⟹ 这次放宽在 e2e 里
+                 **结构性地证明不了**，别拿「e2e 绿」当它的验收判据。
+              🔴 「编辑」「删除」也改判 row.editable 而不是 status === 'DRAFT'：判据的唯一出处是
+                 后端 WorkflowDefStatusEnum#isDraft，服务端派生成 editable 下发。
+                 前端再抄一份 'DRAFT' 字面量，等状态机加一档就是「按钮亮着、点了被后端拒」。
+            -->
             <el-button
-              v-if="scope.row.status === 'DRAFT'"
               link
               type="primary"
               @click="openEditor(scope.row)"
-              v-hasPermi="['agent:workflow:update']"
+              v-hasPermi="['agent:workflow:query']"
+              data-testid="wf-design-btn"
             >
-              设计
+              {{ scope.row.editable ? '设计' : '查看设计' }}
             </el-button>
             <el-button
-              v-if="scope.row.status === 'DRAFT'"
+              v-if="scope.row.editable"
               link
               type="primary"
               @click="openFormEdit(scope.row)"
@@ -206,8 +226,41 @@
             >
               停用
             </el-button>
+            <!--
+              🔴 发布/停用**保留** status === 判据，不跟着改 editable：
+                 「可发布性」与「可编辑性」是两条不同的规矩，服务端只下发了后者。
+                 （后端另有 isExecutable / publishDef 的可发布性判据，但没有对应的广告位字段，
+                 前端在这里自己判 status 是**唯一**选择，不是 G14 那种重复。）
+              🔴 S5-d：复制按钮**所有状态都可用**（草稿/已发布/已停用都能当模板抄），权限归 create
+                 —— 产物是一个新 DRAFT，与「新建流程」同类写动作，后端不新设权限点。
+                 非草稿行把它升成**主操作**（plain 实心而非 link）并改叫「复制为新草稿」：
+                 面对一条改不动的流程，用户真正想做的就是这件事，
+                 而不是一排灰掉的链接里再找一个「编辑」。
+                 ⚠️ 下面两枚是同一个 v-if/v-else 链，中间**不要插注释**（会打断分支配对）。
+            -->
             <el-button
-              v-if="scope.row.status === 'DRAFT'"
+              v-if="scope.row.editable"
+              link
+              type="primary"
+              @click="openCopy(scope.row)"
+              v-hasPermi="['agent:workflow:create']"
+              data-testid="wf-copy-btn"
+            >
+              复制
+            </el-button>
+            <el-button
+              v-else
+              type="primary"
+              plain
+              size="small"
+              @click="openCopy(scope.row)"
+              v-hasPermi="['agent:workflow:create']"
+              data-testid="wf-copy-as-draft-btn"
+            >
+              复制为新草稿
+            </el-button>
+            <el-button
+              v-if="scope.row.editable"
               link
               type="danger"
               @click="handleDelete(scope.row)"
@@ -227,8 +280,8 @@
       />
     </ContentWrap>
 
-    <!-- 只读画布对话框 -->
-    <WorkflowCanvasDialog ref="canvasRef" />
+    <!-- 只读画布对话框（S5-d：底部加「打开完整设计器（只读）」，看得到每格配置） -->
+    <WorkflowCanvasDialog ref="canvasRef" @design="goDesign" />
     <!-- 执行历史抽屉 -->
     <ExecutionHistoryDrawer ref="historyRef" />
     <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
@@ -237,6 +290,12 @@
     <TriggerCaseDialog ref="caseRef" />
     <!-- S4b：发布体检不通过时逐条列出「改哪儿」，与后端闸门同一份判据 -->
     <PublishGateDialog ref="gateRef" @design="goDesignFromGate" />
+    <!--
+      S5-d：复制对话框。🔴 @success 只负责刷新列表，**不负责关对话框** ——
+      复制这一步不跑发布体检，rewritten[] 是唯一的用户可见信号且取不回来第二次，
+      所以对话框自己停在清单阶段等用户读完（详见组件注释）。
+    -->
+    <WorkflowCopyDialog ref="copyRef" @success="getList" @design="goDesign" />
   </template>
 
   <!-- ==================== 新增 / 编辑元信息（页内面板） ==================== -->
@@ -258,6 +317,7 @@ import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
 import WorkflowForm from './components/WorkflowForm.vue'
 import TriggerCaseDialog from './editor/components/TriggerCaseDialog.vue'
 import PublishGateDialog from './components/PublishGateDialog.vue'
+import WorkflowCopyDialog from './components/WorkflowCopyDialog.vue'
 import { precheckPublish } from './publishGate'
 import { triggerTypeLabel } from './editor/triggerCases'
 
@@ -370,12 +430,34 @@ const openVersions = (row: AgentWorkflowDefVO) => {
 
 /**
  * 设计：跳整页设计器（隐藏路由 AgentWorkflowEditor，仿门户设计器）画画布。
- * Req 2「新增与设计分开」后，本函数只服务行内「设计」按钮（必带 id 走编辑态）。
- * 仅对 DRAFT 行开放（与后端 updateDef 草稿守卫一致）。
+ * Req 2「新增与设计分开」后，本函数只服务行内「设计」/「查看设计」按钮（必带 id 走编辑态）。
+ *
+ * 🔴 S5-d 起**所有状态**都能进：非草稿行进去是只读态（判据由服务端下发的 editable 决定，
+ *    见 editor/index.vue）。原先这里只对 DRAFT 开放，等于「已发布的流程连看都看不进去」，
+ *    而只读画布弹窗只能看节点连线、看不到每格的配置。
+ * ⚠️ 入参刻意收窄成 `{ id }` 而不是整行：复制完成后只有新 id 在手（对话框 emit 回来的），
+ *    两处跳转共用这一个函数 ⟹ 路由名与 query 形状只有一份（D7）。
  */
-const openEditor = (row: AgentWorkflowDefVO) => {
+const openEditor = (row: { id: number }) => {
   push({ name: 'AgentWorkflowEditor', query: { id: String(row.id) } })
 }
+
+/**
+ * 复制（S5-d）：所有状态都能当模板抄，产物是新编码下的 DRAFT。
+ *
+ * 🔴 复制成功**不等于**可以关对话框：/copy 响应里的 rewritten[] 是这一步唯一的用户可见信号，
+ *    且没有任何端点能把它再取回来一次。故对话框自己停在「清单」阶段，
+ *    这里只在它 emit success 时刷新列表（新草稿要出现在列表里）。
+ */
+const copyRef = ref()
+const openCopy = (row: AgentWorkflowDefVO) => {
+  copyRef.value?.open(row)
+}
+/**
+ * 只有一个 id 在手时的进设计器入口（复制对话框的「去设计器完善」、只读画布的「打开完整设计器」共用）。
+ * 🔴 不复述路由名与 query 形状，一律转给 openEditor —— 那份知识只该有一份（D7）。
+ */
+const goDesign = (id: number) => openEditor({ id })
 
 /**
  * 新增/编辑元信息（Req 2；2026-09-29 由弹窗改页内面板）。

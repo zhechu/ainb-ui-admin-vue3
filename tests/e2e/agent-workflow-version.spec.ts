@@ -75,12 +75,28 @@ test.describe('流程版本管理抽屉（14b）', () => {
     if (!token) throw new Error('seed login failed: ' + JSON.stringify(lr))
 
     code = 'wf_ver_e2e_' + Date.now().toString(36)
-    const mk = (tag: string) => ({ code, name: code, dsl: dsl(code, tag), description: tag })
-    const id1 = (await api('/agent/workflow-def/create', 'POST', mk('v1')))?.data
-    await api('/agent/workflow-def/publish?id=' + id1, 'POST')
-    const id2 = (await api('/agent/workflow-def/create', 'POST', mk('v2')))?.data
-    await api('/agent/workflow-def/publish?id=' + id2, 'POST')
-    await api('/agent/workflow-def/set-primary?id=' + id1, 'POST')
+    // 🔴 逐步断言：seed 静默失败时，后面 4 条断言只会报「找不到行 / 计数不对」，
+    //    而真因是夹具压根没造出来（台账 #128 那一族：前置挂了却把账算到用例头上）。
+    const seed = async (path: string, body?: any) => {
+      const r = await api(path, 'POST', body)
+      if (r?.code !== 0) throw new Error(`seed ${path} failed: ` + JSON.stringify(r))
+      return r.data as number
+    }
+
+    const id1 = await seed('/agent/workflow-def/create', {
+      code,
+      name: code,
+      dsl: dsl(code, 'v1'),
+      description: 'v1'
+    })
+    await seed('/agent/workflow-def/publish?id=' + id1)
+    // 🔴 v2 走 /rollback 而不是再调一次 /create：S5-b 起 createDef 对「code 已被占用」直接拒
+    //    （WORKFLOW_DEF_CODE_DUPLICATE，修 G12 —— 新建填了别人的 code 会静默变成那条流程的新版本）。
+    //    「给同一条流程加一个新版本」的唯一合法路径就是回滚，夹具照它走，顺带把那条路径也覆盖上。
+    //    DSL 内容与 v1 相同不影响本 spec：下面只断言「同 code 两行 + v1 带主版本徽标」。
+    const id2 = await seed('/agent/workflow-def/rollback?id=' + id1)
+    await seed('/agent/workflow-def/publish?id=' + id2)
+    await seed('/agent/workflow-def/set-primary?id=' + id1)
     ids.push(id1, id2)
   })
 

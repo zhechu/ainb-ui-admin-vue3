@@ -10,8 +10,9 @@ import {
 /**
  * starterDsl 纯逻辑单测（AI助手 流程编排优化 / Req 2）
  *
- * 钉死三件事：① 三种模板都产出**合法 JSON**且带 code/name；② trigger 块与后端契约逐字对齐
- * （type 全名 trigger.xxx + 对应 config 键），none 不写块；③ 编辑注入只换 trigger、保留画布节点。
+ * 钉死四件事：① 两种**可构造**模板（blank/case）都产出合法 JSON 且带 code/name；② trigger 块与后端契约
+ * 逐字对齐（type 全名 trigger.xxx + 对应 config 键），none 不写块；③ 编辑注入只换 trigger、保留画布节点；
+ * ④ 🔴 'copy' **不在**可构造模板里（S5-f 修 G11）—— 那是条编译期强制点，见文件末尾 `@ts-expect-error` 那条用例。
  */
 describe('buildTriggerBlock', () => {
   it('chat：写全名 trigger.chat + inputVar/agentId，agentId 缺省为空串', () => {
@@ -73,12 +74,11 @@ describe('buildTriggerBlock', () => {
 })
 
 describe('buildStarterDsl', () => {
-  const meta = (trigger: WorkflowTriggerMeta, over?: Partial<StarterMeta>): StarterMeta => ({
+  const meta = (trigger: WorkflowTriggerMeta): StarterMeta => ({
     code: 'wf_new',
     name: '新流程',
     description: '描述',
-    trigger,
-    ...over
+    trigger
   })
 
   it('case：产出合法 DSL，含案例节点、START/END 边、trigger 注入', () => {
@@ -109,33 +109,22 @@ describe('buildStarterDsl', () => {
     expect(dsl.trigger).toBeUndefined()
   })
 
-  it('copy：深拷贝源结构（保留节点），重置 id/name，注入新 trigger', () => {
-    const source = JSON.stringify({
-      dslVersion: '1.0',
-      id: 'wf_old',
-      name: '旧流程',
-      trigger: { type: 'trigger.chat', config: { inputVar: 'input', agentId: 'old' } },
-      variables: [{ key: 'input', type: 'string', merge: 'replace' }],
-      nodes: [{ id: 'n1', type: 'llm', name: '生成', config: { outputVar: 'out' } }],
-      edges: [
-        { from: 'START', to: 'n1' },
-        { from: 'n1', to: 'END' }
-      ],
-      settings: { recovery: 'forward' }
-    })
-    const dsl = JSON.parse(
-      buildStarterDsl('copy', meta({ type: 'webhook', path: 'p1' }, { copyDsl: source }))
-    )
-    expect(dsl.id).toBe('wf_new')
-    expect(dsl.name).toBe('新流程')
-    expect(dsl.nodes).toHaveLength(1)
-    expect(dsl.nodes[0].id).toBe('n1')
-    expect(dsl.trigger.type).toBe('trigger.webhook')
-  })
-
-  it('copy 源非法：安全退化为当前触发方式的案例（不抛、仍产合法且非空的 DSL）', () => {
-    const dsl = JSON.parse(buildStarterDsl('copy', meta({ type: 'none' }, { copyDsl: 'not-json' })))
-    expect(dsl.nodes.length).toBeGreaterThan(0)
+  /**
+   * 🔴 G11 的前端半边（S5-f）：这是一条**编译期**强制点，不是运行期断言。
+   *
+   * `buildStarterDsl` 的入参类型是 `BuildableTemplate = Exclude<StarterTemplate, 'copy'>`，
+   * 所以下面这行**必须是编译错**；`@ts-expect-error` 把这件事反过来用成断言 ——
+   * 谁把 'copy' 放回可构造模板（G11 复活），这条指令就成了「无用指令」，`pnpm ts:check` 当场报红。
+   *
+   * ⚠️ 因此守它的是 ts:check，不是 test:unit：本用例在 vitest 里**恒绿**
+   *    （运行期 'copy' 会落进 case 分支，返回一份案例 DSL）。别把这里的绿读成「强制点还在」。
+   * 🔴 为什么复制品不能由前端拼：前端不知道 `datamodel_create.tableName` / `form_save_draft.code` /
+   *    `process_create_and_deploy.key` / webhook `path` 会与源流程抢同一份**不可逆**的外部资源，
+   *    而这些在发布期一个都不报。只有服务端 `/copy` 会改写它们并逐格回显 `rewritten[]`。
+   */
+  it('G11：前端不再有「复制」DSL 拼装路径（copy 只能走服务端 /copy）', () => {
+    // @ts-expect-error S5-f 起 'copy' 不是可构造模板：这一行必须是编译错
+    expect(buildStarterDsl('copy', meta({ type: 'none' }))).toBeDefined()
   })
 
   it('产出物一定是合法 JSON 字符串', () => {

@@ -64,6 +64,25 @@
     </div>
 
     <template #footer>
+      <!--
+        🔴 S5-d 加这条链接：本弹窗是非 DRAFT 流程**唯一**的查看入口（G13），而它只画得出
+           节点连线 + 一句话摘要 —— 看不到每格配置的真值。要看细节只有整页设计器（只读态）。
+           没有这条链接时，用户面对一条已发布的流程，唯一能做的就是把弹窗关掉。
+        ⚠️ 跳到哪由宿主决定（emit 而不是自己 push）：本组件也可能被只有 code 的宿主用，
+           路由知识不该抄两份。
+        🔴 文案里的「只读」取服务端下发的 def.editable，**不在前端判 status === 'DRAFT'**：
+           设计器自己也是按这一格决定只读态的（G14 收敛后的同一个字段），
+           所以「这里说只读」与「进去真的只读」不可能对不上。
+      -->
+      <el-button
+        v-if="def?.id"
+        link
+        type="primary"
+        data-testid="canvas-open-designer"
+        @click="handleOpenDesigner"
+      >
+        {{ def?.editable ? '打开完整设计器' : '打开完整设计器（只读）' }}
+      </el-button>
       <el-button @click="visible = false">关闭</el-button>
     </template>
   </el-dialog>
@@ -81,6 +100,15 @@ import { layoutDsl } from '../layout'
 import { ensureLoaded as ensureNameCatalog, nameResolver } from '../nameCatalog'
 
 defineOptions({ name: 'WorkflowCanvasDialog' })
+
+const emit = defineEmits<{
+  /**
+   * 「打开完整设计器」：只报 id，跳到哪由宿主决定。
+   * 🔴 组件自己不 push：本弹窗是纯展示件（今天只有列表页一个宿主），
+   *    把路由名写进来就等于把「从哪打开的」这份知识抄了第二份（同 PublishGateDialog 的做法）。
+   */
+  design: [id: number]
+}>()
 
 const visible = ref(false)
 const loading = ref(false)
@@ -143,6 +171,13 @@ const open = async (id: number) => {
   } finally {
     loading.value = false
   }
+}
+
+const handleOpenDesigner = () => {
+  const id = def.value?.id
+  if (!id) return
+  visible.value = false
+  emit('design', id)
 }
 
 defineExpose({ open })
