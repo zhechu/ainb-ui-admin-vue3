@@ -275,7 +275,7 @@ const expanded = ref<Set<string>>(new Set())
 const showWarnings = ref(false)
 
 /**
- * 变更预演默认展开与否：含不可逆动作 / 高风险 / 干跑不通过 → 展开，其余收起。
+ * 变更预演默认展开与否：含不可逆动作 / 高风险 / 预演不通过 → 展开，其余收起。
  * 🔴 「建表这类不可逆动作该在确认卡上就看见」是这块区域存在的理由，
  *    所以最危险的那几态不许默认藏着；反过来，一份只读流程默认摊开几十行明细，
  *    会把下面的节点预览顶到很远，用户学会直接跳过整块。
@@ -305,7 +305,7 @@ watch(
 const manifestRisk = computed(() => {
   const m = props.manifest
   if (!m) return null
-  if ((m.stats?.dryRunRejected ?? 0) > 0) return { tag: 'danger' as const, text: '干跑不通过' }
+  if ((m.stats?.dryRunRejected ?? 0) > 0) return { tag: 'danger' as const, text: '预演不通过' }
   if (m.riskLevel === 'IRREVERSIBLE') return { tag: 'danger' as const, text: '含不可逆动作' }
   if (m.riskLevel === 'HIGH') return { tag: 'warning' as const, text: '高风险' }
   // 🔴 只读工具压根不进 changes（后端 WorkflowChangeManifestBuilder:146 的纪律），

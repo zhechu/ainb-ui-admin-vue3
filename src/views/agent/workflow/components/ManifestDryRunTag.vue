@@ -1,5 +1,8 @@
 <template>
-  <!-- 干跑结论标签（S3）：把一项变更的 dryRun 三态压成一颗内联小标签。
+  <!-- 预演结论标签（S3）：把一项变更的 dryRun 三态压成一颗内联小标签。
+       🔴 「预演」= 平台在发布/审批前把「照这份 DSL 真跑会发生什么」试算一遍，不落地。
+       代码里的 dryRun 是机器名，界面上只说「预演」——「干跑」是 dry run 的直译，
+       用户读不通，已于 2026-10-03 从全部用户可见文案里退场（注释与后端保留机器口径）。
        🔴 三态不能塌成两态，这是清单四条硬纪律里的第二条（方案 §L1147）：
        NOT_PROBED 是「本次没校验」，**不是**「不通过」——把它渲染成红色，
        用户会去改一份本来没问题的 DSL；渲染成绿色更糟，等于替 infra 的故障背书。
@@ -27,16 +30,16 @@ import type { ManifestDryRunVO } from '@/api/agent/workflow'
 defineOptions({ name: 'ManifestDryRunTag' })
 
 const props = defineProps<{
-  /** 一项变更的干跑结论；缺席就不画标签（可见的缺席，好过一颗假装知道的标签） */
+  /** 一项变更的预演结论；缺席就不画标签（可见的缺席，好过一颗假装知道的标签） */
   dryRun?: ManifestDryRunVO | null
 }>()
 
 const label = computed(() => {
   switch (props.dryRun?.outcome) {
     case 'PASSED':
-      return '干跑通过'
+      return '预演通过'
     case 'REJECTED':
-      return '干跑不通过'
+      return '预演不通过'
     case 'NOT_PROBED':
       return '本次没校验'
     default:

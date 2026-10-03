@@ -12,6 +12,14 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *   - 裁剪过的清单不显示 hidden 计数 → 用户以为看到了全部影响面
  *   这三条只有在真实 DOM 上才验得出来，故本 spec 全部断言写在**渲染结果**上，不重复断言后端算术。
  *
+ * 🔴 用词约定（2026-10-03 起）：机器口径是 `dryRun`，**用户可见文案一律说「预演」**。
+ *   「干跑」是 dry run 的直译、读不通，已从 src/ 的 7 处用户可见字符串里退场
+ *   （`ManifestDryRunTag` 两态标签、`WorkflowDraftCard` 折叠条徽标、
+ *   `ChangeManifestCard` 的红色置顶行 + 统计芯片 + 复制出去的 markdown 两处）。
+ *   本文件里剩下的「干跑」只出现在**描述机器概念**的注释中（如「干跑三态 PASSED/REJECTED/
+ *   NOT_PROBED」），刻意不改：那是后端 `dryRun` 字段的中文对照，不是界面文案。
+ *   ⟹ 断言字面量必须是「预演」，注释里说「干跑」不算漂移。
+ *
  * 🔴 一份 fixture 同时命中干跑三态（PASSED / REJECTED / NOT_PROBED）：
  *   这是纪律②唯一诚实的验法。三态塌成两态是这条纪律要防的缺陷，
  *   用三份各自的 fixture 分别验，就永远验不出「它们在同一个界面上被区分开了」——
@@ -22,9 +30,14 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *   但事件里塞的 manifest 是 beforeAll 从真 `/manifest` 取回来的原样载荷 ——
  *   合成的是「传输」，不是「数据」。真跑 BUILD 意图要 8 分钟且烧 token，换不来更多渲染覆盖。
  *
- * 未覆盖：BPM 审批详情 + 通过弹层（宿主 #3）。它要 S6 把清单冻结进流程变量
- * `agent_change_manifest` 之后才有数据，今天那条页签恒不出现（这是有意的：
- * 普通 OA 审批挂一句「清单不可用」只会让人以为平台坏了）。等 S6 补。
+ * 🔴 未覆盖：BPM 审批详情 + 通过弹层（宿主 #3）。S6 已把清单冻结进流程变量
+ * `agent_change_manifest`（后端 `b8cf277486`），但**这个宿主至今没有 e2e**——
+ * 而它恰好是台账 #90 的落点：`BpmProcessInstanceServiceImpl.fillOnlineFormData:440`
+ * 对**在线表单**流程会把 `formVariables` **整体替换**成业务表行、把注入的键抹掉。
+ * S6 的真跑量具读的是 `/bpm/process-instance/manager-page`（裸 Flowable 变量，
+ * **压根不经过 `fillOnlineFormData`**），所以那条路径结构上量不到 #90。
+ * ⟹ 补这个宿主的 e2e 时必须打 `/bpm/process-instance/approval-detail`，那才是前端
+ *   `detail/index.vue:360` 真读的端点。见台账 #90 与 `_evidence/verify90-approval-detail.py`。
  *
  * 前置：后端 48080 + 前端 dev server 同时在跑。
  * 数据自净：beforeAll 建的草稿在 afterAll 删除（DRAFT 可删）。清单本身只读不落库。
@@ -240,7 +253,7 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     }
   })
 
-  test('宿主④ 设计器影响面：四块明细 + 干跑三态同屏不塌 + 独立污点计数', async ({ page }) => {
+  test('宿主④ 设计器影响面：四块明细 + 预演三态同屏不塌 + 独立污点计数', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, `/agent-workflow/editor?id=${defId}`)
 
@@ -251,14 +264,16 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     const card = page.getByTestId('designer-manifest')
     await expect(card).toBeVisible({ timeout: 30000 })
 
-    // 🔴 toast 不许在清单干跑被拒时还说「没有发现问题」：干跑被拒时 passed 恒为 false
+    // 🔴 toast 不许在清单预演被拒时还说「没有发现问题」：预演被拒时 passed 恒为 false
     //    （WorkflowDslValidator.foldDryRunRejections 无条件把每条 REJECTED 折进 errors），
     //    所以用户看到的第一句话必须是 error 型「体检未通过」，而不是 success 的「没有发现问题」。
-    //    红色「干跑不通过」明细仍在卡片里，由下面的 manifest-conflict / manifest-tables 各断言钉住。
+    //    红色「预演不通过」明细仍在卡片里，由下面的 manifest-conflict / manifest-tables 各断言钉住。
     //
-    //    #86 路径 A（2026-10-03 裁定）：editor/index.vue 里那段「passed 为真 且 dryRunRejected>0」
+    //    #86 路径 A（2026-10-03 落地）：editor/index.vue 里那段「passed 为真 且 dryRunRejected>0」
     //    的 warning 分支是 S4a-c 之后留下的死代码，已删；本断言相应从「warning 干跑不通过」
     //    改为「error 体检未通过」，不再期待那个不可达的 toast。
+    //    ⚠️ 那次落地**没跑过本 spec**（`_evidence` 里 10:10 之后没有 e2e 日志），
+    //    本条断言的第一次实跑是 2026-10-03 改「干跑」→「预演」这一刀，见 _evidence/e2e-*.log。
     await expect(page.locator('.el-message--error').last()).toContainText('体检未通过')
 
     // ---------- 头部：headline / riskNote / 版本 / 触发器 ----------
@@ -300,8 +315,8 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     const okTag = okGroup.getByTestId('dry-run-tag')
     const badTag = badGroup.getByTestId('dry-run-tag')
 
-    await expect(okTag).toHaveText('干跑通过')
-    await expect(badTag).toHaveText('干跑不通过')
+    await expect(okTag).toHaveText('预演通过')
+    await expect(badTag).toHaveText('预演不通过')
     // 🔴 这两条是纪律②的**强制点**：只看文案不够，文案对了颜色错了照样骗人
     //    （红色 = 需要立刻处理，绿色 = 可以放心）。el-tag 的类型落在 class 上
     await expect(okTag).toHaveClass(/el-tag--success/)
@@ -352,9 +367,9 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     // ---------- 摘要计数 ----------
     const stats = card.getByTestId('manifest-stats')
     // 🔴 断在「新建表」那一格芯片上，而不是整块 stats 含不含 "2"：
-    //    "2" 在这块里到处都是（不可逆 2、干跑被拒…），宽断言等于没断 —— 计数错位也照样绿
+    //    "2" 在这块里到处都是（不可逆 2、预演被拒…），宽断言等于没断 —— 计数错位也照样绿
     await expect(stats.locator('span').filter({ hasText: '新建表' }).first()).toContainText('2')
-    await expect(stats.locator('span').filter({ hasText: '干跑被拒' }).first()).toContainText('1')
+    await expect(stats.locator('span').filter({ hasText: '预演被拒' }).first()).toContainText('1')
     // 🔴 只读工具「计数但不进 changes」在前端的落点：没有这一格，
     //    「changes 里没有 form_list」就分不清是「扫过了确实不写」还是「压根没扫到」
     await expect(stats.locator('span').filter({ hasText: '只读工具' }).first()).toContainText('1')
@@ -416,10 +431,10 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
     //    顺带这也说明卡片里那个嵌套折叠是真实存在的，不是本用例臆想的结构
     const header = card.locator('.manifest-collapse > .el-collapse-item > .el-collapse-item__header')
     // 折叠条上的风险徽标：不点开也能知道值不值得点开。
-    // 🔴 本 fixture 同时满足「干跑不通过」与「含不可逆动作」，出来的是前者 ——
-    //    这是 manifestRisk 里刻意的优先级：干跑被拒是「照这么改跑不通」，比「改完撤不回」更硬，
+    // 🔴 本 fixture 同时满足「预演不通过」与「含不可逆动作」，出来的是前者 ——
+    //    这是 manifestRisk 里刻意的优先级：预演被拒是「照这么改跑不通」，比「改完撤不回」更硬，
     //    两个徽标并排会互相稀释，只能出一个，就出更该拦住人的那个
-    await expect(header).toContainText('干跑不通过')
+    await expect(header).toContainText('预演不通过')
 
     // 🔴 自动展开：这一条守的是 el-collapse 的 v-model 必须是「展开项 name 数组」而不是 boolean。
     //    绑 false 上去它跟任何 name 都不相等 ⟹ 恒收起且不报错，自动展开的逻辑就成了死代码。

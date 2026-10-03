@@ -168,7 +168,7 @@
         影响面（S3）：体检说的是「这条 DSL 合不合法」，影响面说的是「跑起来平台上会多出/改掉什么」。
         🔴 不发第二个请求：S2-f 起 `/validate` 的响应本身就附带 manifest（附带版，可能为 null），
            作者点完「体检」紧接着就能看见，不必再找一个按钮。
-        🔴 用 collapsible：展开后可能几十行，会把下面的画布顶出视野；含不可逆动作或干跑不通过时
+        🔴 用 collapsible：展开后可能几十行，会把下面的画布顶出视野；含不可逆动作或预演不通过时
            组件内部会强制展开（口径与聊天草稿卡一致，都收在 ChangeManifestCard 里，不各写一套）。
         🔴 方案 §L1153 原写「设计器右侧新增 tab，与沙箱面板并列」—— 实测那个位置不存在：
            沙箱是一个**非模态 drawer**（本文件 :257-272），右侧属性面板里也没有 el-tabs。
@@ -545,11 +545,14 @@ const handleValidate = async () => {
   const res = await runValidate()
   if (!res) return
   if (res.passed) {
-    // 🔴 「体检通过」说的是 DSL 结构合法，且此时干跑被拒条数恒为 0：
+    // 🔴 「体检通过」说的是 DSL 结构合法，且此时预演被拒条数恒为 0：
     //    WorkflowDslValidator.foldDryRunRejections 无条件把每条 REJECTED 折进 errors，
     //    ⟹「passed 为真 且 dryRunRejected>0」不可达。原先这里那个 warning 分支是
-    //    S4a-c 之后留下的死代码（#86 路径 A 裁定：删，不复活）。
-    //    干跑被拒时 passed 必为 false，用户看到的是下面的 error toast + 卡片里的红色明细。
+    //    S4a-c 之后留下的死代码（#86 路径 A：删，不复活）。
+    //    ⚠️ #86 的两条路当初是**提请用户裁定**的，路径 A 由实现方自行选定并落地
+    //    （2026-10-03），用户事后追认。选 A 在技术上无争议（分支可证不可达，
+    //    B 要放松发布闸门、代价大一个量级），但「谁裁定的」这件事必须写清楚。
+    //    预演被拒时 passed 必为 false，用户看到的是下面的 error toast + 卡片里的红色明细。
     if (res.warnings.length) {
       message.warning(`体检通过，但有 ${res.warnings.length} 条建议调整`)
     } else {

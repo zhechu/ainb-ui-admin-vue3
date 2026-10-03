@@ -102,7 +102,7 @@
       </div>
 
       <div class="px-12px py-10px">
-        <!-- ==================== 冲突与干跑失败：红色置顶，一条都不藏 ==================== -->
+        <!-- ==================== 冲突与预演失败：红色置顶，一条都不藏 ==================== -->
         <el-alert
           v-for="(c, i) in blockers"
           :key="`blocker-${i}`"
@@ -707,7 +707,7 @@ const publishGroups = computed<PublishGroup[]>(() =>
   })
 )
 
-/** 冲突 + 干跑被拒：这两类是「照这么改跑不通」的**结论**，红色置顶，一条都不藏 */
+/** 冲突 + 预演被拒：这两类是「照这么改跑不通」的**结论**，红色置顶，一条都不藏 */
 const blockers = computed<string[]>(() => {
   const out: string[] = []
   for (const it of props.manifest?.changes || []) {
@@ -715,7 +715,7 @@ const blockers = computed<string[]>(() => {
     // 🔴 NOT_PROBED 不进这里：那是「本次没校验」，不是「校验不通过」，
     //    混进红色 alert 等于把「没核实」说成「核实过且不行」
     if (it.dryRun?.outcome === 'REJECTED') {
-      out.push(`${it.summary || it.nodeName || it.nodeId}：${it.dryRun.reason || '干跑被拒'}`)
+      out.push(`${it.summary || it.nodeName || it.nodeId}：${it.dryRun.reason || '预演被拒'}`)
     }
   }
   return out
@@ -740,7 +740,7 @@ const statChips = computed(() => {
   push('数据接口', s.dataInterfaces)
   push('说不清的工具', s.genericTools, true)
   push('不可逆', s.irreversibleCount, true)
-  push('干跑被拒', s.dryRunRejected, true)
+  push('预演被拒', s.dryRunRejected, true)
   push('本次没校验', s.dryRunNotProbed)
   // 🔴 只读工具**刻意不进** changes（后端 WorkflowChangeManifestBuilder:146 的纪律），
   //    但「扫过了几个」必须能被看见：少了这一格，「changes 里没有只读工具」就有两种读法 ——
@@ -935,7 +935,7 @@ const copyMarkdown = async () => {
     L.push('')
   }
   if (blockers.value.length) {
-    L.push('## ⚠️ 冲突与干跑失败')
+    L.push('## ⚠️ 冲突与变更预演失败')
     blockers.value.forEach((b) => L.push(`- ${b}`))
     L.push('')
   }
@@ -944,7 +944,7 @@ const copyMarkdown = async () => {
     m.changes.forEach((c) => {
       L.push(`- **[${kindLabel(c.kind)}]** ${c.summary || ''}`)
       if (c.dryRun && c.dryRun.outcome !== 'PASSED') {
-        L.push(`  - 干跑：${c.dryRun.outcome === 'REJECTED' ? '被拒' : '本次没校验'} — ${c.dryRun.reason || ''}`)
+        L.push(`  - 变更预演：${c.dryRun.outcome === 'REJECTED' ? '被拒' : '本次没校验'} — ${c.dryRun.reason || ''}`)
       }
       ;(c.dryRun?.warnings || []).forEach((w) => L.push(`  - ⚠️ ${w}`))
     })
