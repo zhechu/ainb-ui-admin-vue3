@@ -137,6 +137,15 @@ export interface AgentNodeExecutionVO {
  */
 export interface ChangeManifestVO {
   manifestVersion: number
+  /**
+   * 🔴 true = 这是一份**降级清单**：平台本该算出「将会做什么」但没算出来
+   * （后端 `ChangeManifest.degraded(reason)`，S6 注入 BPM 审批时构建失败的那条路）。
+   *
+   * 它存在的唯一理由是让渲染层能分辨「扫过了，确实不写」和「压根没扫成」——
+   * 这两句话在 `changes: []` 上长得一模一样，而后者意味着审批人正在盲批一个不可逆动作。
+   * 所以降级时**必须**咽回「本次不产生任何写操作」那句安心话（见 ChangeManifestCard）。
+   */
+  degraded?: boolean
   workflow: ManifestWorkflowRefVO
   scope?: ManifestScopeVO | null
   /** 一句话总述，风险色条旁边就是它 */
@@ -363,7 +372,12 @@ export interface ManifestWaitVO {
 export interface ManifestUnresolvedVO {
   nodeId?: string | null
   nodeName?: string | null
-  type: 'TOOL_UNKNOWN' | 'TOOL_MISSING' | 'SUB_WORKFLOW'
+  /**
+   * 🔴 这四个取值是后端 `ChangeManifest.UnresolvedItem.TYPE_*` 的镜像，两边必须同步改。
+   * `MANIFEST_FAILED` 与前三个不同级：前三个说「清单里有一项说不清」，它说「整份清单没成」，
+   * 只出现在 `degraded: true` 的降级清单上，且只有一条。
+   */
+  type: 'TOOL_UNKNOWN' | 'TOOL_MISSING' | 'SUB_WORKFLOW' | 'MANIFEST_FAILED'
   tool?: string | null
   reason?: string | null
 }

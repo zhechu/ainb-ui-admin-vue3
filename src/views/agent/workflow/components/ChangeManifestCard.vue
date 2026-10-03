@@ -143,8 +143,11 @@
             {{ s.label }} <b>{{ s.value }}</b>
           </span>
           <!-- 🔴 全零也是一句要说的话：走到这里说明清单**生成成功了**且确实没有写操作，
-               与上面那个「清单不可用」是两回事，不能都渲染成空白让人自己猜 -->
-          <span v-if="!statChips.length" class="text-[var(--el-text-color-secondary)]">
+               与上面那个「清单不可用」是两回事，不能都渲染成空白让人自己猜。
+               🔴 但 degraded 时必须咽回去：降级清单的计数全零只说明「没算出来」，
+               此时印一句「本次不产生任何写操作」等于给盲批的审批人发一张安心符 ——
+               它与同一张卡片顶部的「变更清单生成失败」直接自相矛盾。 -->
+          <span v-if="!statChips.length && !manifest.degraded" class="text-[var(--el-text-color-secondary)]">
             本次不产生任何写操作（只读工具与模型调用不在清单内）
           </span>
         </div>

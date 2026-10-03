@@ -36,8 +36,9 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  * 对**在线表单**流程会把 `formVariables` **整体替换**成业务表行、把注入的键抹掉。
  * S6 的真跑量具读的是 `/bpm/process-instance/manager-page`（裸 Flowable 变量，
  * **压根不经过 `fillOnlineFormData`**），所以那条路径结构上量不到 #90。
- * ⟹ 补这个宿主的 e2e 时必须打 `/bpm/process-instance/approval-detail`，那才是前端
- *   `detail/index.vue:360` 真读的端点。见台账 #90 与 `_evidence/verify90-approval-detail.py`。
+ * ⟹ 补这个宿主的 e2e 时必须打 `/bpm/process-instance/get-approval-detail`，那才是前端
+ *   `detail/index.vue:360` 真读的端点（`api/bpm/processInstance/index.ts:95`）。
+ *   见台账 #90 与 `_evidence/verify90-approval-detail.py`（已在同款 fixture 上把两条通道并排量过）。
  *
  * 前置：后端 48080 + 前端 dev server 同时在跑。
  * 数据自净：beforeAll 建的草稿在 afterAll 删除（DRAFT 可删）。清单本身只读不落库。
