@@ -120,6 +120,26 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
       await expect(draftCard.getByText('待确认')).toBeVisible()
       const nodeRows = draftCard.locator('[data-testid="workflow-node"]')
       expect(await nodeRows.count(), '草稿卡片里一个节点都没有').toBeGreaterThanOrEqual(1)
+
+      // ===================================================================
+      // 自修正轮次徽标（S8）：直播这一路必须看得见
+      //
+      // rounds 后端一直有（WorkflowDraftBO#getRounds），只是从没下发过 ⟹ 用户看到的
+      // 草稿卡一律同色，分不清「一次就产对了」和「被校验器回灌 5 轮才撞出来」。
+      // 这条断言守的是它真的从 SSE 走到了 DOM：rounds 不落库，所以只有直播这一路有值，
+      // 断在下面（刷新之后）那半正好是它的反向配对。
+      // ===================================================================
+      const roundsTag = draftCard.locator('[data-testid="draft-rounds"]')
+      await expect(
+        roundsTag,
+        '直播产出的草稿卡上没有轮次徽标 —— rounds 没能从 WORKFLOW_DRAFT 事件走到卡片'
+      ).toHaveCount(1)
+      const roundsText = ((await roundsTag.textContent()) ?? '').trim()
+      expect(
+        roundsText,
+        `轮次徽标的文案不是这两种之一（一次过闸门 / 校验 N 轮才过），实际是「${roundsText}」`
+      ).toMatch(/^(一次过闸门|校验 \d+ 轮才过)$/)
+      expect(roundsText, '轮次徽标印出了「0 轮」——0 会被读成「一次校验都没跑」').not.toContain('0 轮')
     }
 
     // ===================================================================
@@ -143,6 +163,16 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
         await cardAfter.locator('[data-testid="workflow-node"]').count(),
         '刷新之后草稿卡片的节点没了 —— workflowDefId 没能从消息列表里带回来'
       ).toBeGreaterThanOrEqual(1)
+
+      // 反向配对：刷新之后轮次徽标必须<b>消失</b>，而不是退化成「0 轮」。
+      // rounds 与 warnings 一样不落库（agent_workflow_def 没有这一列，为它加一列不值当），
+      // 重建路径拿不到它。此时正确的行为是「这块信息不显示」，最糟的行为是印一个 0 ——
+      // 0 轮会被读成「一次校验都没跑过」，比不知道更误导。
+      await expect(
+        cardAfter.locator('[data-testid="draft-rounds"]'),
+        '刷新之后轮次徽标还在 —— rounds 被当成了可持久化的字段，或者 null 被 ?? 成了 0'
+      ).toHaveCount(0)
+
       if (summaryBefore) {
         await expect(cardAfter).toContainText(summaryBefore.slice(0, 20))
       }

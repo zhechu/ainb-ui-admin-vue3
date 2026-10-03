@@ -30,9 +30,22 @@
         <Icon icon="ep:share" class="text-[var(--el-color-primary)] flex-shrink-0" />
         <span class="font-medium text-14px truncate">{{ summary || '流程草稿' }}</span>
       </div>
-      <el-tag :type="statusTagType" size="small" effect="plain" class="flex-shrink-0">
-        {{ statusLabel }}
-      </el-tag>
+      <div class="flex items-center gap-6px flex-shrink-0">
+        <!-- 几轮才过闸门：后端一直有这个数字，不说出来用户只能看到一律同色的草稿卡 -->
+        <el-tag
+          v-if="roundsHint"
+          data-testid="draft-rounds"
+          :type="roundsHint.tag"
+          size="small"
+          effect="plain"
+          :title="roundsHint.tip"
+        >
+          {{ roundsHint.text }}
+        </el-tag>
+        <el-tag :type="statusTagType" size="small" effect="plain">
+          {{ statusLabel }}
+        </el-tag>
+      </div>
     </div>
 
     <!-- 警告：后端不会报错的静默改写。默认折叠成一句人话汇总，点「查看详情」才展开技术原文，
@@ -233,6 +246,12 @@ const props = defineProps<{
   summary?: string
   /** 校验器警告（后端不报错的静默改写） */
   warnings?: string[]
+  /**
+   * 生成这份草稿用掉了几轮「生成-校验-自修正」，最小 1。
+   * 🔴 null（刷新页面后凭 workflowDefId 重建的卡片）时那枚徽标整个不渲染，
+   *    不许退化成「0 轮」——0 会被读成「一次校验都没跑」，比不显示更糟。
+   */
+  rounds?: number | null
   /** 只读节点预览（父组件用 nodeSummary.buildSummaryNodes 从 dsl 组装，含一句话摘要与详情行） */
   nodes?: SummaryNode[]
   /** 流程走向文本行（父组件用 nodeSummary.flowStepsText 从 dsl.edges 组装） */
@@ -341,6 +360,23 @@ const statusLabel = computed(() => {
   if (props.runResult === 'error') return '运行失败'
   if (props.runResult === 'interrupted') return '已挂起'
   return '已结束'
+})
+
+const roundsHint = computed(() => {
+  const r = props.rounds
+  if (r == null || r < 1) return null
+  if (r === 1) {
+    return {
+      tag: 'info' as const,
+      text: '一次过闸门',
+      tip: '模型第一次产出就通过了校验，没有被回灌修正过'
+    }
+  }
+  return {
+    tag: 'warning' as const,
+    text: `校验 ${r} 轮才过`,
+    tip: '这份草稿是被校验器反复回灌才撞出来的，节点配置更可能处在「合法但不一定是本意」的边缘，建议逐格复核'
+  }
 })
 </script>
 

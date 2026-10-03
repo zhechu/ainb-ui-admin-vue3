@@ -103,6 +103,14 @@ export interface AgentChatEventVO {
   summary?: string
   /** WORKFLOW_DRAFT 事件：需要用户留意的提示（如校验器的静默改写警告） */
   warnings?: string[]
+  /**
+   * WORKFLOW_DRAFT 事件：生成这份草稿用掉了几轮「生成-校验-自修正」，最小为 1。
+   *
+   * 🔴 可为 null，且**不落库**：刷新页面后卡片凭 workflowDefId 重建，那时它就是 null。
+   *    消费端必须「null 不显示」而不是「null 当 0」——0 会被读成「一轮都没跑」。
+   *    同理这里不能写 `data.rounds || 0`，那会把两种情况压成同一个值。
+   */
+  rounds?: number | null
   /** WORKFLOW_CONFIRM 事件：挂起的执行实例编号，点确认/拒绝时回传 resume-workflow-stream（增量13） */
   executionId?: number
   /** WORKFLOW_CONFIRM 事件：挂起所在的节点 id，供卡片显示「卡在哪个闸口」 */

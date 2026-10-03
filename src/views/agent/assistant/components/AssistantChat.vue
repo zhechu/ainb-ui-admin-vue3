@@ -83,6 +83,7 @@
                 :planning-text="item.planningText"
                 :summary="item.summary || item.content"
                 :warnings="item.warnings"
+                :rounds="item.rounds"
                 :nodes="item.nodes"
                 :edges-text="item.edgesText"
                 :def-status="item.defStatus"
@@ -1101,6 +1102,9 @@ const applyChatEvent = (msg: any, data: any) => {
       msg.workflowName = data.workflowName
       msg.summary = data.summary || ''
       msg.warnings = data.warnings || []
+      // 🔴 用 ?? 不用 ||：rounds 最小是 1，写 `|| 0` 会让「刷新后取不到」和「真跑过 0 轮」
+      //    变成同一个值，卡片就分不清该不该显示它
+      msg.rounds = data.rounds ?? null
       loadWorkflowDraft(msg, data.workflowDefId)
       break
     case 'WORKFLOW_CONFIRM':
