@@ -149,6 +149,8 @@ export interface ChangeManifestVO {
   riskNote?: string | null
   changes: ManifestChangeItemVO[]
   approvals: ManifestApprovalVO[]
+  /** 外部事件等待点（wait(event)）及其唤醒声明（S6 / 裁定⑬） */
+  waits: ManifestWaitVO[]
   /** 说不清的部分（工具不存在、子流程展不开…）。🔴 headline 里那个计数取自这里 */
   unresolved: ManifestUnresolvedVO[]
   /**
@@ -180,6 +182,7 @@ export interface ManifestScopeVO {
   hiddenApprovals: number
   hiddenReadTools: number
   hiddenUntrusted: number
+  hiddenWaits: number
   /** 后端已拼好的人话说明，直接显示，不要前端另编一句 */
   note?: string | null
 }
@@ -341,6 +344,20 @@ export interface ManifestApprovalVO {
   downstreamKinds?: string[]
   /** 审批人到底看不看得见这份清单（S6 注入流程变量后才有真意义） */
   willSee: boolean
+}
+
+/** wait(event) 等待点及其外部唤醒声明（S6 / 裁定⑬） */
+export interface ManifestWaitVO {
+  nodeId?: string | null
+  nodeName?: string | null
+  /** 谁来唤醒（负责人/系统名） */
+  owner?: string | null
+  /** 调哪个端点 */
+  endpoint?: string | null
+  /** 补充说明 */
+  note?: string | null
+  /** 是否声明了 externalWakeup；false = 有等待点但没声明，无头流程体检会要求补 */
+  declared: boolean
 }
 
 export interface ManifestUnresolvedVO {

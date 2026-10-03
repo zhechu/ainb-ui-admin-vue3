@@ -90,7 +90,13 @@ export const defaultConfig = (type: string): Record<string, any> => {
   if (type === 'tool') return { toolId: '', args: {}, outputVar: '' }
   if (type === 'llm') return { prompt: '', outputVar: '' }
   if (type === 'hitl.bpm_approval')
-    return { bpmProcessDefKey: '', approveVar: 'bpm_approved', statusVar: 'bpm_status', formVars: {} }
+    return {
+      bpmProcessDefKey: '',
+      approveVar: 'bpm_approved',
+      statusVar: 'bpm_status',
+      formVars: {},
+      injectManifest: true
+    }
   if (type === 'script') return { code: '', language: 'javascript', timeoutMs: 2000, outputVar: '' }
   if (type === 'condition.rule') return { branches: [], default: '' }
   if (type === 'condition.llm') return { prompt: '', choices: [], default: '' }

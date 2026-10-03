@@ -65,14 +65,23 @@
               </span>
             </div>
             <!-- 触发器与唤醒方式（方案 §L1162 的 S3 那一半）。
-                 🔴 wait(event) 的 externalWakeup 声明原文**不在这里**：裁定⑬把它顺延到 S6，
-                    今天清单没这个字段，硬画就是一个永远为空的格子。别为它预留 props。 -->
+                 wait(event) 的 externalWakeup 声明原文在 S6 进 waits[]，画在下面单独一行行。 -->
             <div
               v-if="triggerNote"
               data-testid="manifest-trigger-note"
               class="text-12px mt-4px opacity-70"
             >
               {{ triggerNote }}
+            </div>
+            <!-- S6 / 裁定⑬：外部事件等待点的唤醒声明。审批人有权知道「我不在的时候谁会来唤醒它」，
+                 尤其无头流程 —— 没声明就是永久卡死，必须显式说出来，不能安静地留一行空白。 -->
+            <div
+              v-for="(w, i) in manifest.waits || []"
+              :key="`wait-${i}`"
+              data-testid="manifest-wait"
+              class="text-12px mt-4px opacity-70"
+            >
+              {{ waitLine(w) }}
             </div>
           </div>
           <div class="flex-shrink-0 flex items-center gap-6px">
@@ -457,7 +466,8 @@ import type {
   ManifestTableAlterDetailVO,
   ManifestTableDetailVO,
   ManifestFormDetailVO,
-  ManifestUntrustedInputVO
+  ManifestUntrustedInputVO,
+  ManifestWaitVO
 } from '@/api/agent/workflow'
 import DryRunTag from './ManifestDryRunTag.vue'
 
@@ -800,6 +810,24 @@ const triggerNote = computed(() => {
   }
   return `本流程由「${by}」触发，${wakeup}`
 })
+
+/**
+ * 一个 wait(event) 等待点的一句话（S6 / 裁定⑬）。
+ * 声明了 externalWakeup → 原样报「谁、调哪个端点、备注」；没声明 → 显式说「没声明」，
+ * 因为无头流程里没声明 = 永久卡死，必须让审批人一眼看出来，而不是安静地显示一行空白。
+ */
+const waitLine = (w: ManifestWaitVO) => {
+  const name = w.nodeName || w.nodeId || '等待节点'
+  if (!w.declared) {
+    return `节点「${name}」在等外部事件，但没有声明谁来唤醒 —— 无头流程里这会永久卡死`
+  }
+  const parts: string[] = []
+  if (w.owner) parts.push(`由 ${w.owner} 唤醒`)
+  if (w.endpoint) parts.push(`调 ${w.endpoint}`)
+  if (w.note) parts.push(`备注：${w.note}`)
+  const detail = parts.length ? `，${parts.join('，')}` : ''
+  return `节点「${name}」在等外部事件${detail}`
+}
 
 const detailOpen = ref(true)
 /**

@@ -310,6 +310,15 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
         false,
         '表单',
         '发起审批时传的变量；⚠️ 值按字面量原样传给审批流程，{{$.变量}} 不会被替换'
+      ),
+      inp(
+        'injectManifest',
+        '注入变更清单',
+        T_BOOLEAN,
+        LITERAL,
+        false,
+        '审批',
+        '挂起发起审批时，把这份流程「将要改什么」的变更清单冻结进流程变量 agent_change_manifest，审批人在 BPM 详情页能看到。默认开启'
       )
     ],
     outputs: [
@@ -324,7 +333,16 @@ export const NODE_IO_CONTRACTS: Record<string, Contract> = {
     inputs: [
       inp('waitType', '等待方式', T_STRING, LITERAL, true, '基础', '定时等待或等外部事件'),
       inp('duration', '等待时长', T_STRING, LITERAL, false, '基础', '定时方式的时长（秒或 ISO-8601）'),
-      inp('eventKey', '等待的事件', T_STRING, LITERAL, false, '基础', '等外部事件时的键')
+      inp('eventKey', '等待的事件', T_STRING, LITERAL, false, '基础', '等外部事件时的键'),
+      inp(
+        'externalWakeup',
+        '外部唤醒方声明',
+        T_OBJECT,
+        LITERAL,
+        false,
+        '基础',
+        '等外部事件时声明谁会来唤醒：{ owner, endpoint, note }。无头流程体检（V14）读它判断这个等待节点唤不唤得醒'
+      )
     ],
     outputs: []
   },

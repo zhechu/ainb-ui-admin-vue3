@@ -174,6 +174,12 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       //    旧提示承诺「值支持 {{$.变量}}」是假的，且假得有害——用户按提示写占位符，
       //    审批表单里收到的就是字面串 {{$.xxx}}，全程无报错。
       hint: '发起审批时传给 BPM 流程的变量（参数名 → 值）；⚠️ 值按字面量原样传入，{{$.变量}} 不会被替换。'
+    },
+    {
+      key: 'injectManifest',
+      label: '注入变更清单',
+      kind: 'switch',
+      hint: '挂起发起审批时，把这份流程「将要改什么」的变更清单冻结进流程变量，审批人在 BPM 详情页能看到。默认开启；纯审批流程可关掉。'
     }
   ],
   wait: [
@@ -200,6 +206,14 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'text',
       placeholder: '等待的外部事件键',
       hint: '必填，长度 ≤128；由「发布外部事件」端点唤醒。',
+      showIf: { key: 'waitType', equals: 'event' }
+    },
+    {
+      key: 'externalWakeup',
+      label: '外部唤醒方声明',
+      kind: 'kv',
+      placeholder: '如 { owner: "订单中心", endpoint: "POST /agent/workflow/event" }',
+      hint: '等外部事件时声明谁会来唤醒（owner 负责人 / endpoint 调哪个端点 / note 备注）。无头流程体检会读它判断这个等待节点唤不唤得醒；不填体检会要求补充。',
       showIf: { key: 'waitType', equals: 'event' }
     }
   ],
