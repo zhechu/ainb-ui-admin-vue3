@@ -1394,6 +1394,14 @@ const handleSend = async (text?: string) => {
     },
     () => {
       streaming.value = false
+      // 🔴 先把打字机吐完，再置完成态。顺序是硬性的：
+      //    「复制」按钮的 v-if 是 status==='SUCCESS'，而它复制的是 item.content —— 也就是打字机
+      //    **已吐出的那一半**。不 flush 就置 SUCCESS，用户能在动画还在跑的时候点复制，
+      //    拿到一段被静默截断的答案，而界面上看不出任何异常（气泡随后才补完，剪贴板不会）。
+      //    另外这条 flush 必须排在下面的空流判定**之前**：那个判定读的是 assistantMessage.content，
+      //    而 content 只由打字机写入 —— SSE 已给完内容、动画一格都还没吐时 content 仍是空串，
+      //    不先 flush 就会把一次正常回答误判成「AI 助手没有返回任何内容」并盖一条红错。
+      typewriter.flush()
       if (assistantMessage.status === 'STREAMING') {
         // 🔴 空流不能算成功。
         //
@@ -1541,6 +1549,8 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
     () => {
       streaming.value = false
       hitl.running = false
+      // 同 handleSend：先 flush 再置完成态，理由见那边（「复制」会拿到半截答案 + 空流误判）
+      typewriter.flush()
       if (answerMessage.status === 'STREAMING') {
         // 同 handleSend 的空流判定；确认卡片本身也算产出（连续闸口）
         if (!answerMessage.content && !answerMessage.workflowDefId && !answerMessage.hitl) {
