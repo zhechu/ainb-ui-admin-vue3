@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
+import { watchNoSend } from './helpers/no-send'
 
 /**
  * 提示词模板**用例**端到端验证（S7 / L5，2026-10-03）
@@ -13,7 +14,9 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *
  * 🔴 本 spec 刻意【不发送】任何消息，理由与 agent-prompt-template.spec.ts 同：
  *   替用户发出去等于让模型对着字面量编答案，那是最难查的一类错（有回答、无报错、答案是错的）。
- *   所以这里只断言「插入到输入框」并断言「没有产生新的对话气泡」。
+ *   所以这里只断言「插入到输入框」并断言「没有发出 send-stream」。
+ *   🔴 「没有发出」这条判据的写法见 `helpers/no-send.ts` —— 原先用「气泡数前后相等」判，
+ *   而本 spec 一个气泡都不会有，那个判据在 `data-testid` 改名那天会静默退化成 `0 === 0` 恒真。
  *
  * 🔴 两个 describe 各自覆盖一条【双向】闸口，缺半边都不算验过：
  *   - 管理页子表走 /list-by-template，**含关闭态**（管理员要能重新打开一条下架的示例）；
@@ -189,6 +192,10 @@ test.describe('提示词模板用例（聊天面板「示例」页签）', () =>
   test.setTimeout(300_000)
 
   test('S7：示例页签按模板分组 + 点一条【一字不差】插入输入框且不发送 + 关闭的示例不出现', async ({ page, request }) => {
+    // 🔴 挂在用例第一行：不是「必须在 login/goto 之前」（探针 F4 证过那是假约束 ——
+    //    阳性对照凭据 simple-list 是**点开示例页签那一刻**才发的，挪到 waitForURL 之后照样绿），
+    //    而是第一行是唯一不用推理就必然早于所有交互的位置。详见 helpers/no-send.ts 头注。
+    const noSend = watchNoSend(page)
     const token = await apiLogin(request)
     const headers = apiHeaders(token)
     const caseTitle = `${CASE_PREFIX}chat-${Date.now()}`
@@ -245,7 +252,6 @@ test.describe('提示词模板用例（聊天面板「示例」页签）', () =>
       await expect(target.locator('.agent-tpl-item-desc')).toHaveText('请查一下 agent_device_repair 这张表的建表语句，')
 
       // ---------- 点一条 → 正文【一字不差】落进输入框，popover 关闭，且【没有发出去】 ----------
-      const bubblesBefore = await page.locator('[data-testid="assistant-answer"]').count()
       await target.click()
       await expect(popper).toBeHidden({ timeout: 10000 })
       // 🔴🔴 本 spec 最要紧的一条断言。toHaveValue(string) 是**全等**比较：
@@ -261,13 +267,12 @@ test.describe('提示词模板用例（聊天面板「示例」页签）', () =>
         '插进输入框的正文必须与库里的 content 一字不差（原样插入，不 trim / 不改写 / 不压平换行）'
       ).toHaveValue(apiCase.content, { timeout: 10000 })
 
-      // 🔴 必须是【插入】而不是【发送】：气泡数不能变
-      await expect
-        .poll(async () => page.locator('[data-testid="assistant-answer"]').count(), {
-          timeout: 5000,
-          message: '点示例不应发送消息'
-        })
-        .toBe(bubblesBefore)
+      // 🔴 必须是【插入】而不是【发送】。判据从「气泡数没变」换成「send-stream 一条都没发出」：
+      //    本 spec 刻意不发送任何消息，所以整轮里一个气泡都不会出现 ——「气泡数相等」在
+      //    data-testid 改名那天会静默退化成 0 === 0 恒真，而它给不出任何阳性对照（方案 §2-6）。
+      //    网络判据的对照是白送的：页签里能列出示例，就是 simple-list 真的回来了。
+      noSend.expectLive('/agent/prompt-template-case/simple-list', '示例页签的列表请求')
+      noSend.expectNeverSent('点一条示例')
 
       // ---------- 再点一条 → 追加而不是覆盖（不能吃掉已写的字） ----------
       await templateBtn.click()

@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
+import { watchNoSend } from './helpers/no-send'
 
 /**
  * 提示词模板端到端验证（2026-09-29 需求7 + 需求8）
@@ -12,7 +13,9 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *
  * 🔴 关键取舍：本 spec 刻意【不发送】任何消息。模板正文里的 {{占位符}} 需要用户先替换，
  *   替他发出去等于让模型对着「{{订单号}}」这种字面量编一个答案 —— 那是最难查的一类错
- *   （有回答、无报错、答案是错的）。所以这里只断言「插入到输入框」并断言「没有产生新的对话气泡」。
+ *   （有回答、无报错、答案是错的）。所以这里只断言「插入到输入框」并断言「没有发出 send-stream」。
+ *   🔴 「没有发出」这条判据的写法见 `helpers/no-send.ts` —— 原先用「气泡数前后相等」判，
+ *   而本 spec 一个气泡都不会有，那个判据在 `data-testid` 改名那天会静默退化成 `0 === 0` 恒真。
  *
  * 前置：后端 48080（已 apply xpy-2026-09-29-agent-prompt-template.sql 并重启）+ 前端 dev server。
  * 数据自净：管理页用例建一条 e2e 专用模板、末尾删除。
@@ -168,6 +171,10 @@ test.describe('提示词模板（智能助手面板）', () => {
   test.setTimeout(180_000)
 
   test('需求7+8：模板/Agent/发送同一行 + popover 分组 + 点一条插入输入框且不发送', async ({ page }) => {
+    // 🔴 挂在用例第一行：不是「必须在 login/goto 之前」（探针 F4 证过那是假约束 ——
+    //    阳性对照凭据 simple-list 是**点开 popover 那一刻**才发的，挪到 goto 之后照样绿），
+    //    而是第一行是唯一不用推理就必然早于所有交互的位置。详见 helpers/no-send.ts 头注。
+    const noSend = watchNoSend(page)
     await login(page)
     await gotoWithAuth(page, '/ai/agent/assistant')
     await page.waitForURL(/\/ai\/agent\/assistant/, { timeout: 20000 })
@@ -216,7 +223,6 @@ test.describe('提示词模板（智能助手面板）', () => {
     await popper.locator('input[placeholder*="搜名称"]').fill('')
 
     // ---------- 点一条 → 正文落进输入框，popover 关闭，且【没有发出去】 ----------
-    const bubblesBefore = await page.locator('[data-testid="assistant-answer"]').count()
     await expect(input).toHaveValue('')
     await popper.locator('.agent-tpl-item').filter({ hasText: SEED_NAME }).first().click()
 
@@ -225,13 +231,12 @@ test.describe('提示词模板（智能助手面板）', () => {
     //    textarea 要用 toHaveValue（DOM 的 textContent 不跟随 value 变化，toContainText 会假失败）
     await expect(input).toHaveValue(/\{\{/, { timeout: 10000 })
     await expect(input).toHaveValue(/想做的事/)
-    // 🔴 必须是【插入】而不是【发送】：气泡数不能变
-    await expect
-      .poll(async () => page.locator('[data-testid="assistant-answer"]').count(), {
-        timeout: 5000,
-        message: '点模板不应发送消息'
-      })
-      .toBe(bubblesBefore)
+    // 🔴 必须是【插入】而不是【发送】。判据从「气泡数没变」换成「send-stream 一条都没发出」：
+    //    本 spec 刻意不发送任何消息，整轮里一个气泡都不会出现 ——「气泡数相等」在
+    //    data-testid 改名那天会静默退化成 0 === 0 恒真，且它给不出任何阳性对照（方案 §2-6）。
+    //    网络判据的对照是白送的：popover 里能列出模板，就是 simple-list 真的回来了。
+    noSend.expectLive('/agent/prompt-template/simple-list', '模板 popover 的列表请求')
+    noSend.expectNeverSent('点一条模板')
     // 占位符提示要出现，否则用户不知道还得替换
     await expect(page.locator('.el-message').filter({ hasText: /占位符/ }).first()).toBeVisible({
       timeout: 10000
