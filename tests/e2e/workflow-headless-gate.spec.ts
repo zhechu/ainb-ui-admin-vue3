@@ -535,7 +535,14 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
               `分型没走 BUILD 路径，后面的闸口断言全都无从谈起`
     ).toBe(true)
     const draftCard = page.locator('[data-testid="workflow-draft-card"]')
-    await expect(draftCard.getByText('待确认'), '草稿卡不在「待确认」态').toBeVisible()
+    // 🔴 指着 draft-status 这枚标签本身，不用 getByText('待确认')：卡片标题是模型写的一句话，
+    //    可能把「待确认」写进去（run8 示例 55 就写了「…体检、待确认后发布」），
+    //    那时 getByText 命中两个元素 ⟹ strict mode violation ⟹ 判词说的与事实相反。
+    //    详见 prompt-template-build-matrix.spec.ts 里缺陷 D4-12 那段注释。
+    await expect(
+      draftCard.locator('[data-testid="draft-status"]'),
+      '草稿卡不在「待确认」态'
+    ).toHaveText('待确认')
     rows.push(`- 草稿卡：待确认，节点 ${await draftCard.locator('[data-testid="workflow-node"]').count()} 个\n`)
 
     // 🔴 到这里就停：**绝不点「确认并运行」**。建表 IRREVERSIBLE，本用例只验编排、不验执行。

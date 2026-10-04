@@ -367,6 +367,18 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
       const label = `示例 ${c.id}（${c.title}）`
       const detail: string[] = []
       try {
+        // 🔴 每条示例**自己**拍一次 def 快照（缺陷 D4-13，2026-10-04 run8 实测）。
+        //    原先是拿全轮的 baselineDefs + runCreatedDefs 求差集、再取 fresh[fresh.length - 1]，
+        //    两处都错：① /page 返回是**新→旧**（本轮残留核账印出来的就是 445,444,443），
+        //    取最后一条等于取**最旧**那条；② runCreatedDefs 只在示例整条跑通时才 push，
+        //    任何一条红掉之后它没认领的 def 就永久留在候选里，后面每条示例都可能挑中它。
+        //    run8 的示例 59 就是这么被判红的：它自己的卡是 #445（改销售报价单表单），
+        //    断言却拿 #443（示例 55 的「创建会议室预订登记表」）的后端 manifest 去比页面 ——
+        //    #443 有 FORM_PUBLISH 而 #445 没有 ⟹ 报「manifest-permissions 没渲染」。
+        //    铁证是它自己那条 detail：一次**纯改表单**的示例，kinds 里印出了 FORM_CREATE。
+        //    改成「开跑前拍一张、之后取新增里 id 最大的那条」，两件事一起消掉，
+        //    也不再依赖「上一条示例成功没有」。
+        const defsBefore = new Set((await listDefs(request)).map((d) => d.id))
         // 🔴 每个 click 都带 CLICK_TIMEOUT_MS：它们都排在断言**之前**，按钮一旦不在，
         //    无限等的 click 会先把整条用例挂死（见 helpers/terminal.ts 里那个常量的注释）
         // 🔴 判据是 `i > 0` 而不是原先的 `sent > 0`：`sent` 只在示例**整条跑通**时才 ++，
@@ -445,7 +457,18 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         ).toBe(true)
 
         const draftCard = page.locator('[data-testid="workflow-draft-card"]')
-        await expect(draftCard.getByText('待确认'), `${label} 的草稿卡不在「待确认」态`).toBeVisible()
+        // 🔴 必须指着 `draft-status` 这枚标签本身，**不能**写 `draftCard.getByText('待确认')`
+        //    （缺陷 D4-12，2026-10-04 run8 实测）：卡片标题是模型自己写的一句话，
+        //    示例 55 那轮它写的是「按步骤创建会议室预订表：查重、选控件、存草稿、体检、**待确认**后发布」。
+        //    getByText 于是同时命中标题与状态标签两个元素 ⟹ Playwright 抛 strict mode violation ⟹
+        //    真因落在错误消息的第 3 行，而下面的 catch 只取第 1 行 ⟹ 报告印出
+        //    「草稿卡不在待确认态」，可卡片当时**正是**待确认态（trace `2-trace.trace` line=667
+        //    ts=50284.154 的快照里两处文本都在）。这与 D4-02 是同一类毛病：判词自带误诊。
+        //    标题里会不会出现「待确认」取决于模型这轮怎么措辞 ⟹ 写死 getByText 的断言是**间歇性红**的。
+        await expect(
+          draftCard.locator('[data-testid="draft-status"]'),
+          `${label} 的草稿卡不在「待确认」态`
+        ).toHaveText('待确认')
         expect(
           await draftCard.locator('[data-testid="workflow-node"]').count(),
           `${label} 的草稿卡里一个节点都没有 —— DSL 解析不出 nodes 还放过去了`
@@ -496,13 +519,16 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
 
         // ---------- 体检：走只读接口，不点确认 ----------
         const defs = await listDefs(request)
-        const fresh = defs.filter((d) => !baselineDefs.has(d.id) && !runCreatedDefs.includes(d.id))
+        const fresh = defs.filter((d) => !defsBefore.has(d.id))
         expect(
           fresh.length,
-          `${label} 出了草稿卡，但流程 def 列表里没有新增行（跑前 ${baselineDefs.size} 条 → 跑后 ${defs.length} 条）` +
+          `${label} 出了草稿卡，但流程 def 列表里没有新增行（本例开跑前 ${defsBefore.size} 条 → 跑后 ${defs.length} 条）` +
             ` —— 卡片是拿什么渲染的？`
         ).toBeGreaterThan(0)
-        const def = fresh[fresh.length - 1]
+        // 🔴 取 id **最大**的那条，不是数组最后一条：/page 是新→旧（见上面 defsBefore 那段注释）。
+        //    一条示例正常只造一份草稿，但 AI 万一规划出两版，页面渲染的是后一版，
+        //    拿前一版的 manifest 去比页面就是「凭空吓人」那一支断言在正确规划上报红。
+        const def = fresh.reduce((a, b) => (b.id > a.id ? b : a))
         detail.push(`新造 def：#${def.id} ${def.code}「${def.name}」状态 ${def.status}`)
         expect(
           def.status,
@@ -613,7 +639,15 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         runCreatedDefs.push(def.id)
         sent++
       } catch (e) {
-        const msg = e instanceof Error ? e.message.split('\n')[0] : String(e)
+        // 🔴 只截第一行本来是**报告可读性**的取舍（Playwright 的完整错误后面还跟着源码框，
+        //    几十行噪音不该进 markdown），但 run8 证明它会把真因整个吞掉：
+        //    strict mode violation 的原文在第 3 行，报告里只剩第 1 行那句自定义判词，
+        //    于是我照着「草稿卡不在待确认态」去查状态机，而卡片当时**正是**待确认态（缺陷 D4-12）。
+        //    所以除第一行外，「命中多个元素」这类**定位失败**的原文也一并留下 ——
+        //    它说的是「这条断言自己指错了地方」，不是「产品错了」，两者在报告里必须能分开。
+        const lines = (e instanceof Error ? e.message : String(e)).split('\n')
+        const cause = lines.find((l, n) => n > 0 && /strict mode violation/i.test(l))
+        const msg = cause ? `${lines[0].trim()}｜定位失败原文：${cause.trim()}` : lines[0]
         failures.push(`${label}：${msg}`)
         detail.push(`❌ ${msg}`)
       }
@@ -660,7 +694,11 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
  * 🔴 本文件用的是 `waitTerminal` 而**不是** `waitTerminalOutcome`（缺陷 D4-10/D4-11，2026-10-04 run7）：
  *    后者刻意不认 error alert，于是后端规划失败、alert 早已挂上页面，测试仍空转到
  *    `PER_CASE_PLAN_TIMEOUT` 才返回 null，报告印一句与事实相反的「N 秒内未收敛」。
- *    run7 的 id=55/57 各白等约 5 分钟。`waitTerminal` 四种终局都认，且把 alert 原文一并带回来，
+ *    run7 的 id=55/57 就是这么各白等到预算耗尽（分别**至少** 6 分钟、5 分 40 秒，推导见
+ *    `helpers/terminal.ts` 的墓碑）。`waitTerminal` 四种终局都认，且把 alert 原文一并带回来，
  *    正好喂给 §3.3 第 7 条要求的「只准原样引用原文」。它的 alert 分支同样有构造样本阳性对照
  *    （`wait-terminal-deadline.spec.ts` 里那条 `alerted`），不是只靠真发才验得到。
+ *    🔴 run8（18:05~18:07）已实测兑现：id=57 的建表被拒在 **54.9 秒**就带着 alert 原文返回
+ *    （「字段 participants 的类型 JSON 不在受支持的列表里。可选：DATE/DATETIME/…」），
+ *    而不是 run7 那样空转 480 秒再印一句与事实相反的「未收敛」。
  */

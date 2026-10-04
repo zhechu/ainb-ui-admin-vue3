@@ -132,7 +132,9 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
     // 空卡片是「DSL 解析不出 nodes 还放过去」的症状
     const hasDraftCard = await draftCard.isVisible().catch(() => false)
     if (hasDraftCard) {
-      await expect(draftCard.getByText('待确认')).toBeVisible()
+      // 🔴 指着 draft-status 标签本身：卡片标题是模型写的一句话，可能含「待确认」，
+      //    getByText 会命中两个元素 ⟹ strict mode violation（缺陷 D4-12，run8 示例 55 实测）
+      await expect(draftCard.locator('[data-testid="draft-status"]')).toHaveText('待确认')
       const nodeRows = draftCard.locator('[data-testid="workflow-node"]')
       expect(await nodeRows.count(), '草稿卡片里一个节点都没有').toBeGreaterThanOrEqual(1)
 
@@ -175,7 +177,7 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
         timeout: 60_000
       })
       const cardAfter = page.locator('[data-testid="workflow-draft-card"]')
-      await expect(cardAfter.getByText('待确认')).toBeVisible()
+      await expect(cardAfter.locator('[data-testid="draft-status"]')).toHaveText('待确认')
       expect(
         await cardAfter.locator('[data-testid="workflow-node"]').count(),
         '刷新之后草稿卡片的节点没了 —— workflowDefId 没能从消息列表里带回来'

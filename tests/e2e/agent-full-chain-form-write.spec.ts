@@ -81,7 +81,9 @@ test.describe('全链路：拆解 → 编排 → 执行 → 落表单', () => {
       expect(sawCard, '等待 8 分钟未产出草稿卡片（可能被分类成 CHAT 或拆解失败）').toBe(true)
       const bodyText = await page.locator('[data-testid="assistant-scroll"]').textContent()
       expect(bodyText).not.toContain('复杂需求拆解为 Workflow DSL 失败')
-      await expect(draftCard.getByText('待确认')).toBeVisible()
+      // 🔴 指着 draft-status 标签本身：卡片标题是模型写的一句话，可能含「待确认」，
+      //    getByText 会命中两个元素 ⟹ strict mode violation（缺陷 D4-12，run8 示例 55 实测）
+      await expect(draftCard.locator('[data-testid="draft-status"]')).toHaveText('待确认')
       expect(
         await draftCard.locator('[data-testid="workflow-node"]').count(),
         '草稿卡片里没有节点预览'

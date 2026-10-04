@@ -42,7 +42,13 @@
         >
           {{ roundsHint.text }}
         </el-tag>
-        <el-tag :type="statusTagType" size="small" effect="plain">
+        <!-- 🔴 data-testid 是给 e2e 的，而且是**必需**的，不是顺手加的：卡片标题（上面的 summary）
+             是模型自己写的一句话，完全可能把「待确认」写进去 —— run8 的示例 55 就写出了
+             「按步骤创建会议室预订表：查重、选控件、存草稿、体检、待确认后发布」。
+             那时 `draftCard.getByText('待确认')` 会同时命中标题与这枚状态标签两个元素，
+             Playwright 直接抛 strict mode violation，报告印出来的却是「草稿卡不在待确认态」
+             —— 一句与事实相反的话（卡片当时**正是**待确认态）。断言状态就得指着状态本身。 -->
+        <el-tag data-testid="draft-status" :type="statusTagType" size="small" effect="plain">
           {{ statusLabel }}
         </el-tag>
       </div>
