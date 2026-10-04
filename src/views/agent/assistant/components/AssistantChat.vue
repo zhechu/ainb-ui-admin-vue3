@@ -1212,6 +1212,30 @@ const handleResume = async () => {
 }
 
 /**
+ * 标成错误态，并撤掉可能还挂着的规划进度卡片
+ *
+ * 🔴 这两件事<b>必须一起做</b>，漏掉后一件的表现极具误导性：
+ * 错误气泡（{@code el-alert}）在模板里被 {@code v-if="!item.cardStatus"} 挡着，
+ * cardStatus 还挂在 {@code 'planning'} 上时它压根不渲染，而 {@code WorkflowDraftCard}
+ * 会继续转圈。规划路径失败时就是这个形态 —— 用户盯着一个永远转不完的进度条，
+ * 界面上没有一个字告诉他「已经失败了、失败原因是什么」。
+ *
+ * <p>实测疤：一次建表编排连错 6 轮后，后端抛了 {@code WORKFLOW_PLAN_DSL_GENERATION_FAILED}、
+ * {@code agent_message.error_msg} 也如实写进了库，页面上却什么错误都看不到；
+ * e2e 断言「模型侧没答」时抓到的是空字符串，只能去翻后端日志才知道真因，
+ * 而且第一眼的结论还是错的（以为意图分型没走 BUILD，其实是 Planner 挂了）。
+ *
+ * <p>MESSAGE(:1241) 与 WORKFLOW_CONFIRM(:1273) 早就各自手写了这两行、并各带一段同款注释，
+ * 唯独错误路径漏了 —— 故收成一个函数，让「标错误」与「撤卡片」不可能再被拆开。
+ */
+const markError = (msg: any, text: string) => {
+  msg.status = 'ERROR'
+  msg.errorMsg = text
+  msg.cardStatus = null
+  msg.planningText = ''
+}
+
+/**
  * 把一个 SSE 聊天事件应用到目标消息上
  *
  * 🔴 提问（handleSend）与「确认卡片点了同意/拒绝」后的续跑（handleHitlDecision）
@@ -1295,8 +1319,7 @@ const applyChatEvent = (msg: any, data: any) => {
       msg.status = 'SUCCESS'
       break
     case 'ERROR':
-      msg.status = 'ERROR'
-      msg.errorMsg = data.errorMsg || 'AI 助手暂时无法回答'
+      markError(msg, data.errorMsg || 'AI 助手暂时无法回答')
       break
     default:
       // 后端新增了事件类型而前端还没跟上 —— 忽略即可，不要炸掉整个流
@@ -1354,8 +1377,7 @@ const handleSend = async (text?: string) => {
         return // 心跳之类的非 JSON 行，忽略
       }
       if (payload.code !== 0) {
-        assistantMessage.status = 'ERROR'
-        assistantMessage.errorMsg = payload.msg || '请求失败'
+        markError(assistantMessage, payload.msg || '请求失败')
         return
       }
       applyChatEvent(assistantMessage, payload.data)
@@ -1366,8 +1388,7 @@ const handleSend = async (text?: string) => {
       streaming.value = false
       typewriter.flush()
       if (assistantMessage.status === 'STREAMING') {
-        assistantMessage.status = 'ERROR'
-        assistantMessage.errorMsg = '连接中断，请重试'
+        markError(assistantMessage, '连接中断，请重试')
       }
       throw err
     },
@@ -1385,8 +1406,10 @@ const handleSend = async (text?: string) => {
         //    既没有 content 也没有 workflowDefId，不加这个条件就会被误判成「后端什么都没答」，
         //    卡片上盖一条红色报错 —— 而流程其实好好地在等用户点「同意」。
         if (!assistantMessage.content && !assistantMessage.workflowDefId && !assistantMessage.hitl) {
-          assistantMessage.status = 'ERROR'
-          assistantMessage.errorMsg = 'AI 助手没有返回任何内容，请重试；若反复出现请联系管理员查看服务端日志'
+          markError(
+            assistantMessage,
+            'AI 助手没有返回任何内容，请重试；若反复出现请联系管理员查看服务端日志'
+          )
         } else {
           assistantMessage.status = 'SUCCESS'
         }
@@ -1489,8 +1512,7 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       if (payload.code !== 0) {
         hitl.running = false
         hitl.error = payload.msg || '续跑请求被拒绝'
-        answerMessage.status = 'ERROR'
-        answerMessage.errorMsg = payload.msg || '续跑请求被拒绝'
+        markError(answerMessage, payload.msg || '续跑请求被拒绝')
         return
       }
       applyChatEvent(answerMessage, payload.data)
@@ -1508,8 +1530,7 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       typewriter.flush()
       hitl.running = false
       if (answerMessage.status === 'STREAMING') {
-        answerMessage.status = 'ERROR'
-        answerMessage.errorMsg = '连接中断，请重试'
+        markError(answerMessage, '连接中断，请重试')
       }
       if (item.cardStatus && !hitl.error) {
         item.runResult = 'error'
@@ -1523,9 +1544,10 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       if (answerMessage.status === 'STREAMING') {
         // 同 handleSend 的空流判定；确认卡片本身也算产出（连续闸口）
         if (!answerMessage.content && !answerMessage.workflowDefId && !answerMessage.hitl) {
-          answerMessage.status = 'ERROR'
-          answerMessage.errorMsg =
+          markError(
+            answerMessage,
             '流程恢复后没有返回任何内容，请刷新页面查看执行状态；若反复出现请联系管理员查看服务端日志'
+          )
         } else {
           answerMessage.status = 'SUCCESS'
         }
