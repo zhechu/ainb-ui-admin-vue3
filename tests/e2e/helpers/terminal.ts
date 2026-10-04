@@ -139,12 +139,27 @@ function stepBudget(deadline: number): number {
 }
 
 /**
- * 等一轮真发收敛到终态（A4-d 用：四种终局都要认，包括 error alert）
+ * 等一轮真发收敛到终态（A4-d 与 T2 模板矩阵用：四种终局都要认，包括 error alert）
  *
  * 🔴 **本函数保证在 `timeoutMs` 内返回**（超出量不超过一个 `STEP_TIMEOUT_MS` 的调度抖动）。
  *    这条保证由 `wait-terminal-deadline.spec.ts` 的构造样本钉住：那里造了一个
  *    「后端已给结论、但前端终局判据一个都不认」的页面（只有规划进度条在转），
  *    断言它必定按时返回 `outcome: null`。把 bounded 拆掉，那条测试会挂到用例超时才红。
+ *
+ * 🔴 这里原先还有一个「只认草稿卡 / 答案气泡、刻意不认 alert」的简化版 `waitTerminalOutcome`，
+ *    已删除（缺陷 D4-11，2026-10-04 run7）。它那条取舍的代价被真发量出来了：
+ *    后端规划失败、alert 早已挂上页面，它却继续空转到 480 秒预算耗尽才返回 null，
+ *    调用方的判词又只能把 null 说成「N 秒内未收敛」—— 报告里印的病因与事实相反。
+ *
+ *    run7 的实测（后端 `_backend-run7.log` 里 `AgentAssistantServiceImpl:485` 那两行规划失败，
+ *    对照报告 `_evidence/prompt-template-build-matrix.md` 各例的耗时）：
+ *    id=55 后端 **17:09:39** 就报了「轮次耗尽」，而它的 480 秒预算最早也要到 **17:15:54**
+ *    才耗尽（报告头写于 17:07:53，本例耗时 480730ms）—— 中间**至少 6 分钟纯白等**；
+ *    id=57 同形，后端 **17:18:12** 失败、预算最早 **17:23:55** 耗尽，**至少 5 分 40 秒白等**。
+ *    合计约 12 分钟，占那轮 16.7 分钟的七成。
+ *
+ *    「简化版少认一种终局」省下的那点判词分支，远不值这个价；要少认也得由**调用方**在
+ *    拿到 errorText 之后自己决定怎么措辞，而不是让等待函数把信息丢掉。
  */
 export async function waitTerminal(page: Page, timeoutMs: number): Promise<Terminal> {
   const draftCard = page.locator('[data-testid="workflow-draft-card"]')
@@ -181,33 +196,4 @@ export async function waitTerminal(page: Page, timeoutMs: number): Promise<Termi
     await bounded(page.waitForTimeout(Math.min(POLL_MS, left)), POLL_MS + 500)
   }
   return { outcome: null, sawPlanning, errorText: '' }
-}
-
-/**
- * 只认「出了草稿卡 / 直接答了文字」两种终局的版本（T1/T2 模板矩阵用）
- *
- * <p>🔴 刻意**不**认 error alert：矩阵那侧的判词把 `null` 一律报成「等满 N 秒未收敛」，
- *    而一个瞬时 alert 会让它提前几分钟返回 null，报告里就会印一句与事实不符的「等满」。
- *    改它要连判词一起改，那是另一件事；本轮只把「永不返回」这个真缺陷修掉，
- *    语义与改前逐字一致（见 `prompt-template-build-matrix.spec.ts` 原先那份本地实现）。
- *
- * @returns true=出了草稿卡；false=被判成 CHAT 直接答了文字；null=超时仍在转圈
- */
-export async function waitTerminalOutcome(page: Page, timeoutMs: number): Promise<boolean | null> {
-  const draftCard = page.locator('[data-testid="workflow-draft-card"]')
-  const answer = page.locator('[data-testid="assistant-answer"]')
-  const deadline = Date.now() + timeoutMs
-
-  while (Date.now() < deadline) {
-    const step = stepBudget(deadline)
-    if ((await bounded(draftCard.isVisible().catch(() => false), step)) === true) return true
-    if ((await bounded(answer.isVisible().catch(() => false), step)) === true) {
-      const text = await bounded(answer.textContent({ timeout: step }).catch(() => ''), step + 250)
-      if (typeof text === 'string' && text.trim().length > 0) return false
-    }
-    const left = deadline - Date.now()
-    if (left <= 0) break
-    await bounded(page.waitForTimeout(Math.min(POLL_MS, left)), POLL_MS + 500)
-  }
-  return null
 }

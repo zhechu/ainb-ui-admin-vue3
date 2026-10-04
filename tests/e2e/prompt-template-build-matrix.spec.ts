@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
-import { CLICK_TIMEOUT_MS, bounded, waitTerminalOutcome } from './helpers/terminal'
+import { CLICK_TIMEOUT_MS, bounded, boundedText, waitTerminal } from './helpers/terminal'
 
 /**
  * T2：BUILD 类示例逐条真发（迭代二方案 §6.1）
@@ -167,7 +167,9 @@ const conversationDeleteApi = `${API_BASE_URL}/agent/assistant/conversation/dele
  * T1 已经真撞过一次：2026-10-04 全量跑了 45.6 分钟，而 access token 只活 30 分钟
  * （`system_oauth2_client.access_token_validity_seconds=1800`），afterAll 拿过期 token 收尾，
  * 42 条会话一条没删，报告却印「删除 0 条（基线 1 条原样保留）」，读起来像成功。
- * T2 只跑 6 分钟撞不到过期，但接口 500 一样会静默吃成空集，所以两边都验。
+ * T2 原先注的是「只跑 6 分钟撞不到过期」，那个前提已经过期：2026-10-04 实测 **16.0 分钟**，
+ * 余量从 5 倍缩到不到 2 倍，而 planner 产不出合法 JSON 时会白烧轮次（缺陷 D4-01），只会更慢。
+ * 所以 T2 的 afterAll 开头也重新登录，不再赌 TTL。接口 500 一样会静默吃成空集，所以两边都验。
  */
 function expectOk(body: any, what: string): void {
   expect(body?.code, `${what}失败（code=${body?.code}）：${body?.msg ?? ''}`).toBe(0)
@@ -227,6 +229,16 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
 
   test.afterAll(async ({ request }) => {
     if (!token) return
+    // 🔴 收尾前重新登录（方案 §2.8）。token TTL 是 1800 秒，而本轮实测跑了 16.0 分钟 ——
+    //    余量不到 2 倍。拿旧 token 收尾时，下面那些 expectOk 确实会把 401 抓成红，
+    //    但那时残留已经躺在库里了：T1 就是这么攒下 42 条没删掉的会话的。别赌，直接换新 token。
+    // 🔴 登录失败**只记一行、不 throw**：throw 会把整个 afterAll 打断，残留核账一条都不做，
+    //    比拿旧 token 试一次更糟（T1 的 afterAll 就是这个形状，两边对齐）
+    try {
+      token = await apiLogin(request)
+    } catch {
+      rows.push(`\n---\n\n⚠️ 收尾重新登录失败，下面按旧 token 试；残留**可能没清干净**，需人工核\n`)
+    }
 
     // ---------- 残留核账（方案 §6.2：残留非空即视为该轮失败） ----------
     const tablesNow = await listPhysicalTables(request)
@@ -247,14 +259,18 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
     let deletedDefs = 0
     for (const d of created) {
       if (d.status !== 'DRAFT') continue
-      await request.delete(defDeleteApi, { headers: H(), params: { id: d.id } })
+      // 🔴 每个删除请求都过 expectOk（方案 §4.7）：不验返回码时，token 过期或状态不许删
+      //    都会静默失败，而计数器照样 ++、报告照样印「已删 N 条」—— 清理失败被记成清理成功
+      const delResp = await request.delete(defDeleteApi, { headers: H(), params: { id: d.id } })
+      expectOk(await delResp.json(), `删本轮新造的草稿 def #${d.id}`)
       deletedDefs++
     }
     const conversationsNow = await listConversationIds(request)
     let deletedConversations = 0
     for (const id of conversationsNow) {
       if (baselineConversationIds.has(id)) continue
-      await request.delete(conversationDeleteApi, { headers: H(), params: { id } })
+      const delResp = await request.delete(conversationDeleteApi, { headers: H(), params: { id } })
+      expectOk(await delResp.json(), `删本轮新造的会话 #${id}`)
       deletedConversations++
     }
 
@@ -353,11 +369,26 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
       try {
         // 🔴 每个 click 都带 CLICK_TIMEOUT_MS：它们都排在断言**之前**，按钮一旦不在，
         //    无限等的 click 会先把整条用例挂死（见 helpers/terminal.ts 里那个常量的注释）
-        if (sent > 0) {
+        // 🔴 判据是 `i > 0` 而不是原先的 `sent > 0`：`sent` 只在示例**整条跑通**时才 ++，
+        //    于是任何一条失败之后，后面所有示例都挤在**同一个会话**里跑，上一条的
+        //    草稿卡与 error alert 全留在页面上。run7 就是这么把 id=59 判红的 ——
+        //    59 自己的产品链路全过（草稿卡待确认、4 个节点、体检 warnings 0、def #442），
+        //    却栽在末尾那条页面级 alert 计数上，而挂在页面上的其实是 55/57 规划失败留下的 alert。
+        //    「新开一个会话」与「上一条成功没有」是两件无关的事，别用同一个变量表达。
+        if (i > 0) {
           await page.getByRole('button', { name: /新建对话/ }).click({ timeout: CLICK_TIMEOUT_MS })
           await expect(page.locator('[data-testid="workflow-draft-card"]')).toHaveCount(0, {
             timeout: 10_000
           })
+          // 🔴 气泡清零还不够，alert 也得清零 —— 这一条是本用例末尾那条
+          //    「页面上不许挂 error alert」能成立的**前提**：只有在开头证明了页面是干净的，
+          //    末尾数到的 alert 才必然是**本条示例自己**产的。少了这一条，那条断言就分不清
+          //    「本条出错了」与「上一条的错还挂在屏幕上」，而它两种都报成前者。
+          await expect(
+            page.locator('.el-alert--error'),
+            `${label} 开跑前页面上还挂着上一条示例的 error alert —— 会话没真的切干净，` +
+              `后面那条「不许挂 alert」的断言就失去意义了`
+          ).toHaveCount(0, { timeout: 10_000 })
         }
 
         await page.locator('[data-testid="template-picker"]').click({ timeout: CLICK_TIMEOUT_MS })
@@ -378,11 +409,39 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         //    （它测的是 SSE 积压，不是分型），这里不容忍 —— expect_intent=BUILD 是
         //    示例库里人工标定的期望，判成 CHAT 就是方案 §6.3-3 点名要抓的那个缺陷：
         //    「一条本该编排的模板被误判成 CHAT 时，测试会以『答案非空』通过」
-        const card = await waitTerminalOutcome(page, PER_CASE_PLAN_TIMEOUT)
+        const terminal = await waitTerminal(page, PER_CASE_PLAN_TIMEOUT)
+        const card = terminal.outcome
+        // 🔴 末尾那句病因**必须随分支变化**（缺陷 D4-02 / 方案 §3.3 第 7 条「不替 error alert 编病因」）。
+        //    原先「意图分型没走 BUILD 路径」是无条件拼上去的，连超时分支也拼 ——
+        //    而超时分支里分型根本不是原因。这已经真误导过一次：id=57 明明是 planner 产不出合法 JSON，
+        //    报告却把责任推给意图分型。别把这几句合回去「省点重复」。
+        //
+        // 🔴 换用 waitTerminal（而不是原先的 waitTerminalOutcome）修的是同一类毛病的**另一半**：
+        //    waitTerminalOutcome **刻意不认** error alert（它自己的 javadoc 写着
+        //    「改它要连判词一起改，那是另一件事」），于是后端规划失败、alert 早就挂上页面了，
+        //    测试还在原地空转到 480 秒、返回 null，报告印一句与事实**相反**的
+        //    「480 秒内未收敛：planner 在轮次上限内未产出合法 DSL」。
+        //    run7 的 id=55/57 就是这么各白等到预算耗尽（分别**至少** 6 分钟、5 分 40 秒，
+        //    合计约 12 分钟、占那轮 16.7 分钟的七成 —— 数字的推导见 `helpers/terminal.ts` 的墓碑），
+        //    病因还写错了。那「另一件事」就是这件事。
+        //    alert 分支只准**原样引用 alert 原文**，不许自己编（§3.3 第 7 条）。
+        if (terminal.errorText) {
+          detail.push(`error alert 原文：${terminal.errorText}`)
+        }
+        detail.push(
+          `终局：outcome=${String(terminal.outcome)}，sawPlanning=${terminal.sawPlanning}` +
+            (terminal.errorText ? '，页面挂了 error alert' : '')
+        )
         expect(
           card,
-          `${label} 没产出流程草稿卡（${card === null ? '超时未收敛' : '被判成了 CHAT，直接答了一段文字'}）` +
-            ` —— 意图分型没走 BUILD 路径`
+          `${label} 没产出流程草稿卡 —— ${
+            terminal.errorText
+              ? `页面挂了 error alert，原文：${terminal.errorText}`
+              : card === null
+                ? `${PER_CASE_PLAN_TIMEOUT / 1000} 秒内未收敛（既没出草稿卡、也没答文字、也没挂 alert）：` +
+                  'planner 仍在转圈'
+                : '被判成了 CHAT，直接答了一段文字：意图分型没走 BUILD 路径'
+          }`
         ).toBe(true)
 
         const draftCard = page.locator('[data-testid="workflow-draft-card"]')
@@ -528,10 +587,24 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
             .join('，')}`
         )
 
-        await expect(
-          page.locator('.el-alert--error'),
-          `${label} 页面上挂了 error alert`
-        ).toHaveCount(0)
+        // 🔴 这条现在才**真的**在说「本条示例挂了 alert」：开跑前已经断言过 alert 清零
+        //    （见上面 `i > 0` 那段），所以留到这里的只可能是本条自己产的。
+        //    原先它是**页面级**计数、又不抓原文，两件事都分不清 —— run7 的 id=59 就是
+        //    被 55/57 留下的 alert 判红的，而报告只印了一句「页面上挂了 error alert」，
+        //    既没说是哪条示例的错、也没说错在哪。原文必须落进断言消息与报告。
+        const leftover = page.locator('.el-alert--error')
+        const leftoverCount = await leftover.count()
+        // 🔴 只在真的数到 alert 时才去读原文：没有 alert 时 innerText 要等满显式 timeout 才 reject，
+        //    每条示例白等 10 秒。count() 不等待，先用它分流。
+        const leftoverText =
+          leftoverCount > 0 ? await boundedText(leftover.last(), 10_000) : ''
+        if (leftoverText) {
+          detail.push(`error alert 原文：${leftoverText}`)
+        }
+        expect(
+          leftoverCount,
+          `${label} 页面上挂了 error alert，原文：${leftoverText || '（10 秒内没读到）'}`
+        ).toBe(0)
 
         // 🔴 记进「本轮新造」清单，而**不是**塞回 baselineDefs。
         //    早先这里写的是 baselineDefs.set(def.id, ...)，本意是让下一条示例别把它重复当成新的，
@@ -570,7 +643,7 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
 })
 
 /**
- * 「等这一轮真发收敛到终态」已抽到 `helpers/terminal.ts` 的 `waitTerminalOutcome`
+ * 「等这一轮真发收敛到终态」已抽到 `helpers/terminal.ts`，本文件用的是 `waitTerminal`
  *
  * 🔴 抽出去的两个理由，第一个是硬的：原先那份本地实现里
  *    `await answer.textContent().catch(() => '')` 没有显式 timeout，而
@@ -583,4 +656,11 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
  *
  * 第二个理由：方案 §2-7 要求判据自己有独立的构造样本测试，而构造样本必须打**真发用例用的
  * 那同一个函数** —— 见 `tests/e2e/wait-terminal-deadline.spec.ts`。
+ *
+ * 🔴 本文件用的是 `waitTerminal` 而**不是** `waitTerminalOutcome`（缺陷 D4-10/D4-11，2026-10-04 run7）：
+ *    后者刻意不认 error alert，于是后端规划失败、alert 早已挂上页面，测试仍空转到
+ *    `PER_CASE_PLAN_TIMEOUT` 才返回 null，报告印一句与事实相反的「N 秒内未收敛」。
+ *    run7 的 id=55/57 各白等约 5 分钟。`waitTerminal` 四种终局都认，且把 alert 原文一并带回来，
+ *    正好喂给 §3.3 第 7 条要求的「只准原样引用原文」。它的 alert 分支同样有构造样本阳性对照
+ *    （`wait-terminal-deadline.spec.ts` 里那条 `alerted`），不是只靠真发才验得到。
  */

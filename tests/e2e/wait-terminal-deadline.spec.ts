@@ -1,11 +1,5 @@
 import { test, expect } from '@playwright/test'
-import {
-  STEP_TIMEOUT_MS,
-  boundedRawText,
-  boundedText,
-  waitTerminal,
-  waitTerminalOutcome
-} from './helpers/terminal'
+import { STEP_TIMEOUT_MS, boundedRawText, boundedText, waitTerminal } from './helpers/terminal'
 
 /**
  * `waitTerminal` 的**构造样本**测试（方案 §2-7）：不跑真发、不花一分钱，钉住「等待函数必定按时返回」
@@ -115,14 +109,10 @@ test.describe('waitTerminal 的构造样本：终局判据采得到，且必定�
     expect(terminal.errorText, '没挂过 alert 就不该编出一段 alert 原文').toBe('')
     expect(terminal.sawPlanning, '这一页从没出现过进度条').toBe(false)
 
-    // 同一个形状下，T1/T2 用的那个简化版也必须按时返回
-    const startedAt2 = Date.now()
-    const simple = await waitTerminalOutcome(page, BUDGET_MS)
-    expect(
-      Date.now() - startedAt2,
-      `waitTerminalOutcome 也没在预算内返回（T1/T2 全量矩阵 45 分钟一轮，卡一次就是整轮作废）`
-    ).toBeLessThan(BUDGET_MS + SLACK_MS)
-    expect(simple, '简化版同样要返回 null（超时仍在转圈）').toBe(null)
+    // 这里原先还要再打一遍「T1/T2 用的那个简化版」waitTerminalOutcome，**已随该函数一并删除**
+    // （缺陷 D4-11，2026-10-04 run7：它刻意不认 error alert，害 id=55/57 各白等到预算耗尽，
+    //  合计约 12 分钟，见 `helpers/terminal.ts` 的墓碑）。T2 现在用的就是上面这一个函数，
+    // 一个函数一份构造样本 —— 不再有两个同构实现各留一个坑。
   })
 
   test('③ 🔴 构造样本：只有进度条一直在转（run3 卡死期间的形状）→ 必须在预算内返回，且 sawPlanning=true', async ({
