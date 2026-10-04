@@ -322,20 +322,66 @@ function syntheticUnguardedHeadlessDsl(): Dsl {
   } as unknown as Dsl
 }
 
-/** 等到「出草稿卡」或「答了一段文字」为止。true=草稿卡，false=被当成 CHAT，null=超时 */
-async function waitTerminal(page: Page, timeoutMs: number): Promise<boolean | null> {
+/**
+ * 一轮真发的终局
+ *
+ * @param outcome     true=出了草稿卡，false=被当成 CHAT 直接答了一段文字，null=报错或等到超时
+ * @param sawPlanning 轮询期间是否**见到过**规划进度条（{@code assistant-planning}）
+ * @param errorText   见到 error alert 时当场抓下的原文；空串=没挂过 alert
+ */
+type Terminal = { outcome: boolean | null; sawPlanning: boolean; errorText: string }
+
+/**
+ * 等到「出草稿卡」「答了一段文字」或「挂出 error alert」为止，并沿途记录有没有走进过 BUILD 路径
+ *
+ * <h3>🔴 为什么必须沿途记录 sawPlanning，而不能事后再去看</h3>
+ * 规划进度条是 {@code v-if="status === 'planning'"}，草稿卡是它的 {@code v-else} ——
+ * 一旦这一轮结束（出卡、报错、或被取消），{@code cardStatus} 被清掉，进度条就<b>再也查不到了</b>。
+ * 事后去断言它必然为假，于是「分类走对了但 Planner 没产出草稿」会被记成「压根没走 BUILD」。
+ *
+ * <p>这个区分不是咬文嚼字，两者的处置<b>完全相反</b>：
+ * <ul>
+ *   <li>没走 BUILD ⟹ 意图分型的锅，该去看 classifier 的提示词/用例的 expect_intent；</li>
+ *   <li>走了 BUILD 但没出卡 ⟹ Planner 的锅（DSL 产不合法、轮次耗尽、厂商报错），
+ *       该去看 {@code agent_usage_log} 的 PLAN_DSL 行与后端日志的 {@code [parseDsl]}。</li>
+ * </ul>
+ * 实测疤（2026-10-04）：A4-d 连着几轮都报「被判成了 CHAT」，查下来分类<b>一直是对的</b>，
+ * 真因是 few-shot 样例把 {@code datamodel_create} 的参数形状教错了（{@code args.name} 而非
+ * {@code args.model.{tableName,tableComment,columns[]}}），模型照抄、6 轮全在同一处把括号数错。
+ * 报告把一次 Planner 缺陷记成了分型缺陷，排查方向整个反了。
+ *
+ * <h3>🔴 error alert 也是一种终局，必须当场认出来并立刻返回</h3>
+ * 实测疤（2026-10-04 run2）：Planner 第 3 轮撞上定点检测，07:36 就把完整失败原因挂上了页面，
+ * 但本函数原先只认「草稿卡」与「答了一段文字」两种终局，于是又空转 240 秒直到 600 秒超时，
+ * 报告印的是「等满 600 秒未收敛」—— 把一个 5 分钟就有<b>确定结论</b>的故障，
+ * 说成了一个 10 分钟<b>没结论</b>的故障。判词指错方向，排查的人会去查超时/网络，
+ * 而真因就明明白白写在页面那段 alert 里。
+ * 同理，alert 原文要在**看见它的那一刻**抓下来，不能等返回后再读：
+ * 后续事件有可能改写这块 DOM，事后读到的是另一轮的错。
+ *
+ * <p>进度条一轮要挂十几秒到几分钟（至少一次模型往返），2 秒一轮的采样不会漏。
+ */
+async function waitTerminal(page: Page, timeoutMs: number): Promise<Terminal> {
   const draftCard = page.locator('[data-testid="workflow-draft-card"]')
   const answer = page.locator('[data-testid="assistant-answer"]')
+  const planning = page.locator('[data-testid="assistant-planning"]')
+  const alert = page.locator('.el-alert--error')
   const deadline = Date.now() + timeoutMs
+  let sawPlanning = false
   while (Date.now() < deadline) {
-    if (await draftCard.isVisible().catch(() => false)) return true
+    if (await planning.isVisible().catch(() => false)) sawPlanning = true
+    if (await draftCard.isVisible().catch(() => false)) {
+      return { outcome: true, sawPlanning, errorText: '' }
+    }
+    const alertText = ((await alert.last().innerText().catch(() => '')) ?? '').trim()
+    if (alertText.length > 0) return { outcome: null, sawPlanning, errorText: alertText }
     if (await answer.isVisible().catch(() => false)) {
       const text = ((await answer.textContent().catch(() => '')) ?? '').trim()
-      if (text.length > 0) return false
+      if (text.length > 0) return { outcome: false, sawPlanning, errorText: '' }
     }
     await page.waitForTimeout(2_000)
   }
-  return null
+  return { outcome: null, sawPlanning, errorText: '' }
 }
 
 test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', () => {
@@ -436,35 +482,77 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
     await page.getByRole('button', { name: /发\s*送/ }).click()
 
     // ---------- ② 走了 BUILD 路径 ----------
-    const card = await waitTerminal(page, PLAN_TIMEOUT)
+    const { outcome: card, sawPlanning, errorText } = await waitTerminal(page, PLAN_TIMEOUT)
     /**
-     * 🔴 没出草稿卡时，先把 error alert 的原文捞出来，再去断言
+     * 🔴 没出草稿卡时，error alert 的原文就是这一轮**唯一**的一手结论，必须先捞出来再断言
      *
-     * T1 的 run3（2026-10-04 03:23 起）踩过这个坑：DashScope 免费额度耗尽，
-     * 三个候选模型全回 `403 AllocationQuota.FreeTierOnly`，页面上**明明挂着**
-     * `.el-alert--error`（AssistantChat.vue:1298 把 SSE 的 errorMsg 渲染成它），
-     * 报告印的却是「问答气泡没渲染出来」—— 把一次外部配额故障记成了前端渲染缺陷。
-     * 放到这一条上就是记成「意图分型没走 BUILD」，同样是冤枉分型。
+     * 实测疤（T1 run3，2026-10-04 03:23 起）：页面上**明明挂着** `.el-alert--error`
+     * （AssistantChat.vue 把 SSE 的 errorMsg 渲染成它），报告印的却是「问答气泡没渲染出来」——
+     * 把一次后端故障记成了前端渲染缺陷，排查方向整个反了。
      *
-     * 同一条错误还落在 agent_message（status=FAILURE、token_count=0、error_msg 非空）
-     * 和后端日志的 AiModelFailoverServiceImpl:132 [callWithFallback]，三处互为印证。
+     * ⚠️ 但「有 error alert」只说明**有错**，不说明错在哪一层。BUILD 路径上
+     * 意图分型失败、厂商侧报错、Planner 轮次耗尽，三者都会在同一个位置挂出 alert。
+     * 所以还要靠 sawPlanning 把它们分开，见 waitTerminal 的注释与下面的三分支判词。
+     *
+     * ⚠️ 更要紧的是**别替 alert 编原因**。同一次 run3 我一度把它记成「DashScope 免费额度耗尽、
+     * 三个候选模型全回 403、配额恢复前不要重跑」，并写进了判词 —— 那是错的，害用户白花钱续了额度。
+     * 真相：`AllocationQuota.FreeTierOnly` 是**单个模型**的免费额度桶用完，不是账号耗尽；
+     * 日志里 66/67/68/69 共 403 了 166 次，而 `MODEL_ALL_UNAVAILABLE`/「没有可用的聊天模型」
+     * **全部日志 0 次** —— failover 每次都切成功，没有一次请求因此失败。
+     * 所以判词只准**原样引用** alert 原文，不准替它下病因结论：
+     * 病因要拿 alert 原文去比 `agent_usage_log` 与后端日志才能定，测试代码没这个能力。
+     *
+     * 🔴 这条 alert 在 BUILD 路径上**曾经压根渲染不出来**：AssistantChat.vue 把 error alert
+     * 包在 `v-if="!item.cardStatus"` 里，而 PLANNING 事件会把 cardStatus 置成 'planning'，
+     * ERROR 分支又没清它 —— 于是 Planner 失败时页面只剩一个转不停的圈，一个字都不说。
+     * 已修（markError 同时清 cardStatus），修完这一条才真的捞得到东西；
+     * run2 里那段「轮次耗尽 + 定点检测」的原文能印进报告，就是这个修复生效的直接证据。
      */
     const providerError =
       card === true
         ? ''
-        : ((await page.locator('.el-alert--error').last().innerText().catch(() => '')) ?? '').trim()
+        : errorText ||
+          ((await page.locator('.el-alert--error').last().innerText().catch(() => '')) ?? '').trim()
     rows.push(
       `## ②~⑦ 真发\n\n- 提问：\n\n\`\`\`\n${PROMPT}\n\`\`\`\n\n` +
         `- 耗时：${Date.now() - startedAt}ms\n` +
-        (providerError ? `- 🔴 模型侧没答（error alert 原文）：${providerError}\n` : '')
+        `- 规划进度条出现过：${sawPlanning ? '是（确实走进了 BUILD 路径）' : '否'}\n` +
+        (providerError ? `- 页面 error alert 原文：${providerError}\n` : '')
     )
+
+    // 🔴 判据自己要先「探通」一次（§6.3-6）：sawPlanning=false 是本轮用来判「没走 BUILD」的依据，
+    //    那它就必须先在一条**成功**的轮次上被证明确实采得到。否则 assistant-planning 这个
+    //    data-testid 哪天改了名，判据会静默退化成恒 false，把每一次 Planner 故障都冤枉成分型故障。
+    if (card === true) {
+      expect(
+        sawPlanning,
+        `草稿卡出来了，却**从没采到**规划进度条 —— 要么 [data-testid="assistant-planning"] 改名了，` +
+          `要么 2 秒一轮的采样漏了它。不管哪种，「有没有走 BUILD」这条判据已经失效：` +
+          `失败时会把 Planner 的锅记到意图分型头上，排查方向整个反过来`
+      ).toBe(true)
+    }
+
     expect(
       card,
-      providerError
-        ? `模型侧没答，这一条**作废**，它不是意图分型的结论：${providerError}` +
-          ` —— 厂商配额/密钥恢复之前不要重跑，重跑只会再攒一份假数据`
-        : `「定时 + 建表」的请求没产出流程草稿卡（${card === null ? '等 600 秒未收敛' : '被判成了 CHAT，直接答了一段文字'}）` +
-          ` —— 意图分型没走 BUILD 路径，后面的闸口断言全都无从谈起`
+      card === true
+        ? ''
+        : sawPlanning
+          ? `**意图分型是对的**（规划进度条出现过 ⟹ 确实走进了 BUILD 路径），但 Planner 没能产出草稿卡。` +
+            `这是 Planner 侧的故障，**不是**分型的结论 —— 该查的是 agent_usage_log 里 scene=PLAN_DSL 的行` +
+            `（轮次、每轮 prompt_tokens、落在哪个模型）与后端日志的 [parseDsl]/[planToWorkflow] 段。` +
+            `终局：${card === null && providerError ? '页面已挂出 error alert（有确定结论）' : card === null ? '等满 600 秒未收敛（无结论，那才要查超时/网络）' : 'outcome=' + card}。` +
+            `页面 error alert 原文：${providerError || '（空 —— alert 没渲染出来，那本身又是一条前端缺陷）'}`
+          : providerError
+            ? `规划进度条**从未出现**，且页面挂着 error alert ⟹ 这一轮在走进 BUILD 之前就失败了。` +
+              `它**不是**意图分型的结论。\n` +
+              `🔴 别急着替这段原文下病因：alert 只说明「有错」，错在哪一层要拿它的原文去比 ` +
+              `agent_usage_log（scene=INTENT 那一行是 SUCCESS 还是 FAILURE）与后端日志才能定。` +
+              `曾经有人（就是我）把它一口咬定成「厂商配额耗尽、恢复前不要重跑」，` +
+              `查下来是假的 —— failover 一直在自愈，那句判词白白拦住了重跑。\n` +
+              `alert 原文：${providerError}`
+            : `规划进度条**从未出现**、也没有任何 error alert ⟹ 意图分型把「定时 + 建表」判成了 CHAT，` +
+              `直接答了一段文字（${card === null ? '或等满 600 秒未收敛' : '终局 outcome=' + card}）。` +
+              `分型没走 BUILD 路径，后面的闸口断言全都无从谈起`
     ).toBe(true)
     const draftCard = page.locator('[data-testid="workflow-draft-card"]')
     await expect(draftCard.getByText('待确认'), '草稿卡不在「待确认」态').toBeVisible()
