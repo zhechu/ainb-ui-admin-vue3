@@ -1,7 +1,8 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, type APIRequestContext } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
+import { waitTerminal } from './helpers/terminal'
 
 /**
  * A4-d · 无头流程的人工闸口：真发一轮，验「规划器 + 体检 + 自修正回路」三件事合起来能不能收敛
@@ -323,16 +324,17 @@ function syntheticUnguardedHeadlessDsl(): Dsl {
 }
 
 /**
- * 一轮真发的终局
+ * `Terminal` 与 `waitTerminal` 已抽到 `helpers/terminal.ts`
  *
- * @param outcome     true=出了草稿卡，false=被当成 CHAT 直接答了一段文字，null=报错或等到超时
- * @param sawPlanning 轮询期间是否**见到过**规划进度条（{@code assistant-planning}）
- * @param errorText   见到 error alert 时当场抓下的原文；空串=没挂过 alert
- */
-type Terminal = { outcome: boolean | null; sawPlanning: boolean; errorText: string }
-
-/**
- * 等到「出草稿卡」「答了一段文字」或「挂出 error alert」为止，并沿途记录有没有走进过 BUILD 路径
+ * 🔴 抽出去不是为了整洁，是为了**能被单独测**：方案 §2-7 要求判据自己有独立的构造样本测试，
+ *    而构造样本必须打的是**真发用例用的那同一个函数** —— 留在 spec 文件里就没法在不跑真发
+ *    （45 分钟 + 花钱）的前提下测它。见 `tests/e2e/wait-terminal-deadline.spec.ts`。
+ *
+ * 原先那份实现有一个会让整条用例永久挂起的缺陷（`alert.last().innerText()` 在页面没有
+ * error alert 时永不 settle，因为 `playwright.config.ts` 没设 `use.actionTimeout`），
+ * 完整的因果链与两层防护写在 `helpers/terminal.ts` 的头注释里。
+ *
+ * 下面两段判据说明**仍然适用**，故原样保留：
  *
  * <h3>🔴 为什么必须沿途记录 sawPlanning，而不能事后再去看</h3>
  * 规划进度条是 {@code v-if="status === 'planning'"}，草稿卡是它的 {@code v-else} ——
@@ -356,33 +358,7 @@ type Terminal = { outcome: boolean | null; sawPlanning: boolean; errorText: stri
  * 报告印的是「等满 600 秒未收敛」—— 把一个 5 分钟就有<b>确定结论</b>的故障，
  * 说成了一个 10 分钟<b>没结论</b>的故障。判词指错方向，排查的人会去查超时/网络，
  * 而真因就明明白白写在页面那段 alert 里。
- * 同理，alert 原文要在**看见它的那一刻**抓下来，不能等返回后再读：
- * 后续事件有可能改写这块 DOM，事后读到的是另一轮的错。
- *
- * <p>进度条一轮要挂十几秒到几分钟（至少一次模型往返），2 秒一轮的采样不会漏。
  */
-async function waitTerminal(page: Page, timeoutMs: number): Promise<Terminal> {
-  const draftCard = page.locator('[data-testid="workflow-draft-card"]')
-  const answer = page.locator('[data-testid="assistant-answer"]')
-  const planning = page.locator('[data-testid="assistant-planning"]')
-  const alert = page.locator('.el-alert--error')
-  const deadline = Date.now() + timeoutMs
-  let sawPlanning = false
-  while (Date.now() < deadline) {
-    if (await planning.isVisible().catch(() => false)) sawPlanning = true
-    if (await draftCard.isVisible().catch(() => false)) {
-      return { outcome: true, sawPlanning, errorText: '' }
-    }
-    const alertText = ((await alert.last().innerText().catch(() => '')) ?? '').trim()
-    if (alertText.length > 0) return { outcome: null, sawPlanning, errorText: alertText }
-    if (await answer.isVisible().catch(() => false)) {
-      const text = ((await answer.textContent().catch(() => '')) ?? '').trim()
-      if (text.length > 0) return { outcome: false, sawPlanning, errorText: '' }
-    }
-    await page.waitForTimeout(2_000)
-  }
-  return { outcome: null, sawPlanning, errorText: '' }
-}
 
 test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', () => {
   test.beforeAll(async ({ request }) => {

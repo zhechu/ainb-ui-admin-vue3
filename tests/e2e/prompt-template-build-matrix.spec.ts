@@ -1,7 +1,8 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, type APIRequestContext } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
+import { waitTerminalOutcome } from './helpers/terminal'
 
 /**
  * T2：BUILD 类示例逐条真发（迭代二方案 §6.1）
@@ -373,7 +374,7 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         //    （它测的是 SSE 积压，不是分型），这里不容忍 —— expect_intent=BUILD 是
         //    示例库里人工标定的期望，判成 CHAT 就是方案 §6.3-3 点名要抓的那个缺陷：
         //    「一条本该编排的模板被误判成 CHAT 时，测试会以『答案非空』通过」
-        const card = await waitTerminal(page, PER_CASE_PLAN_TIMEOUT)
+        const card = await waitTerminalOutcome(page, PER_CASE_PLAN_TIMEOUT)
         expect(
           card,
           `${label} 没产出流程草稿卡（${card === null ? '超时未收敛' : '被判成了 CHAT，直接答了一段文字'}）` +
@@ -544,25 +545,17 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
 })
 
 /**
- * 等这一轮真发收敛到终态
+ * 「等这一轮真发收敛到终态」已抽到 `helpers/terminal.ts` 的 `waitTerminalOutcome`
  *
- * @returns true=出了草稿卡；false=被判成 CHAT 直接答了文字；null=超时仍在转圈
+ * 🔴 抽出去的两个理由，第一个是硬的：原先那份本地实现里
+ *    `await answer.textContent().catch(() => '')` 没有显式 timeout，而
+ *    `playwright.config.ts` **没设 `use.actionTimeout`** ⟹ locator 默认无限等。
+ *    这一处靠前面的 `isVisible()` 兜着（元素存在时 textContent 会立刻返回），
+ *    所以还没真炸过；但 A4-d 那份同构实现里的 `alert.last().innerText()` 炸了 ——
+ *    页面没有 error alert 时它**永不 settle**，`while (Date.now() < deadline)` 的守卫
+ *    再也轮不到被求值，整条用例永久挂起（run3 就是这么被人手杀掉的，afterAll 没跑、残留没清）。
+ *    同一个坑不该在两个文件里各留一份。
  *
- * 🔴 不能「先等卡片、再回头看别的」：卡片一出现规划进度条就被 v-else 换掉了。
- *    必须同一条循环里边等边判（照 agent-plan-stream.spec.ts 的写法）。
+ * 第二个理由：方案 §2-7 要求判据自己有独立的构造样本测试，而构造样本必须打**真发用例用的
+ * 那同一个函数** —— 见 `tests/e2e/wait-terminal-deadline.spec.ts`。
  */
-async function waitTerminal(page: Page, timeoutMs: number): Promise<boolean | null> {
-  const draftCard = page.locator('[data-testid="workflow-draft-card"]')
-  const answer = page.locator('[data-testid="assistant-answer"]')
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (await draftCard.isVisible().catch(() => false)) return true
-    if (await answer.isVisible().catch(() => false)) {
-      const text = ((await answer.textContent().catch(() => '')) ?? '').trim()
-      if (text.length > 0) return false
-    }
-    // 规划一轮之间实测间隔数秒到数十秒，2 秒足够密又不至于把 CPU 打满
-    await page.waitForTimeout(2_000)
-  }
-  return null
-}
