@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
+import { CLICK_TIMEOUT_MS, STEP_TIMEOUT_MS, bounded, boundedText } from './helpers/terminal'
 
 /**
  * T1：CHAT 类示例逐条真发（迭代二方案 §6.1）
@@ -129,8 +130,9 @@ import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpe
  *      （agent_prompt_template_case），模板表 agent_prompt_template 连 code 列都没有。
  *      要断言 hint 就必须以示例为单位。
  *   ③ 方案说 T1 耗时 ~15min。两轮全量真发实测 **45.6 / 37.6 分钟**（42 条，均值 54~65 秒/条），
- *      是方案的 2.5~3 倍。故 test.setTimeout 给到 100 分钟，
- *      并支持 TPL_MATRIX_ONLY=9,11 只跑指定示例 id（改一条 hint 时不必等一小时）。
+ *      是方案的 2.5~3 倍。而 2026-10-04 上午换过模型集之后，单条 CHAT 实测涨到 **267 秒**，
+ *      42 条的典型耗时变成 ~3.7 小时。故 test.setTimeout 现为 **6.5 小时**（按单条上限算出的硬上界，
+ *      推导见主用例里那行），并支持 TPL_MATRIX_ONLY=9,11 只跑指定示例 id（改一条 hint 时不必等几小时）。
  *
  * 🔴 本文件与 prompt-template-build-matrix.spec.ts **不许并发跑**
  *   两边的 afterAll 都按「跑前快照 vs 跑后全集」的差集删会话。并发时 T2 的快照里没有
@@ -242,8 +244,49 @@ function flushReport(): void {
  *    同一轮里别的条 65 秒就答完，它一条顶到三倍还没收尾。
  *    放到 300 秒是为了把「模型慢」与「模型卡死」分开：真卡死的话 300 秒照样红，
  *    而慢的那些不至于因为一个按均值拍的上限被误判。
+ *
+ * 🔴🔴 2026-10-04 中午再放到 **480 秒**，同样不是拍的 —— 那天上午**换了模型集**：
+ *    `ai_model` 里 66/67/68/69（qwen3.7-max / qwen3.7-flash / qwen3.7-plus-2026-05-26 / qwen3-max）
+ *    在 07:44~08:31 被置为 DISABLE（status=1；🔴 注意本项目 `CommonStatusEnum.ENABLE=0`、`DISABLE=1`，
+ *    与直觉相反，读这张表时别看反），启用的是 06:12~06:21 新建的 70~76 那一组。
+ *    换完之后 CHAT 的单次耗时整个变了量级，`agent_usage_log` 里量得到的：
+ *      · 换之前（00~03 时，模型 qwen3.7-plus-2026-05-26）：CHAT 均值 **23~69 秒**，completion 1318~2201 token
+ *      · 换之后（11:47:40，模型 qwen3.5-plus-2026-02-15）：**267 秒**，completion **4371** token，status=SUCCESS
+ *      · 06:46~06:56 三条 CANCELLED/「用户中断」的 duration 是 **293.4 / 294.8 / 294.7 秒** ——
+ *        三条齐刷刷顶在 294 秒，正是被这条 300 秒上限掐断、下一条点「新建对话」时把流带断的形状
+ *    ⟹ 267 秒已经吃掉 300 秒上限的 **89%**，294 秒那三条直接超了。留着 300 秒的话，
+ *    「模型慢」会被大批误记成 STREAM_TIMEOUT，而棘轮分不清「换了模型所以慢」和「模板真出了回归」。
+ *    480 秒 = 实测最大值 294 秒的 1.6 倍，与 T2 的 `PER_CASE_PLAN_TIMEOUT` 取齐。
+ *    🔴 这不是把上限一路调大直到变绿：真卡死的话 480 秒照样红，判据的方向没变。
  */
-const PER_CASE_STREAM_TIMEOUT = 300_000
+const PER_CASE_STREAM_TIMEOUT = 480_000
+
+/**
+ * ⑥ 分型时，等页面说出「走编排还是走问答」的上限
+ *
+ * 🔴 与 {@link waitAnswerOrError} 的 30 秒取齐，理由也一样：这一步只在**流式已经收尾之后**跑，
+ *    两个证据的出现都很快 —— 问答气泡此刻本来就在页面上；草稿卡实测在「停止」消失后
+ *    **127ms** 挂上来（时刻表见 `waitBuildPath`）。30 秒是几十倍余量，不是调参调出来的。
+ *
+ * 🔴 它**不给正常条增加耗时**：三个 locator 里任一个可见就立刻返回，第一轮轮询就走完。
+ *    真等满 30 秒的只有「页面上什么都没有」那种条 —— 那种条原来也要在
+ *    `waitAnswerOrError` 里等满 30 秒，多出来的是**串联**的第二段，
+ *    而这正是为了不把厂商配额故障误报成渲染缺陷（见 MARK_PROVIDER_FAILURE）必须付的价。
+ */
+const INTENT_RACE_TIMEOUT_MS = 30_000
+
+/**
+ * 等打字机贴完正文的总预算 / 单次读取上限
+ *
+ * <p>30 秒这个总预算沿用改前的值（原来是 60 轮 × 500ms）。改成按 deadline 而不是按轮数，
+ * 是因为轮内读取现在可能 STALL：按轮数计的话，几次 STALL 就把预算悄悄吃光了，
+ * 而判据「连着两次读到同样的文本」需要的是**墙上时间**够长。
+ *
+ * <p>单次给 4 秒而不是 `terminal.ts` 的 2 秒：这里读的是**已经答完**的长正文
+ * （实测最长上千字），`innerText` 要等一次布局；2 秒在慢轮次上会白 STALL 一次。
+ */
+const SETTLE_BUDGET_MS = 30_000
+const SETTLE_STEP_MS = 4_000
 
 /**
  * 知识库拒答的判据 —— 三个数都是从 42 条真实正文里量出来的，不是拍的
@@ -601,12 +644,22 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
       // 🔴 差集必须非空的场景下不许是 0：这一轮真发了 N 条，每条一个新会话。
       //    删出来 0 条只有两种可能 —— 要么上面某步静默失败了，要么这轮压根没发出去。
       //    两种都得让人看见，不能拿一句「基线原样保留」盖过去
-      const leftoverConv = (await listConversationIds(request)).size - baselineConversationIds.size
-      const leftoverDef = (await listDefIds(request)).size - baselineDefIds.size
+      const afterConv = await listConversationIds(request)
+      const afterDef = await listDefIds(request)
+      const leftoverConv = afterConv.size - baselineConversationIds.size
+      const leftoverDef = afterDef.size - baselineDefIds.size
       rows.push(
         `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
           `- 会话：跑前 ${baselineConversationIds.size} 条 → 删除本轮新建 ${deletedConv} 条 → 跑后多出 ${leftoverConv} 条\n` +
-          `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n`
+          `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n` +
+          // 🔴 绝对值必须一起印，不能只印差集。
+          //    差集口径对**历史残留天生免疫**：上一轮被人手杀掉时 afterAll 没跑、留下的孤儿会话，
+          //    这一轮 beforeAll 会把它当基线吃进去，于是差集永远是 0、核账永远绿 ——
+          //    而库里的垃圾一轮一轮往上叠，没人看得出来。2026-10-04 就真叠过一次
+          //    （11:47 那轮卡死被杀，留下会话 446 与消息 880/881，是人工用 SQL 查出来才清掉的）。
+          //    印上绝对值，读报告的人一眼就能发现「跑后会话 2 条」和「基线本来就该 1 条」对不上。
+          `- 绝对值（供人工核对历史残留）：跑后会话共 ${afterConv.size} 条 [${[...afterConv].join(',')}]，` +
+          `流程 def 共 ${afterDef.size} 条 [${[...afterDef].join(',')}]\n`
       )
       expect(leftoverConv, `会话没清干净，库里多出 ${leftoverConv} 条本轮残留（§6.2：残留非空即视为该轮失败）`).toBe(0)
       expect(leftoverDef, `流程 def 没清干净，库里多出 ${leftoverDef} 条本轮草稿（§6.2：残留非空即视为该轮失败）`).toBe(0)
@@ -808,12 +861,19 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
   test('42 条非 BUILD 示例逐条真发：插入一字不差、答案落地、无残留、确实走了 CHAT 路径', async ({
     page
   }) => {
-    // 🔴 100 分钟，不是拍的：两轮全量真发分别实测 **45.6 分钟**和 **37.6 分钟**（42 条，均值 54~65 秒/条）。
-    //    留一倍多余量，是因为 PER_CASE_STREAM_TIMEOUT 放到 300 秒之后，
-    //    慢条的尾部会变长（第二轮 id=43 顶满了 300 秒）。
-    //    宁可给足也不要中途被 timeout 掐断 —— 掐断的后果是最后几条的结论落在报告外面，
-    //    读的人以为它们过了
-    test.setTimeout(6_000_000)
+    // 🔴 6.5 小时，不是拍的，也不是「一路调大直到不超时」—— 它是**算出来的上界**：
+    //    每条的墙上时间被 PER_CASE_STREAM_TIMEOUT 钉死在 480 秒，加上意图分型（实测 ~5 秒）、
+    //    打字机收敛（SETTLE_BUDGET_MS 30 秒）与 UI 开销，单条最坏 ~520 秒；42 条 ⟹ 6.07 小时。
+    //    给到 6.5 小时是为了让「跑完」这件事**只由模型决定，不由这个天花板决定**：
+    //    宁可它慢慢跑完，也不要中途被掐断 —— 掐断的后果是最后几条的结论落在报告外面，
+    //    读的人以为它们过了（这条疤写在上面 REPORT_THIS_RUN 的注释里）。
+    //
+    // 🔴 为什么要重算：原先的 100 分钟是按 2026-10-04 凌晨那两轮实测的 **45.6 / 37.6 分钟**
+    //    （均值 54~65 秒/条）留一倍余量得来的，那个均值属于 `qwen3.7-plus-2026-05-26`。
+    //    当天上午模型集换了（详见 PER_CASE_STREAM_TIMEOUT 的注释），换完实测单条 CHAT
+    //    **267 秒**、completion 4371 token ⟹ 42 条的典型耗时已经是 ~3.7 小时，100 分钟必被掐断。
+    //    所以这两个数是**一起**改的：只放大单条上限而不放大总预算，等于把卡死点从条内挪到条间。
+    test.setTimeout(23_400_000)
 
     const targets = allCases
       .filter((c) => c.expectIntent !== 'BUILD')
@@ -894,32 +954,39 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
       try {
         // 每条都从全新会话开始。第一条进来时会话本来就是空的（全新浏览器上下文
         // ⟹ localStorage 空 ⟹ useLastConversation 读不到东西 ⟹ 不会恢复上一轮）
+        // 🔴 下面每个 click 都带 CLICK_TIMEOUT_MS：这几句都排在断言**之前**，
+        //    按钮一旦不在，无限等的 click 会先把整条用例挂死（见 CLICK_TIMEOUT_MS 的注释）
         if (dispatched > 0) {
-          await page.getByRole('button', { name: /新建对话/ }).click()
+          await page.getByRole('button', { name: /新建对话/ }).click({ timeout: CLICK_TIMEOUT_MS })
           await expect(page.locator('[data-testid="assistant-answer"]')).toHaveCount(0, {
             timeout: 10_000
           })
         }
 
         // ---------- ① 走真实 UI 插入，并断言插入的结果而不是接口的返回 ----------
-        await page.locator('[data-testid="template-picker"]').click()
+        await page.locator('[data-testid="template-picker"]').click({ timeout: CLICK_TIMEOUT_MS })
         const popper = page.locator('.agent-tpl-popover:visible')
         await expect(popper).toBeVisible({ timeout: 10_000 })
-        await popper.locator('[data-testid="tpl-tab-case"]').click()
+        await popper
+          .locator('[data-testid="tpl-tab-case"]')
+          .click({ timeout: CLICK_TIMEOUT_MS })
         // 🔴 用 data-case-id 精确点，不按标题文本匹配：45 条示例分 40 个模板分组，
         //    标题互为前缀的不少，文本匹配一旦命中两条就会点错 —— 而点错的表现是
         //    「答案与 hint 对不上」，读报告的人会去怀疑模型
         const item = popper.locator(`[data-testid="case-item"][data-case-id="${c.id}"]`)
         await expect(item, `${label} 没出现在示例面板里（可能被停用，或 simple-list 与 UI 口径不一致）`).toHaveCount(1)
-        await item.click()
+        await item.click({ timeout: CLICK_TIMEOUT_MS })
         await expect(textarea, `${label} 插入后正文不符`).toHaveValue(c.content, { timeout: 5_000 })
 
         // ---------- ② 真发，等流收尾 ----------
-        await page.getByRole('button', { name: /发\s*送/ }).click()
+        await page.getByRole('button', { name: /发\s*送/ }).click({ timeout: CLICK_TIMEOUT_MS })
         // 🔴 点完就记账，不等断言：见上面 dispatched / answered 的注释
         dispatched++
         // 「停止」一闪而过的答案采不到，但这里采不到就说明**压根没进流式** ——
         // 那是要报的。真要遇到快速答案误红，改法是 race 两种可见性，不是删掉这一步
+        // 🔴 这句预言在 2026-10-04 14:36 那轮应验了，只是应验在**下一步（⑥）**上：
+        //    「停止」消失与草稿卡挂载之间隔了 127ms，⑥ 的瞬时快照正好落在空档里。
+        //    现已按这里的处方改成 race（见 `waitBuildPath`），② 本身不用动
         await expect(page.getByRole('button', { name: /停止/ }), `${label} 没进入流式生成`).toBeVisible({
           timeout: 30_000
         })
@@ -929,29 +996,34 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
         ).toHaveCount(0, { timeout: PER_CASE_STREAM_TIMEOUT })
 
         // ---------- ⑥ 意图分型：CHAT 必须走问答路径 ----------
-        const draftCards = page.locator('[data-testid="workflow-draft-card"]')
-        const planning = page.locator('[data-testid="assistant-planning"]')
-        const cardCount = await draftCards.count()
+        /**
+         * 🔴 走 {@link waitBuildPath} 而不是 `await draftCards.count()`：那张不等人的快照
+         *    会把「卡片在流式收尾后 127ms 才挂上来」读成「没有卡片」，
+         *    进而让一条本该被棘轮降级成 ⚠️ 的已知误判，变成一条认不出类的硬红。
+         *    疤与时刻表见 waitBuildPath 的注释。
+         */
+        const buildEvidence = await waitBuildPath(page, INTENT_RACE_TIMEOUT_MS)
 
         if (c.expectIntent === 'CHAT') {
+          /**
+           * 🔴 草稿卡与规划条**合成一条**断言：原来是两条独立 expect，
+           *    而第二条的消息（「出现了规划进度条…」）不含 MARK_MISCLASSIFIED_AS_BUILD
+           *    ⟹ 只出规划条、不出卡片的那种误判会被认成「新故障」硬红，
+           *    和上面那个 race 是同一族的病（该被棘轮认出来的类，认不出来）。
+           */
           expect(
-            cardCount,
-            `${label} ${MARK_MISCLASSIFIED_AS_BUILD}（聊天里出了流程草稿卡）—— 一条本该直接问答的示例被拉去编排流程，` +
+            buildEvidence,
+            `${label} ${MARK_MISCLASSIFIED_AS_BUILD}（聊天里出了${buildEvidence}）—— 一条本该直接问答的示例被拉去编排流程，` +
               `而「答案非空」这种断言发现不了它`
-          ).toBe(0)
-          expect(
-            await planning.count(),
-            `${label} 出现了规划进度条，说明走的是编排路径而不是问答路径`
-          ).toBe(0)
+          ).toBe('')
           detail.push('意图：CHAT（无草稿卡、无规划进度条）')
           await tallyAnswer()
         } else {
           // expect_intent 为 NULL = 两种意图都可接受（见 AgentPromptTemplateCaseDO 的字段注释）。
           // 🔴 但「都可接受」不等于「都可以没有」：必须落在其中一条路径上，
           //    两边都空就是既没答也没编排 —— 那正是要抓的
-          if (cardCount > 0) {
-            await expect(draftCards.first()).toBeVisible()
-            detail.push('意图：BUILD（expect_intent 为空，两种都合法；这里出了草稿卡）')
+          if (buildEvidence) {
+            detail.push(`意图：BUILD（expect_intent 为空，两种都合法；这里出了${buildEvidence}）`)
           } else {
             detail.push('意图：CHAT（expect_intent 为空，两种都合法；这里走了问答）')
             await tallyAnswer()
@@ -1213,6 +1285,11 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
  *
  * @returns answer=true 表示气泡出来了；否则 error 非空表示页面给出了错误原文，
  *          两者都假表示 30 秒内页面上什么都没有（那才是真要查前端/SSE 的情况）
+ *
+ * 🔴 **本函数保证在 timeoutMs 内返回**（超出量不超过一个 {@link STEP_TIMEOUT_MS} 的调度抖动）。
+ *    改前它不保证：`while (Date.now() < deadline)` 的守卫只在每轮**开头**求值一次，
+ *    而轮内的 locator 调用在 `actionTimeout=0` 下是无限等的 ——
+ *    一旦卡在轮内，deadline 再也轮不到被检查。实测疤见下面 `assertPlainAnswer` 的注释。
  */
 async function waitAnswerOrError(
   page: Page,
@@ -1222,14 +1299,70 @@ async function waitAnswerOrError(
   const alert = page.locator('.el-alert--error').last()
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (await answer.isVisible().catch(() => false)) return { answer: true, error: '' }
-    if (await alert.isVisible().catch(() => false)) {
-      const text = ((await alert.innerText().catch(() => '')) ?? '').trim()
+    if ((await bounded(answer.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) {
+      return { answer: true, error: '' }
+    }
+    if ((await bounded(alert.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) {
+      const text = await boundedText(alert, STEP_TIMEOUT_MS)
       if (text) return { answer: false, error: text }
     }
-    await page.waitForTimeout(500)
+    const left = deadline - Date.now()
+    if (left <= 0) break
+    await bounded(page.waitForTimeout(Math.min(500, left)), 1_000)
   }
   return { answer: false, error: '' }
+}
+
+/**
+ * ⑥ 的**前置**：等页面说出「这条走的是编排路径还是问答路径」，别拍瞬时快照
+ *
+ * 🔴 疤（2026-10-04 14:36 那轮，id=19，一轮 3.5 小时的真发被它判成红）：
+ *    原来这里是 `const cardCount = await draftCards.count()` —— 一张**不等**的快照，
+ *    时机恰好卡在流式收尾与草稿卡挂载之间的空档里：
+ *
+ *    | 时刻 | 事件 | 出处 |
+ *    |---|---|---|
+ *    | 14:36:46.267 | chat 触发器只记类型 code(wf_plan_mutg750u_1) | `WorkflowTriggerExtractor:205` |
+ *    | 14:36:46.308 | insertNewVersion(id=437, status=DRAFT) | `AgentWorkflowDefServiceImpl:254` |
+ *    | ~14:36:46.31 | 「停止」消失 ⟹ **快照在这里读到 0** | 本用例 ② |
+ *    | 14:36:46.435 | 前端才去取 `planner/workflow-draft?defId=437` 挂卡片 | 后端访问日志 |
+ *
+ *    读到 0 就走进 CHAT 分支去等问答气泡，而气泡与草稿卡在同一条消息上**互斥**（:57），
+ *    永远等不到；30 秒后抛「问答气泡没渲染出来，页面上也没有 error alert」——
+ *    这句**不含任何 MARK** ⟹ catch 里 `cls === null` ⟹「认不出类就是新故障，照原样红」⟹ 硬红。
+ *
+ * 🔴 后果比误报一条更坏：id=19 本来就该由 `KNOWN_MISCLASSIFIED_AS_BUILD` 棘轮降级成 ⚠️，
+ *    被这一 race 一搅，变成了「一条不在已知集合里的新故障」。
+ *    这正是 :972 那句注释预言过的改法 —— race 两种可见性，**不是**删掉这一步。
+ *
+ * 🔴 只回答「有没有走编排」，不去判问答气泡：气泡与 error alert 谁先出现算谁，
+ *    {@link waitAnswerOrError} 已经做对了，别在这儿抄第二遍（抄两份就会漂）。
+ *    所以本函数返回空串时，调用方照旧交给 `tallyAnswer()` —— 厂商配额耗尽那条路
+ *    （MARK_PROVIDER_FAILURE）一点没丢。
+ *
+ * 🔴 顺序上先查编排侧两个 locator：它们一旦出现就不会自己消失，
+ *    而问答气泡在打字机期间随时可能可见。让「更确定、更要报」的那个先判，
+ *    万一互斥前提哪天被破坏，误报方向是 BUILD（会被棘轮认出来），不是假绿。
+ *
+ * @returns `''` 没走编排；否则是**看得见的那个证据**的中文名（拼进断言消息用）
+ */
+async function waitBuildPath(page: Page, timeoutMs: number): Promise<string> {
+  const card = page.locator('[data-testid="workflow-draft-card"]').last()
+  const planning = page.locator('[data-testid="assistant-planning"]').last()
+  const answer = page.locator('[data-testid="assistant-answer"]').last()
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if ((await bounded(card.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return '流程草稿卡'
+    if ((await bounded(planning.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return '规划进度条'
+    // 问答气泡先出来就说明这条走的是问答路径，编排侧不用再等了（互斥，见 :57）
+    if ((await bounded(answer.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return ''
+    const left = deadline - Date.now()
+    if (left <= 0) break
+    await bounded(page.waitForTimeout(Math.min(500, left)), 1_000)
+  }
+  // 三个都没出现：不是「走了问答」，是页面上什么都没有。
+  // 交给 tallyAnswer() 去区分「渲染缺陷」与「厂商配额」，别在这里编病因
+  return ''
 }
 
 /** id 列表印成 `（19、21）`；空列表印 `（无）`，别印成一对空括号让人以为漏了值 */
@@ -1280,7 +1413,16 @@ async function assertPlainAnswer(
   // 正文吐出来了、气泡里却还挂着 error alert：流到一半断的（典型是厂商侧配额/超时）。
   // 🔴 与「一个字都没吐」归同一类，因为后果一样 —— 这一条没测到模板，本轮的分母在缩水。
   //    分成两类的唯一作用是让报告好读，而代价是「一半断掉」被当成模板缺陷去查，那更贵
-  const alertText = ((await page.locator('.el-alert--error').last().innerText().catch(() => '')) ?? '').trim()
+  //
+  // 🔴🔴 实测疤（2026-10-04 T1 全量真跑，11:47 起，11:52 卡死，12:1x 人手杀进程）：
+  //    这一行原先写作 `await page.locator('.el-alert--error').last().innerText().catch(() => '')`。
+  //    `playwright.config.ts` 没设 `use.actionTimeout` ⟹ locator 操作默认**无限等**；
+  //    而**正常轮次页面上压根没有 error alert**，于是这个 promise 永不 settle、
+  //    `.catch()` 永不触发 —— 整条用例挂在那里，报告一个案例块都没落盘，
+  //    `afterAll` 没跑、残留没清。第一条示例答完（11:52:07）之后就没再动过。
+  //    同一个坑在 A4-d（`helpers/terminal.ts` 头注）与 T2 各炸过一次，这是第三次。
+  //    改法就是复用那份已经验过的 `boundedText`，别再就地手写 `.catch()`。
+  const alertText = await boundedText(page.locator('.el-alert--error').last(), STEP_TIMEOUT_MS)
   expect(
     alertText,
     alertText
@@ -1325,15 +1467,28 @@ async function assertPlainAnswer(
  *       而红字指向的是模型，查的人不会想到是前端动画没放完。
  *   🔴 判据用「连着两次读到同样的文本」，不用固定等待：45 条答案长短差几十倍，
  *     固定值要么白等要么等不够。上限 30 秒，远超实测最长的贴字时间。
+ *
+ * 🔴 这里同样必须走 `boundedText` 而不是裸 `innerText()`：打字机贴字时渲染进程主线程
+ *    会被长任务占满，locator 调用排队等不到执行 —— 那一层裸 `{ timeout }` 都管不到，
+ *    只有外面再 race 一个定时器才保证会返回（见 `helpers/terminal.ts` 的「两层防护」）。
  */
 async function settledAnswerText(page: Page): Promise<string> {
   const answer = page.locator('[data-testid="assistant-answer"]').last()
+  const deadline = Date.now() + SETTLE_BUDGET_MS
   let prev = ''
-  for (let i = 0; i < 60; i++) {
-    const cur = ((await answer.innerText().catch(() => '')) ?? '').trim()
-    if (cur.length > 0 && cur === prev) return cur
-    prev = cur
-    await page.waitForTimeout(500)
+  let last = ''
+  while (Date.now() < deadline) {
+    const cur = await boundedText(answer, SETTLE_STEP_MS)
+    // 🔴 只有真读到非空正文才推进 prev：一次 STALL 会返回空串，
+    //    若也参与比较就会「空 == 空」被判成收敛，把半截答案当成定稿落盘
+    if (cur.length > 0) {
+      if (cur === prev) return cur
+      prev = cur
+      last = cur
+    }
+    const left = deadline - Date.now()
+    if (left <= 0) break
+    await bounded(page.waitForTimeout(Math.min(500, left)), 1_000)
   }
-  return prev
+  return last
 }

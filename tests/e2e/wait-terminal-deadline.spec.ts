@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { waitTerminal, waitTerminalOutcome } from './helpers/terminal'
+import {
+  STEP_TIMEOUT_MS,
+  boundedRawText,
+  boundedText,
+  waitTerminal,
+  waitTerminalOutcome
+} from './helpers/terminal'
 
 /**
  * `waitTerminal` 的**构造样本**测试（方案 §2-7）：不跑真发、不花一分钱，钉住「等待函数必定按时返回」
@@ -149,5 +155,50 @@ test.describe('waitTerminal 的构造样本：终局判据采得到，且必定�
 
     const negative = await waitTerminal(page, -5_000)
     expect(negative.outcome, '负预算同样要返回 null，不能抛').toBe(null)
+  })
+
+  /**
+   * 🔴 钉住那两个**共享守卫**本身，而不是钉住某一个等待函数
+   *
+   * ②③ 证明的是 `waitTerminal` 按时返回，但它只是调用方之一。同一个坑在三个文件里各留过一份
+   * 本地实现（A4-d 的 `waitTerminal`、T2 的轮次徽标读取、T1 的 `assertPlainAnswer`），
+   * 修完一份另一份照样炸 —— T1 那份就是 2026-10-04 全量真跑跑到 11:52 卡死、
+   * 12:1x 被人手杀掉、`afterAll` 没跑的那一次。所以守卫抽成 `boundedText`/`boundedRawText`
+   * 之后，必须有一条测试**直接打在守卫上**：元素压根不存在时也得按时返回空串。
+   *
+   * 🔴 变异探针：把 `boundedText` 里的 `.innerText({ timeout: ms })` 改成 `.innerText()`、
+   *    并把外层 `bounded(...)` 换成直接 `await` —— 本条必须从「返回空串」变成**挂到用例超时**
+   *    （被 120 秒用例超时判死，不是断言失败）。只红不退算探针无效。
+   */
+  test('⑤ 🔴 构造样本：元素压根不存在时，共享守卫必须按时返回空串（T1 卡死那一轮的形状）', async ({
+    page
+  }) => {
+    // 正常轮次的真实形状：答案气泡在，error alert **不在**
+    await page.setContent(`<div data-testid="assistant-answer">答完了，没有任何报错</div>`)
+    const absent = page.locator('.el-alert--error').last()
+
+    for (const [name, read] of [
+      ['boundedText', boundedText],
+      ['boundedRawText', boundedRawText]
+    ] as const) {
+      const startedAt = Date.now()
+      const got = await read(absent, STEP_TIMEOUT_MS)
+      const elapsed = Date.now() - startedAt
+      expect(got, `${name} 对不存在的元素必须返回空串，绝不能挂住调用方`).toBe('')
+      expect(
+        elapsed,
+        `${name} 在元素不存在时用了 ${elapsed}ms 才返回（上限 STEP_TIMEOUT_MS=${STEP_TIMEOUT_MS} + 调度余量）。` +
+          `守卫一旦失效，调用它的那个 while 循环就再也轮不到求值 deadline —— ` +
+          `整条用例永久挂起、报告一个案例块都不落盘、afterAll 不跑、残留不清`
+      ).toBeLessThan(STEP_TIMEOUT_MS + SLACK_MS)
+    }
+
+    // 🔴 阳性对照：元素真在的时候必须读得到原文。没有这一句，上面两条「按时返回空串」
+    //    会被一个「永远返回空串」的实现骗过去（方案 §2-6：判据自己要先探通一次）
+    await page.setContent(`<div class="el-alert el-alert--error">所有 AI 模型均不可用</div>`)
+    expect(
+      await boundedText(page.locator('.el-alert--error').last(), STEP_TIMEOUT_MS),
+      'alert 真在页面上时必须把原文读出来（判词只准原样引用它）'
+    ).toContain('所有 AI 模型均不可用')
   })
 })

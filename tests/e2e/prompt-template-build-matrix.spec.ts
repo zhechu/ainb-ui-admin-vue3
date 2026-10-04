@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
-import { waitTerminalOutcome } from './helpers/terminal'
+import { CLICK_TIMEOUT_MS, bounded, waitTerminalOutcome } from './helpers/terminal'
 
 /**
  * T2：BUILD 类示例逐条真发（迭代二方案 §6.1）
@@ -351,23 +351,27 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
       const label = `示例 ${c.id}（${c.title}）`
       const detail: string[] = []
       try {
+        // 🔴 每个 click 都带 CLICK_TIMEOUT_MS：它们都排在断言**之前**，按钮一旦不在，
+        //    无限等的 click 会先把整条用例挂死（见 helpers/terminal.ts 里那个常量的注释）
         if (sent > 0) {
-          await page.getByRole('button', { name: /新建对话/ }).click()
+          await page.getByRole('button', { name: /新建对话/ }).click({ timeout: CLICK_TIMEOUT_MS })
           await expect(page.locator('[data-testid="workflow-draft-card"]')).toHaveCount(0, {
             timeout: 10_000
           })
         }
 
-        await page.locator('[data-testid="template-picker"]').click()
+        await page.locator('[data-testid="template-picker"]').click({ timeout: CLICK_TIMEOUT_MS })
         const popper = page.locator('.agent-tpl-popover:visible')
         await expect(popper).toBeVisible({ timeout: 10_000 })
-        await popper.locator('[data-testid="tpl-tab-case"]').click()
+        await popper
+          .locator('[data-testid="tpl-tab-case"]')
+          .click({ timeout: CLICK_TIMEOUT_MS })
         const item = popper.locator(`[data-testid="case-item"][data-case-id="${c.id}"]`)
         await expect(item, `${label} 没出现在示例面板里`).toHaveCount(1)
-        await item.click()
+        await item.click({ timeout: CLICK_TIMEOUT_MS })
         await expect(textarea, `${label} 插入后正文不符`).toHaveValue(c.content, { timeout: 5_000 })
 
-        await page.getByRole('button', { name: /发\s*送/ }).click()
+        await page.getByRole('button', { name: /发\s*送/ }).click({ timeout: CLICK_TIMEOUT_MS })
 
         // ---------- 分型：BUILD 示例必须出草稿卡 ----------
         // 🔴 与 agent-plan-stream.spec.ts 的口径**刻意相反**：那条用例容忍被判成 CHAT
@@ -392,23 +396,44 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         // S8 的轮次徽标：rounds 不落库，只有直播这一路有值
         const rounds = draftCard.locator('[data-testid="draft-rounds"]')
         await expect(rounds, `${label} 的草稿卡上没有轮次徽标（rounds 没从 SSE 走到 DOM）`).toHaveCount(1)
-        detail.push(`轮次徽标：${((await rounds.textContent()) ?? '').trim()}`)
+        // 🔴 徽标只是给人看的一行 detail，不是断言：读不到就如实写「没读到」，
+        //    绝不用无限等的 textContent（渲染进程主线程被占满时它排队不报错）
+        const roundsText = await bounded(
+          rounds.textContent({ timeout: 10_000 }).catch(() => null),
+          12_000
+        )
+        detail.push(
+          `轮次徽标：${typeof roundsText === 'string' && roundsText.trim() ? roundsText.trim() : '（没读到）'}`
+        )
 
         // ---------- 变更预演：折叠条默认收起时点开 ----------
         // WorkflowDraftCard:308 的 manifestOpen 只在 IRREVERSIBLE/HIGH/dryRunRejected 时自动展开
         const manifest = page.locator('[data-testid="draft-manifest"]')
         if (!(await manifest.isVisible().catch(() => false))) {
-          await page.locator('[data-testid="draft-manifest-title"]').click()
+          await page
+            .locator('[data-testid="draft-manifest-title"]')
+            .click({ timeout: CLICK_TIMEOUT_MS })
         }
         await expect(manifest, `${label} 的变更预演没渲染出来`).toBeVisible({ timeout: 20_000 })
         await expect(
           page.locator('[data-testid="manifest-unavailable"]'),
           `${label} 的变更预演是「不可用」态 —— 建表这类不可逆动作必须让人在确认前看见`
         ).toHaveCount(0)
-        expect(
-          await page.locator('[data-testid="assistant-scroll"]').innerText(),
-          `${label} 的变更预演取失败了`
-        ).not.toContain('后端未能生成变更清单')
+        // 🔴 这一句原先是裸 `await ...innerText()`：`assistant-scroll` 前面没有任何 expect 兜着，
+        //    元素不在就是无限等、整条用例永久挂起。加了上限之后同样情形会抛 TimeoutError，
+        //    被下面的 catch 记成「示例 N 失败」，本轮剩下的照常跑完。
+        // 🔴 STALL 单独 throw 而不是当成空串：空串会让 `not.toContain` **静默通过**，
+        //    那等于「取不到正文」被记成「正文里没有那句失败提示」—— 正是要抓的缺陷反而绿了
+        const scrollText = await bounded(
+          page.locator('[data-testid="assistant-scroll"]').innerText({ timeout: 10_000 }),
+          12_000
+        )
+        if (typeof scrollText !== 'string') {
+          throw new Error(
+            `${label} 读滚动容器 12 秒没读到（渲染进程主线程被占满）—— 取不到正文就没法判它是不是「后端未能生成变更清单」`
+          )
+        }
+        expect(scrollText, `${label} 的变更预演取失败了`).not.toContain('后端未能生成变更清单')
 
         // ---------- 体检：走只读接口，不点确认 ----------
         const defs = await listDefs(request)

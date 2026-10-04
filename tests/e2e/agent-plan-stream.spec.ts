@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth } from './helpers/auth'
+import { STEP_TIMEOUT_MS, bounded, boundedRawText } from './helpers/terminal'
 
 /**
  * 规划路径（BUILD 意图）的流式投递验证 —— plan-as-workflow 版（增量7b）
@@ -74,13 +75,19 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
       // 分类器也可能把这句判成 CHAT 而直接回答（未走 BUILD）——
       // 那是既有分类件的合法行为，不能当成失败
       if (await answer.isVisible().catch(() => false)) {
-        const text = (await answer.textContent().catch(() => '')) ?? ''
-        if (text.trim().length > 0) {
+        const text = await boundedRawText(answer, STEP_TIMEOUT_MS)
+        if (text.length > 0) {
           reachedTerminal = true
           break
         }
       }
-      const text = ((await planning.textContent().catch(() => null)) ?? '').trim()
+      // 🔴 这一句必须走 boundedText，不能裸 `planning.textContent().catch(() => null)`：
+      //    planning 大多数时刻**不在 DOM 里**（卡片一出现就被 v-else 换掉），
+      //    而 `playwright.config.ts` 没设 `use.actionTimeout` ⟹ locator 默认无限等、
+      //    promise 永不 settle、`.catch` 永不触发，`while (Date.now() < deadline)` 的守卫
+      //    再也轮不到被求值 ⟹ 整条用例永久挂起。T1/A4-d 各废过一轮真跑，同一个坑。
+      //    漏采一轮没有代价：samples 是跨整个 8 分钟循环累积的 Set，下一轮照样采得到。
+      const text = await boundedRawText(planning, STEP_TIMEOUT_MS)
       if (text) {
         samples.add(text)
       }
@@ -107,7 +114,15 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
 
     // 🔴 核心断言三：不能是「轮次耗尽仍未能生成合法 DSL」那种失败。
     //    那是生成-校验-自修正循环无法收敛的症状（WORKFLOW_PLAN_DSL_GENERATION_FAILED）
-    const bodyText = await page.locator('[data-testid="assistant-scroll"]').textContent()
+    // 🔴 STALL 要 throw 而不是当成空串：空串会让 not.toContain **静默通过**，
+    //    等于「没读到正文」被记成「正文里没有那句失败提示」—— 要抓的缺陷反而绿了
+    const bodyText = await bounded(
+      page.locator('[data-testid="assistant-scroll"]').textContent({ timeout: 10_000 }),
+      12_000
+    )
+    if (typeof bodyText !== 'string') {
+      throw new Error('读 assistant-scroll 12 秒没读到（渲染进程主线程被占满）—— 核心断言三无从判起')
+    }
     expect(bodyText).not.toContain('复杂需求拆解为 Workflow DSL 失败')
 
     // 终态之后流必须已经收尾：「停止」按钮消失，否则前端还认为在生成中
@@ -134,7 +149,7 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
         roundsTag,
         '直播产出的草稿卡上没有轮次徽标 —— rounds 没能从 WORKFLOW_DRAFT 事件走到卡片'
       ).toHaveCount(1)
-      const roundsText = ((await roundsTag.textContent()) ?? '').trim()
+      const roundsText = await boundedRawText(roundsTag, STEP_TIMEOUT_MS)
       expect(
         roundsText,
         `轮次徽标的文案不是这两种之一（一次过闸门 / 校验 N 轮才过），实际是「${roundsText}」`
@@ -152,7 +167,9 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
     // 增量7b 后这个字段是 workflowDefId，重建走 /agent/planner/workflow-draft。
     // ===================================================================
     if (hasDraftCard) {
-      const summaryBefore = ((await draftCard.locator('span').nth(1).textContent()) ?? '').trim()
+      // 🔴 nth(1) 可能压根不存在（卡片结构变化时），裸 textContent 就是无限等；
+      //    读到空串时下面 :191 的 `if (summaryBefore)` 本来就会跳过这条断言，语义不变
+      const summaryBefore = await boundedRawText(draftCard.locator('span').nth(1), STEP_TIMEOUT_MS)
       await page.reload()
       await expect(page.locator('[data-testid="workflow-draft-card"]')).toBeVisible({
         timeout: 60_000

@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
-import { waitTerminal } from './helpers/terminal'
+import { STEP_TIMEOUT_MS, boundedText, waitTerminal } from './helpers/terminal'
 
 /**
  * A4-d · 无头流程的人工闸口：真发一轮，验「规划器 + 体检 + 自修正回路」三件事合起来能不能收敛
@@ -484,11 +484,15 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
      * 已修（markError 同时清 cardStatus），修完这一条才真的捞得到东西；
      * run2 里那段「轮次耗尽 + 定点检测」的原文能印进报告，就是这个修复生效的直接证据。
      */
+    // 🔴 兜底那一路必须走 boundedText：`card === false`（被判成 CHAT 直接答了文字）且
+    //    waitTerminal 没采到 alert 时，页面上**没有** `.el-alert--error`，
+    //    裸 `innerText().catch(() => '')` 在 actionTimeout=0 下永不 settle、catch 永不触发 ⟹ 整条用例挂死。
+    //    这正是 T1 的 assertPlainAnswer 在 2026-10-04 废掉一轮全量真跑的同一个坑。
     const providerError =
       card === true
         ? ''
         : errorText ||
-          ((await page.locator('.el-alert--error').last().innerText().catch(() => '')) ?? '').trim()
+          (await boundedText(page.locator('.el-alert--error').last(), STEP_TIMEOUT_MS))
     rows.push(
       `## ②~⑦ 真发\n\n- 提问：\n\n\`\`\`\n${PROMPT}\n\`\`\`\n\n` +
         `- 耗时：${Date.now() - startedAt}ms\n` +

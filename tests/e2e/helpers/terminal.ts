@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 /**
  * 「等一轮真发收敛到终局」的公共实现
@@ -46,7 +46,21 @@ import type { Page } from '@playwright/test'
 const POLL_MS = 2_000
 
 /** 单个 locator 调用的显式上限；取小值是为了让 deadline 能被及时重新求值 */
-const STEP_TIMEOUT_MS = 2_000
+export const STEP_TIMEOUT_MS = 2_000
+
+/**
+ * 一次 `click()` 的上限
+ *
+ * 🔴 存在的唯一理由是把「永久挂起」换成「一条能落进报告的失败」。
+ *    矩阵用例里点按钮的语句都排在断言**之前**（先点「新建对话」，再断言气泡清零），
+ *    所以按钮一旦不在，无限等的 click 会先把整条用例挂死 —— `test.setTimeout` 是 100 分钟，
+ *    期间 `afterAll` 不跑、残留不清、报告一个案例块都不落盘。2026-10-04 那次就是这么废掉一轮的。
+ *    给了上限之后，同样的情形会在 15 秒后抛 TimeoutError，被 catch 记成「示例 N 失败」，
+ *    本轮剩下的照常跑完，残留也照常清。
+ *
+ * <p>15 秒对 Element Plus 的按钮是极宽裕的：这些按钮都在页面加载完就已存在。
+ */
+export const CLICK_TIMEOUT_MS = 15_000
 
 /**
  * 一轮真发的终局
@@ -57,8 +71,8 @@ const STEP_TIMEOUT_MS = 2_000
  */
 export type Terminal = { outcome: boolean | null; sawPlanning: boolean; errorText: string }
 
-const STALL = Symbol('stall')
-type Stalled = typeof STALL
+export const STALL = Symbol('stall')
+export type Stalled = typeof STALL
 
 /**
  * 给一个 promise 套硬超时：超时则返回 {@link STALL}，**绝不抛**
@@ -69,8 +83,11 @@ type Stalled = typeof STALL
  *
  * <p>被放弃的那个 promise 不 cancel（Playwright 没有取消 API），它自己会随页面关闭而结束；
  * 这里只负责不再等它。
+ *
+ * <p>🔴 导出是给别的用例文件复用的，别再各写一份。已经炸过三次同一个坑：
+ *    A4-d（run3 人手杀进程）、T2 的本地实现、T1 的 `assertPlainAnswer`。
  */
-async function bounded<T>(promise: Promise<T>, ms: number): Promise<T | Stalled> {
+export async function bounded<T>(promise: Promise<T>, ms: number): Promise<T | Stalled> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -82,6 +99,38 @@ async function bounded<T>(promise: Promise<T>, ms: number): Promise<T | Stalled>
   } finally {
     if (timer !== undefined) clearTimeout(timer)
   }
+}
+
+/**
+ * 读一段文本，且**保证在有限时间内返回**（拿不到就返回空串）
+ *
+ * 🔴 这是本文件里最该被复用的一个函数，因为它挡的正是那个「永不 settle」的坑：
+ *    `.catch(() => '')` 看着像兜住了「元素不存在」，其实一点用都没有 ——
+ *    locator 操作在 `actionTimeout=0` 下压根不 reject，promise 永远挂着，
+ *    `.catch` 永远不会被调用。只有 `{ timeout }` + `bounded` 两层一起上才真的会返回。
+ *
+ * @param ms 单次 locator 调用的显式上限；外层硬超时自动多给 250ms 调度余量
+ */
+export async function boundedText(locator: Locator, ms: number): Promise<string> {
+  const r = await bounded(locator.innerText({ timeout: ms }).catch(() => ''), ms + 250)
+  return typeof r === 'string' ? r.trim() : ''
+}
+
+/**
+ * 同 {@link boundedText}，但读 `textContent` 而不是 `innerText`
+ *
+ * <p>两者的差别不是无关紧要的，选错会静默改变判据：
+ * <ul>
+ *   <li>`innerText` 要**等一次布局**、且只给渲染出来的文字（隐藏节点、`display:none` 拿不到）。
+ *       适合读「用户看得见的答案正文」与「alert 原文」—— 报告里落盘的就是它。</li>
+ *   <li>`textContent` 不触发布局、把所有文本节点原样拼出来，因此更便宜、更不容易在主线程
+ *       被占满时排队。适合高频轮询里「只是想知道有没有字」的探测。</li>
+ * </ul>
+ * 🔴 轮询循环里一律用这个：`innerText` 每轮都要布局，而打字机贴字时布局正是被占满的那件事。
+ */
+export async function boundedRawText(locator: Locator, ms: number): Promise<string> {
+  const r = await bounded(locator.textContent({ timeout: ms }).catch(() => ''), ms + 250)
+  return typeof r === 'string' ? r.trim() : ''
 }
 
 /** 剩余预算，最少给 200ms —— 给 0 会让 bounded 立刻判 STALL，白白丢掉一轮采样 */
@@ -116,12 +165,9 @@ export async function waitTerminal(page: Page, timeoutMs: number): Promise<Termi
     }
     // 🔴 alert 原文要在**看见它的那一刻**抓下来，不能等返回后再读：
     //    后续事件有可能改写这块 DOM，事后读到的是另一轮的错。
-    const alertText = await bounded(
-      alert.last().innerText({ timeout: step }).catch(() => ''),
-      step + 250
-    )
-    if (typeof alertText === 'string' && alertText.trim().length > 0) {
-      return { outcome: null, sawPlanning, errorText: alertText.trim() }
+    const alertText = await boundedText(alert.last(), step)
+    if (alertText.length > 0) {
+      return { outcome: null, sawPlanning, errorText: alertText }
     }
     if ((await bounded(answer.isVisible().catch(() => false), step)) === true) {
       const text = await bounded(answer.textContent({ timeout: step }).catch(() => ''), step + 250)
