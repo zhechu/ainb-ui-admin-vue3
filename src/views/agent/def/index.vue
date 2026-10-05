@@ -254,6 +254,8 @@
 import { dateFormatter } from '@/utils/formatTime'
 import { checkPermi } from '@/utils/permission'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
+import { getToolList, type AgentToolVO } from '@/api/agent/config'
+import { keyedLabel } from '@/views/agent/workflow/nameCatalog'
 
 defineOptions({ name: 'AgentDef' })
 
@@ -410,19 +412,78 @@ const handleCopySubmit = async () => {
 }
 
 /**
+ * 工具目录，供发布确认框判「绑的工具停没停用」（D4-25 后端半的界面那侧）。
+ *
+ * 🔴 为什么列表页也要判一次：编辑器里那句就地警告（`editor/index.vue` 的 `disabledBoundWarning`）
+ *    只有**打开编辑器**才看得见，而发布绝大多数时候是在列表页直接点「发布」按钮完成的 ——
+ *    那条路径此前一个字都不说，管理员点完「发布成功」，用户聊天时每次调工具都失败。
+ *    后端 `publishDefById` 同一时刻会落一条 WARN，但日志不是给点按钮的人看的。
+ *
+ * 🔴 刻意用**整份**目录，不像编辑器那样先滤掉写工具：这里要判的是「已绑定的键停没停用」，
+ *    绑了什么就得能查到什么；滤过的目录查不到写工具，反而会对它们缄默。
+ *    （写工具本来就发布不了，后端硬闸会拦，与停用是两条独立的判据。）
+ *
+ * 🔴 一次页面生命周期只拉一次（`toolCatalog.length > 0` 即短路）：目录是内置工具清单，
+ *    变更频率以「管理员去工具管理页点开关」计，不是每次点发布都要重新问一遍的东西。
+ */
+const toolCatalog = ref<AgentToolVO[]>([])
+const loadToolCatalog = async () => {
+  if (toolCatalog.value.length > 0) return
+  try {
+    toolCatalog.value = (await getToolList()) || []
+  } catch {
+    // 目录拉不到就保持空 ⟹ 下面的判据返回空 ⟹ 确认框不提这事。
+    // 🔴 宁可不说：我们此时**不知道**某个键停没停用，凭猜测把人往「解绑」上推是有代价的
+    //    （解绑要重新进编辑器改配置）。与编辑器里 `disabledBoundTools` 的同款取舍。
+    toolCatalog.value = []
+  }
+}
+
+/**
+ * 这一行绑定的工具里，当前处于停用状态的那些。
+ *
+ * <p>🔴 `enabled` 读**生效值**（`/agent/config/tool-list` 下发的就是覆盖后的值），
+ *    与后端 `validateToolKeys` 里那条 `def.isEnabled()` 同源同口径 ——
+ *    安全网关运行期读的也是它，所以「这里说停用」与「聊天时真被拒」必然一致。
+ *    只读判据读声明值、启用判据读生效值，这个不对称是刻意的，别「顺手统一」。
+ */
+const disabledBoundToolsOf = (row: AgentDefVO): AgentToolVO[] => {
+  const bound = new Set(
+    (row.toolKeys || '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)
+  )
+  if (!bound.size || !toolCatalog.value.length) return []
+  return toolCatalog.value.filter((t) => bound.has(t.name) && !t.enabled)
+}
+
+/**
  * 发布：DRAFT / DISABLED → PUBLISHED（需求8：停用后可重新上线）
  *
  * 确认文案按来源状态分开写：草稿是「首次让它生效」，已停用是「放回线上」——
  * 后者需要提醒管理员，这个版本的配置在停用期间没被复查过，重新上线即刻对聊天入口生效。
+ *
+ * 🔴 D4-25：绑了已停用的工具时，确认框里**多说一段**，但**照样让发**。
+ *    不拦是裁定（停用是「工具管理」页的动作，与本 Agent 的配置无关；硬拦会让改人设、
+ *    换模型这类无关改动也发布不了，连「重新发布」这个恢复动作都一起堵死）。
+ *    但「不拦」不等于「不说」—— 不说就是本模块头号缺陷「配了不生效且无提示」。
  */
 const handlePublish = async (row: AgentDefVO) => {
   const relaunch = row.status === 'DISABLED'
+  await loadToolCatalog()
+  const offTools = disabledBoundToolsOf(row)
+  const offClause = offTools.length
+    ? `注意：它绑定的 ${offTools.map((t) => keyedLabel(t.name, t.displayName)).join('、')}` +
+      '当前已被停用，发布不会拦你，但聊天时模型每次调用它们都会被安全网关拒绝' +
+      '（用户只看到一句失败）。要恢复请进编辑器解绑这些工具，或到「工具管理」页重新启用它们。'
+    : ''
   try {
     await message.confirm(
-      relaunch
+      (relaunch
         ? `确认重新发布 Agent「${row.name || row.code}」(v${row.version})？` +
-            `它停用期间的配置未作改动，发布后即刻回到聊天选择器中可被选用。`
-        : `确认发布 Agent「${row.name || row.code}」(v${row.version})？`
+          `它停用期间的配置未作改动，发布后即刻回到聊天选择器中可被选用。`
+        : `确认发布 Agent「${row.name || row.code}」(v${row.version})？`) + offClause
     )
     await AgentDefApi.publishDef(row.id)
     message.success(relaunch ? '重新发布成功' : '发布成功')

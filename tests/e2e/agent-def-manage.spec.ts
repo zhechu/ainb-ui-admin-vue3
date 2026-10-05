@@ -750,3 +750,197 @@ test.describe('智能体设计器 · 停用工具的置灰与就地警告（D4-2
     }
   })
 })
+
+/**
+ * 🔴 D4-25 后端半（2026-10-05 裁定：**警告，不硬拒**）的界面那侧 —— 列表页发布确认框
+ *
+ * <h3>为什么上一条用例（编辑器里的就地警告）盖不住这一条</h3>
+ * 编辑器那句 `disabledBoundWarning` 只有**打开编辑器**才看得见。而发布绝大多数时候是在
+ * **列表页直接点「发布」**完成的 —— 那条路径此前一个字都不说：管理员点完看到「发布成功」，
+ * 用户聊天时每次调工具都被安全网关拒，两边都以为对方是好的。
+ * 后端 `publishDefById` 同一时刻会落一条 WARN，但日志不是给点按钮的人看的。
+ *
+ * <h3>🔴 这条用例真正要钉的是「警告 ≠ 拦截」</h3>
+ * 裁定选的是警告而不是 error，理由是：停用是「工具管理」页的动作，与本 Agent 的配置无关；
+ * 硬拒会让绑了它的 Agent **连改人设、换模型这类无关改动都发布不了**，
+ * 而 `validateToolKeys` 只在 `publishDefById` 里被调（create/update 只过 normalizeToolKeys），
+ * 于是「重新发布」这个恢复动作会一起被堵死 —— 正好与 `publishDefById` 里
+ * 「DISABLED 也放行（重新上线）」的取舍直接打架。
+ * 所以本用例**真的点了「确定」并断言发布成功**：只弹框后取消的话，「不拦」这半边一点没验到，
+ * 一个把警告写成 error 的实现照样能绿。
+ *
+ * 🔴 0 LLM token：建草稿、发布、停用、删全走管理接口与 DOM，一次模型都不调。
+ * 🔴 草稿用 **API** 建而不是走编辑器 UI：被测对象是列表页那个确认框，
+ *    编辑器那条路径上一条用例已经验过了，这里再走一遍只是把 4 分钟拉长到 8 分钟。
+ * 🔴 时序仍按真实事故排：**先绑定、后停用**（反过来验不到存量那一半）。
+ * 🔴 步骤③ 之前必须 **reload**：`toolCatalog` 有「一次页面生命周期只拉一次」的内存缓存，
+ *    不重载读到的还是停用前的目录 —— 那就成了自己给自己造的假绿（与上一条用例同款坑）。
+ * 🔴 数据自净用 try/finally，两笔都要还：给 `data_interface_list` 落的**停用覆盖行**
+ *    （不还的话整条 e2e 队列里所有依赖它的用例全废），以及本用例**已发布**的 def
+ *    （已发布不可直删，要先停用再删）。
+ */
+test.describe('智能体列表页 · 发布确认框里的停用工具警告（D4-25 后端半）', () => {
+  test.setTimeout(240_000)
+
+  /** 被停用的目标：声明只读、代码默认启用，停用它不影响任何写路径 */
+  const TARGET = 'data_interface_list'
+  /** 对照工具：同样绑定、但**不**停用。没有它就断不出「警告只点名真停用的那个」 */
+  const CONTROL = 'form_list'
+  const CODE = `e2e_pubwarn_${Date.now().toString().slice(-8)}`
+
+  test('先绑定后停用 ⟹ 确认框点名停用项、不点名对照项，且点确定照样发布成功', async ({
+    page,
+    request
+  }) => {
+    const token = await apiLogin(request)
+    const headers = apiHeaders(token)
+
+    const readTool = async (name: string) => {
+      const resp = await request.get(`${API_BASE_URL}/agent/tool-def/registered-list`, { headers })
+      expect(resp.ok(), 'registered-list 应可读').toBeTruthy()
+      const body = await resp.json()
+      const hit = (body.data || []).find((t: any) => t.toolName === name)
+      expect(hit, `应能在内置工具里找到 ${name}`).toBeTruthy()
+      return hit
+    }
+
+    const target0 = await readTool(TARGET)
+    const control0 = await readTool(CONTROL)
+    // 前提自检：本用例的全部意义建立在「TARGET 声明只读、当前启用、没有存量覆盖行」之上
+    expect(target0.declaredRiskLevel, `${TARGET} 应为声明只读，否则它压根绑不进 Agent`).toBe('READ_ONLY')
+    expect(target0.enabled, `${TARGET} 应为启用态，否则「先绑定」这一步就假了`).toBe(true)
+    expect(
+      target0.overridden,
+      `${TARGET} 不该有存量覆盖行，否则 finally 的「恢复默认」会抹掉别人的维护`
+    ).toBe(false)
+    expect(control0.enabled, `${CONTROL} 作为对照必须处于启用态`).toBe(true)
+
+    /** 打开列表页并搜到本用例那一行（🔴 必须先搜：列表是同租户共用的，不搜会被分页挤走） */
+    const openRow = async () => {
+      await gotoWithAuth(page, '/ai/agent/def')
+      await searchByCode(page, CODE)
+      const row = page.locator('.el-table__body tr').filter({ hasText: CODE }).first()
+      await expect(row, `列表里应搜到 ${CODE} 的行`).toBeVisible({ timeout: 20000 })
+      return row
+    }
+
+    /** 点「发布」拿到确认框，并把正文压成无空白串（Element Plus 会按容器宽度折行） */
+    const openPublishConfirm = async () => {
+      const row = await openRow()
+      await row.getByRole('button', { name: '发布', exact: true }).click()
+      const box = page.locator('.el-message-box')
+      await expect(box, '点「发布」后应弹出确认框').toBeVisible({ timeout: 20000 })
+      await expect(box.locator('.el-message-box__message')).toBeVisible({ timeout: 15000 })
+      return (await box.locator('.el-message-box__message').innerText()).replace(/\s+/g, '')
+    }
+
+    let defId = ''
+    let published = false
+    try {
+      // ---------- ① 趁 TARGET 还启用，用 API 建一份绑了【TARGET + CONTROL】的草稿 ----------
+      const created = await request.post(`${API_BASE_URL}/agent/def/create`, {
+        headers,
+        data: {
+          code: CODE,
+          name: 'E2E 发布警告助手',
+          persona: '用于验证列表页发布确认框里的停用工具警告。',
+          toolKeys: `${TARGET},${CONTROL}`
+        }
+      })
+      expect(created.ok(), `建草稿应成功，实际 ${created.status()}`).toBeTruthy()
+      const createdBody = await created.json()
+      expect(createdBody.code, `建草稿应返回 code=0，实际 ${JSON.stringify(createdBody)}`).toBe(0)
+      defId = String(createdBody.data)
+      expect(defId, '建草稿应返回新 id').toBeTruthy()
+
+      await login(page)
+
+      // ---------- ② 反空转对照：还没停用时，确认框里【不该】有这段警告 ----------
+      // 🔴 这半边不可省：没有它，一个「无论有没有停用工具都贴一段警告」的实现同样全绿，
+      //    而那种实现会把确认框变成每次都喊一嗓子 —— 喊几次之后管理员就不看了，
+      //    与 B1 里「弹几次假的二次确认，真的那次直接点确定不看字」是同一种失效方式。
+      const beforeText = await openPublishConfirm()
+      expect(beforeText, '基础确认文案应在').toContain(`确认发布Agent「E2E发布警告助手」`)
+      expect(beforeText, '工具都启用着，不该出现停用警告').not.toContain('当前已被停用')
+      expect(beforeText, '工具都启用着，不该提到安全网关').not.toContain('安全网关')
+      await page.locator('.el-message-box').getByRole('button', { name: /取\s*消/ }).click()
+      await expect(page.locator('.el-message-box')).toBeHidden({ timeout: 15000 })
+
+      // ---------- ③ 管理员把 TARGET 停用 ----------
+      // 🔴 registered-update 是【整份提交】：其余字段一律原样回填生效值。
+      //    少回填 permissions 会被后端当成「删空代码权限」= 一次货真价实的安全放松。
+      //    停用是**收紧**不是放松，故不需要 confirmRelax。
+      const disable = await request.put(`${API_BASE_URL}/agent/tool-def/registered-update`, {
+        headers,
+        data: {
+          toolName: TARGET,
+          displayName: target0.displayName,
+          description: target0.description,
+          groupName: target0.groupName,
+          permissions: target0.permissions,
+          paramsSchema: target0.paramsSchema,
+          riskLevel: target0.riskLevel,
+          enabled: false,
+          remark: 'e2e-D4-25b-探针-非真实停用'
+        }
+      })
+      expect(disable.ok(), `停用应成功，实际 ${disable.status()}`).toBeTruthy()
+      expect((await readTool(TARGET)).enabled, '停用应已生效').toBe(false)
+
+      // ---------- ④ 重新加载列表页（toolCatalog 有页面级缓存，不 reload 就是假绿）----------
+      await page.reload()
+      const afterText = await openPublishConfirm()
+
+      // (a) 点名被停用的那个，且用的是中文名（裸机器键管理员认不出来）
+      expect(afterText, '警告应点名被停用的工具（中文名）').toContain(target0.displayName)
+      // (b) 🔴 不点名没停用的那个：一起列出来会让人去解绑一个本来是好的工具
+      expect(afterText, '对照工具没被停用，不该被点名').not.toContain(control0.displayName)
+      // (c) 说清「不拦你」—— 这是裁定本体，不说会让人以为界面会兜住
+      expect(afterText, '警告应说清发布不会被拦').toContain('发布不会拦你')
+      // (d) 说清运行期的真实后果与出处
+      expect(afterText, '警告应说清运行期会被安全网关拒').toContain('安全网关')
+      // (e) 两条出路都要给：解绑 / 去工具管理重新启用
+      expect(afterText, '警告必须给出路：解绑').toContain('解绑')
+      expect(afterText, '警告必须给出路：去工具管理重新启用').toContain('工具管理')
+
+      // ---------- ⑤ 🔴 真的点「确定」：警告不是拦截，发布必须成功 ----------
+      await page.locator('.el-message-box').getByRole('button', { name: /确\s*定/ }).click()
+      await expect(
+        page.locator('.el-message').filter({ hasText: '发布成功' }).first(),
+        '带着停用工具也必须发布成功 —— 裁定的就是「警告而不是硬拒」'
+      ).toBeVisible({ timeout: 20000 })
+      published = true
+
+      const got = await request.get(`${API_BASE_URL}/agent/def/get?id=${defId}`, { headers })
+      const gotBody = await got.json()
+      expect(gotBody.code, `读回 def 应成功，实际 ${JSON.stringify(gotBody)}`).toBe(0)
+      expect(gotBody.data.status, '发布后状态应为 PUBLISHED').toBe('PUBLISHED')
+      expect(gotBody.data.toolKeys, '发布不该动 toolKeys（警告只说不改）').toBe(`${TARGET},${CONTROL}`)
+    } finally {
+      // ---------- 还债 1：撤掉停用覆盖行 ----------
+      // 放在 finally 且在删 def 之前：这行不还，后面所有依赖 data_interface_list 的用例全废
+      const reset = await request.delete(
+        `${API_BASE_URL}/agent/tool-def/registered-reset?toolName=${encodeURIComponent(TARGET)}`,
+        { headers }
+      )
+      expect(reset.ok(), `恢复默认应成功，实际 ${reset.status()}`).toBeTruthy()
+      const restored = await readTool(TARGET)
+      expect(restored.enabled, '恢复默认后应退回启用').toBe(true)
+      expect(restored.overridden, '恢复默认后不该再有覆盖行').toBe(false)
+
+      // ---------- 还债 2：删掉本用例造的 def ----------
+      // 🔴 已发布不可直删（后端 AGENT_DEF_PUBLISHED_NOT_DELETABLE），要先停用再删。
+      //    用 published 标记而不是去读一次状态：读也可能失败，而失败时我们仍需尽力删。
+      if (defId) {
+        if (published) {
+          const off = await request.post(`${API_BASE_URL}/agent/def/disable?id=${defId}`, { headers })
+          expect(off.ok(), `停用应成功，实际 ${off.status()}`).toBeTruthy()
+        }
+        const del = await request.delete(`${API_BASE_URL}/agent/def/delete?id=${defId}`, { headers })
+        expect(del.ok(), `删 def 应成功，实际 ${del.status()}`).toBeTruthy()
+        const delBody = await del.json()
+        expect(delBody.code, `删 def 应返回 code=0，实际 ${JSON.stringify(delBody)}`).toBe(0)
+      }
+    }
+  })
+})
