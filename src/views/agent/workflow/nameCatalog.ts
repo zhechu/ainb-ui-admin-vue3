@@ -135,6 +135,11 @@ export interface ToolOptionGroup {
     requireConfirm?: boolean
     risk?: string
     riskDescription?: string
+    /** 🔴 画点/写 title 用这三个，不用上面那组生效值，理由见 {@link gateRiskOf} */
+    declaredRisk?: string
+    declaredRiskDescription?: string
+    declaredRequireConfirm?: boolean
+    riskOverridden?: boolean
   }[]
 }
 
@@ -178,6 +183,23 @@ const RISK_DOT_COLOR: Record<string, string> = {
  */
 export const riskDotColor = (risk?: string | null): string => (risk ? RISK_DOT_COLOR[risk] ?? '' : '')
 
+/**
+ * 画风险色点该按哪个等级：**一律【声明】值**，缺失才回落生效值。
+ *
+ * 🔴 这不是风格问题。运行期各道闸（只读校验 V3/V11、发布判定、agent_loop 只读限制、沙箱 mock、
+ * 变更清单）读的都是 `@AgentTool(risk=…)` 的声明值，而「降险」这个在线维护动作只改生效值。
+ * 按生效值画点的下场是：管理员把某个 IRREVERSIBLE 工具降成只读之后，设计器下拉里那颗红点
+ * **直接消失**（只读不画点），用户以为挑了个安全工具编进 agent_loop，点发布才被 V3 撞回来。
+ * 色点是本页唯一的危险信号，它必须说的是「闸门会怎么判」，不是「维护页上现在写着什么」。
+ *
+ * 🔴 回落生效值只为兼容未升级的后端（响应里没有 declared* 那种形状）：那时按老口径显示，
+ * 总比一颗点都不画好。
+ */
+export const gateRiskOf = (t: {
+  declaredRisk?: string | null
+  risk?: string | null
+}): string | null | undefined => t.declaredRisk ?? t.risk
+
 /** 无分组的工具归到这一组（后端 groupName 空串即「不分组」） */
 const UNGROUPED = '未分组'
 
@@ -202,7 +224,11 @@ export const groupedToolOptions = (): ToolOptionGroup[] => {
       desc: t.description,
       requireConfirm: t.requireConfirm,
       risk: t.risk,
-      riskDescription: t.riskDescription
+      riskDescription: t.riskDescription,
+      declaredRisk: t.declaredRisk,
+      declaredRiskDescription: t.declaredRiskDescription,
+      declaredRequireConfirm: t.declaredRequireConfirm,
+      riskOverridden: t.riskOverridden
     })
   }
   return groups

@@ -73,12 +73,13 @@
                     <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value">
                       <span class="float-left">{{ o.label }}</span>
                       <!-- 🔴 风险色点（重构 S1）：只读工具不画点。30 个里大半是只读，
-                           全画上一排绿点等于没画，反而把「这条不可逆」淹掉。见 riskDotColor 注释 -->
+                           全画上一排绿点等于没画，反而把「这条不可逆」淹掉。见 riskDotColor 注释。
+                           🔴 等级取 gateRiskOf（声明值）：降过险的工具仍按代码声明画点，见其注释 -->
                       <span
-                        v-if="riskDotColor(o.risk)"
+                        v-if="riskDotColor(gateRiskOf(o))"
                         class="wf-dot wf-risk-dot"
-                        :style="{ background: riskDotColor(o.risk) }"
-                        :title="riskDotTitle(o.riskDescription || o.risk, o.requireConfirm)"
+                        :style="{ background: riskDotColor(gateRiskOf(o)) }"
+                        :title="riskDotTitle(o)"
                       ></span>
                       <span
                         v-if="o.desc"
@@ -349,10 +350,10 @@
                     >
                       <span class="float-left">{{ keyedLabel(t.name, t.displayName) }}</span>
                       <span
-                        v-if="riskDotColor(t.risk)"
+                        v-if="riskDotColor(gateRiskOf(t))"
                         class="wf-dot wf-risk-dot"
-                        :style="{ background: riskDotColor(t.risk) }"
-                        :title="riskDotTitle(t.riskDescription || t.risk, t.requireConfirm)"
+                        :style="{ background: riskDotColor(gateRiskOf(t)) }"
+                        :title="riskDotTitle(t)"
                       ></span>
                       <span
                         v-if="t.description"
@@ -552,19 +553,44 @@
 import KeyValueEditor from '../../components/KeyValueEditor.vue'
 import JsonCodeField from './JsonCodeField.vue'
 import VariableRefPicker from './VariableRefPicker.vue'
-import { keyedLabel, riskDotColor } from '../../nameCatalog'
+import { keyedLabel, riskDotColor, gateRiskOf } from '../../nameCatalog'
 import type { WorkflowEditorContext } from '../useWorkflowEditor'
 
 defineOptions({ name: 'WorkflowPropertyPanel' })
+
+/** 色点 title 的入参形状：工具下拉的两个数据源（分组选项 / toolList）都满足它 */
+interface RiskDotSource {
+  risk?: string | null
+  riskDescription?: string | null
+  requireConfirm?: boolean | null
+  declaredRisk?: string | null
+  declaredRiskDescription?: string | null
+  declaredRequireConfirm?: boolean | null
+  riskOverridden?: boolean | null
+}
 
 /**
  * 风险色点的 title 文案。
  *
  * 🔴 色点只有 7px，颜色本身说不清「不可逆」和「高危」的区别，也说不清「要不要人工确认」。
  * 所以 title 必须把这两件事都讲出来——用户在下拉里悬停一下就该知道自己在挑什么。
+ *
+ * 🔴 三处一律读【声明】值，理由与 {@link gateRiskOf} 同（各道闸读 `getDeclaredRisk()`，
+ * 降险只改生效值）。此前读生效值，降过险的工具既画不出点、也不再提「需人工确认」，
+ * 而发布期校验照旧拒它。
+ *
+ * 🔴 `riskOverridden` 时把差异说出来而不是藏起来：色点显示「不可逆」而维护页显示「只读」，
+ * 不解释一句，管理员会以为哪一边坏了。措辞刻意限定在【风险】上 ——
+ * 权限是另一回事，网关读的确实是维护后的权限串（删权限立即生效），不能一并说成「不生效」。
  */
-const riskDotTitle = (riskText?: string, requireConfirm?: boolean) =>
-  `${riskText || '有风险'}${requireConfirm ? '，运行前需人工确认' : ''}`
+const riskDotTitle = (t: RiskDotSource) => {
+  const text = t.declaredRiskDescription || t.riskDescription || t.declaredRisk || t.risk || '有风险'
+  const needConfirm = t.declaredRequireConfirm ?? t.requireConfirm
+  const maintained = t.riskOverridden
+    ? `（注：风险标注已被在线维护成「${t.riskDescription || t.risk}」，但运行期各道闸对【风险】仍按代码声明判定）`
+    : ''
+  return `${text}${needConfirm ? '，运行前需人工确认' : ''}${maintained}`
+}
 
 /** 流程元信息（描述）双向绑定：由页面 v-model 下发，编辑即回写 formData（页面 watch 标脏） */
 const description = defineModel<string>('description')

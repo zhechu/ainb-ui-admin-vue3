@@ -317,7 +317,13 @@ const loadKnowledge = async () => {
 }
 
 /**
- * 工具下拉数据源：只列只读工具（requireConfirm===false），与后端发布期校验同口径。
+ * 工具下拉数据源：只列只读工具，与后端发布期校验同口径。
+ *
+ * 🔴 「同口径」这四个字此前是**假的**：这里过滤的是 `requireConfirm`（生效值），而
+ * `AgentDefServiceImpl.validateToolKeys` 读的是 `getDeclaredRisk()`（声明值）。
+ * 只要管理员在工具管理页把某个写工具降险成只读，它就会出现在这个下拉里、能被选中、能被保存，
+ * 然后后端按声明值把它拒掉 —— 错误信息还说得挺清楚，可用户明明是从我们给的下拉里挑的。
+ * 故改成过滤 `declaredRequireConfirm`。回落生效值只为兼容未升级的后端（那种形状下维持旧行为）。
  *
  * 🔴 这一页**刻意不换**到名称目录（`/agent/workflow-def/name-catalog`）：那个接口要 `agent:workflow:query`，
  * 而本页的用户持有的是 `agent:def:*`。换过去等于给「编辑平台助手」凭空加一道流程编排权限 ——
@@ -332,7 +338,7 @@ const loadTools = async () => {
   if (toolList.value.length > 0) return
   try {
     const all = (await getToolList()) || []
-    toolList.value = all.filter((t) => !t.requireConfirm)
+    toolList.value = all.filter((t) => !(t.declaredRequireConfirm ?? t.requireConfirm))
     toolLoadError.value = ''
   } catch (e: any) {
     toolList.value = []

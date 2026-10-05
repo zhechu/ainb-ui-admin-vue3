@@ -55,8 +55,11 @@ const SUB_NODE_NAME = '调子流程'
 /**
  * 拿来验「写操作工具挂风险色点」的工具键。选 `datamodel_create` 是因为它的声明风险是 **IRREVERSIBLE**
  * ——本模块风险等级里最高的一档，也正是色点存在的全部理由（一眼看出「这一步撤销不了」）。
- * 🔴 它的 `risk` / `requireConfirm` 在 beforeAll 里**从目录现读并断言**，不写死在这儿：
- *    万一后端把它的等级调了，这里会直接说清「前置不成立」，而不是让色点断言莫名其妙地红。
+ * 🔴 它的 `declaredRisk` / `declaredRequireConfirm` / `riskOverridden` 在 beforeAll 里**从目录现读并断言**，
+ *    不写死在这儿：万一后端把它的等级调了、或它在开发库里被在线维护过，这里会直接说清「前置不成立」，
+ *    而不是让色点断言莫名其妙地红。
+ * 🔴 D4-22 起色点读的是【声明】风险（`declaredRisk`）而非生效值：运行期各道闸读的都是
+ *    `getDeclaredRisk()`，按生效值画点会让降过险的写工具在设计器里看着像只读。
  */
 const RISKY_TOOL_KEY = 'datamodel_create'
 
@@ -201,6 +204,11 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
           risk?: string
           riskDescription?: string
           requireConfirm?: boolean
+          /** 🔴 D4-22 起目录下发两份风险：生效值（上面那组）与声明值（下面这组），色点读后者 */
+          declaredRisk?: string
+          declaredRiskDescription?: string
+          declaredRequireConfirm?: boolean
+          riskOverridden?: boolean
         }[]
         workflows: { code: string; name: string }[]
       }
@@ -217,19 +225,31 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     expect(toolLabel, `${TOOL_KEY} 的展示名就是它自己的键，等于没翻译`).not.toBe(TOOL_KEY)
     toolGroup = tool!.groupName || '未分组'
     // 🔴 只读是「不画色点」那一半断言的前提：它若不是只读，「没有点」就从「刻意的」变成「漏画的」，
-    //    而这两种情况在 DOM 上长得一模一样——只有先钉住 risk 才能区分
-    expect(tool!.risk, `${TOOL_KEY} 的声明风险不是 READ_ONLY 了，「只读工具不画点」这条用例的前提不成立`).toBe(
+    //    而这两种情况在 DOM 上长得一模一样——只有先钉住 risk 才能区分。
+    // 🔴 钉的是 declaredRisk 而不是 risk：色点现在读声明值（各道闸也读它）。
+    //    这两个字段谁缺了都等于本用例前提不成立 —— 缺 declaredRisk 时前端回落生效值，看着还是绿的，
+    //    可一旦有人给这个工具降过险，「不画点」就从「刻意」悄悄变成「漏画」。
+    expect(tool!.declaredRisk, `${TOOL_KEY} 的声明风险不是 READ_ONLY 了，「只读工具不画点」这条用例的前提不成立`).toBe(
+      'READ_ONLY'
+    )
+    expect(tool!.risk, `${TOOL_KEY} 的生效风险与声明风险不一致（被在线维护过），换一个干净的只读工具再验`).toBe(
       'READ_ONLY'
     )
 
     const risky = cat.data?.tools?.find((t) => t.name === RISKY_TOOL_KEY)
     expect(risky, `目录里没有 ${RISKY_TOOL_KEY}，风险色点没法验`).toBeTruthy()
     riskyLabel = risky!.displayName
-    riskyDesc = risky!.riskDescription || String(risky!.risk)
-    expect(risky!.risk, `${RISKY_TOOL_KEY} 的声明风险不是 IRREVERSIBLE 了，换最高档的工具再验色点`).toBe(
+    riskyDesc = risky!.declaredRiskDescription || risky!.riskDescription || String(risky!.declaredRisk)
+    expect(risky!.declaredRisk, `${RISKY_TOOL_KEY} 的声明风险不是 IRREVERSIBLE 了，换最高档的工具再验色点`).toBe(
       'IRREVERSIBLE'
     )
-    expect(risky!.requireConfirm, `${RISKY_TOOL_KEY} 不再 requireConfirm，色点 title 的后半句前提不成立`).toBe(true)
+    expect(
+      risky!.declaredRequireConfirm,
+      `${RISKY_TOOL_KEY} 声明口径不再 requireConfirm，色点 title 的后半句前提不成立`
+    ).toBe(true)
+    expect(risky!.riskOverridden, `${RISKY_TOOL_KEY} 被在线维护改过风险，title 会多出维护注解，换一个干净的工具再验`).toBe(
+      false
+    )
 
     const wf0 = cat.data?.workflows?.[0]
     if (wf0) {

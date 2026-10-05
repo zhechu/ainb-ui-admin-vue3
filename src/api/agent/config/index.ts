@@ -26,8 +26,23 @@ export interface AgentToolVO {
   risk: 'READ_ONLY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'IRREVERSIBLE'
   riskDescription: string
   enabled: boolean
-  /** 是否必须进 Plan 等用户确认 */
+  /**
+   * 生效值口径的「是否必须进 Plan 等用户确认」。
+   * 🔴 本页（AI 配置管理）是「生效值快照」，照它显示没错；但**别拿它过滤工具** ——
+   *    `def/editor/index.vue` 曾经这么干，见 declaredRequireConfirm。
+   */
   requireConfirm: boolean
+  /**
+   * 代码声明的风险等级 —— 后端 `AgentDefServiceImpl` 与发布期校验 V3/V11 读的都是它。
+   * 🔴 降险这个在线维护动作只改生效值，改不动这里。所以「哪些工具算只读、能绑进 agent_loop」
+   *    必须按 declaredRequireConfirm 过滤：按生效值过滤会把降过险的工具放进下拉，
+   *    用户编排完点发布才被拒 —— 界面主动指了反方向。
+   */
+  declaredRisk?: 'READ_ONLY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'IRREVERSIBLE'
+  declaredRiskDescription?: string
+  declaredRequireConfirm?: boolean
+  /** 生效风险 ≠ 声明风险，即风险标注被在线维护改过 */
+  riskOverridden?: boolean
   /** 当前租户是否在线维护过这个工具（管理页据此打「已维护」标记） */
   overridden?: boolean
 }

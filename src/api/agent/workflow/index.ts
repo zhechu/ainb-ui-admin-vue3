@@ -521,9 +521,25 @@ export interface NameCatalogToolVO {
   description?: string
   /** 分组名，下拉按它分组；空串表示不分组 */
   groupName: string
+  /**
+   * 生效风险等级（在线维护后的值）。
+   * 🔴 **别拿它预测闸门行为** —— 运行期各道闸读的是 declaredRisk，见下面那组字段。
+   */
   risk?: string
   riskDescription?: string
   requireConfirm?: boolean
+  /**
+   * 代码声明的风险等级 —— 只读校验（V3/V11）、发布判定、agent_loop 只读限制、沙箱 mock、
+   * 变更清单读的全是它。降险这个在线维护动作改的是上面那个生效值，改不动这里。
+   * 🔴 画色点、写「需人工确认」、过滤「只读可用工具」一律用这三个 declared*，
+   *    否则界面会把降过险的工具说成「无需确认」，用户点发布才被拒 —— 界面主动指了反方向。
+   * 🔴 自定义工具没有这个分裂（agent_tool_def 那行就是它的声明），两份恒等、riskOverridden 恒 false。
+   */
+  declaredRisk?: string
+  declaredRiskDescription?: string
+  declaredRequireConfirm?: boolean
+  /** 生效风险 ≠ 声明风险，即风险标注被在线维护改过（只改展示名/分组的不算） */
+  riskOverridden?: boolean
   enabled?: boolean
   overridden?: boolean
   /** BUILTIN=代码内置工具，其余取自 agent_tool_def.source */

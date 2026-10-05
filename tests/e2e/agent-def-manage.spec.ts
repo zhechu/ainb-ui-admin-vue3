@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { login, gotoWithAuth } from './helpers/auth'
+import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
 
 /**
  * 智能体管理页 + 整页设计器 端到端验证
@@ -163,7 +163,8 @@ test.describe('智能体管理页', () => {
       .fill(CODE3)
     await page.locator('[data-testid="agent-persona"]').fill('你是工具往返测试助手。')
 
-    // 绑定一个只读工具：下拉只列 requireConfirm===false 的工具，故 data_interface_list 必在列
+    // 绑定一个只读工具：下拉只列【声明】风险为只读（declaredRequireConfirm===false）的工具，
+    // 故 data_interface_list 必在列。（D4-22：此前过滤的是生效值 requireConfirm，见文件末那条用例）
     // 🔴 这版 Element Plus 的多选把 .el-select__placeholder 盖在 input 上，直接点 input 会被「拦截指针事件」；
     //    改点 .el-select 容器开菜单，再对 filter input 用 fill 触发过滤
     const toolCard = page.locator('.el-card').filter({ hasText: '工具（只读）' }).first()
@@ -391,5 +392,125 @@ test.describe('智能体管理页', () => {
     await expect(page.locator('.el-table__body tr').filter({ hasText: CODE_V })).toHaveCount(0, {
       timeout: 15000
     })
+  })
+})
+
+/**
+ * 🔴 D4-22：「工具（只读）」下拉的过滤必须读【声明】风险，不是生效风险
+ *
+ * 背景：迭代三把运行期各道闸全部改读 `getDeclaredRisk()`（`AgentDefServiceImpl.validateToolKeys`、
+ * `WorkflowDslValidator` V3/V11、`AgentLoopGraphBuilder` 两道只读闸、沙箱 mock、发布判定），
+ * 而工具管理页的「降险」改的是**生效值**。此前 `def/editor/index.vue` 按生效值 `requireConfirm`
+ * 过滤下拉，于是：管理员把 `datamodel_create`（声明 IRREVERSIBLE）降成只读 → 它出现在「只读工具」
+ * 下拉里 → 能选中、能存草稿 → 后端按声明值把它拒掉。界面不是没帮上忙，是**主动指了反方向**。
+ *
+ * 🔴 为什么非要走浏览器：后端那一半（`declaredRisk` 有没有下发）用 curl 就能验，
+ *    但「下拉里到底有没有这一项」是 `Array.filter` 加 `el-select` 远程过滤的合力，
+ *    接口层完全看不见。而这类缺陷的表现恰好是本平台头号反模式：配置能存、点发布才炸。
+ *
+ * 🔴 全程 0 LLM token：只开设计器、开下拉、看选项，不保存、不发布、不聊天。
+ * 🔴 数据自净用 try/finally：这条用例会**真的**给 `datamodel_create` 落一条降险覆盖行。
+ *    断言中途失败也不能把它留在开发库里 —— 那不是探针，那是一次没人知道的安全放松。
+ */
+test.describe('智能体设计器 · 工具下拉的只读过滤（D4-22）', () => {
+  test.setTimeout(180_000)
+
+  const TARGET = 'datamodel_create'
+  /** 真只读工具，用来做「反空转」对照：下拉整个坏了也能让 TARGET 那条断言通过 */
+  const READONLY_CONTROL = 'data_interface_list'
+
+  test('降过险的写工具仍不进「只读」下拉；同下拉里真只读工具照样在', async ({ page, request }) => {
+    const token = await apiLogin(request)
+    const headers = apiHeaders(token)
+
+    const readTarget = async () => {
+      const resp = await request.get(`${API_BASE_URL}/agent/tool-def/registered-list`, { headers })
+      expect(resp.ok(), 'registered-list 应可读').toBeTruthy()
+      const body = await resp.json()
+      const hit = (body.data || []).find((t: any) => t.toolName === TARGET)
+      expect(hit, `应能在内置工具里找到 ${TARGET}`).toBeTruthy()
+      return hit
+    }
+
+    const before = await readTarget()
+    // 前提自检：这条用例的全部意义建立在「TARGET 的声明风险是写操作」之上
+    expect(before.declaredRiskLevel, `${TARGET} 的声明风险应为 IRREVERSIBLE，否则本用例前提没了`).toBe(
+      'IRREVERSIBLE'
+    )
+
+    const relax = await request.put(`${API_BASE_URL}/agent/tool-def/registered-update`, {
+      headers,
+      data: {
+        toolName: TARGET,
+        // 🔴 registered-update 是【整份提交】：permissions 传 null 会被后端当成「删空代码权限」
+        //    （= 调用只需登录），那是货真价实的安全放松。探针只想改风险，故把生效值原样回填。
+        displayName: before.displayName,
+        description: before.description,
+        groupName: before.groupName,
+        permissions: before.permissions,
+        paramsSchema: before.paramsSchema,
+        enabled: true,
+        riskLevel: 'READ_ONLY',
+        // B1 之后降险必须显式表态，否则后端直接拒（错误码 1_041_009_001）且什么都不落库
+        confirmRelax: true,
+        remark: 'e2e-D4-22-探针-非真实放松'
+      }
+    })
+    expect(relax.ok(), `降险应成功（已带 confirmRelax），实际 ${relax.status()}`).toBeTruthy()
+
+    try {
+      // 降险确实生效了：生效风险已是只读、生效 requireConfirm 已翻成 false
+      const after = await readTarget()
+      expect(after.riskLevel, '生效风险应已被降成 READ_ONLY').toBe('READ_ONLY')
+      expect(after.requireConfirm, '生效 requireConfirm 应已翻成 false').toBe(false)
+      // 而声明值一动不动 —— 后端闸门读的就是它
+      expect(after.declaredRiskLevel, '声明风险不该被在线维护改动').toBe('IRREVERSIBLE')
+      // 🔴 这里刻意【不】断言 declaredRequireConfirm：/registered-list 没有这个字段，
+      //    写 `after.declaredRequireConfirm ?? true` 只会得到一条恒真的假断言。
+      //    「声明口径仍需确认」由后端 RiskLevel.IRREVERSIBLE.isRequireConfirm() 保证，
+      //    并已被 AgentNameCatalogServiceTest 的三条用例钉住。
+      expect(after.permissions, '探针只改风险，权限串不该被动过').toBe(before.permissions)
+
+      await login(page)
+      await gotoWithAuth(page, '/ai/agent/def')
+      await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
+      await page.getByRole('button', { name: '新增', exact: true }).first().click()
+      await page.waitForURL(/\/agent-def\/editor/)
+
+      const toolCard = page.locator('.el-card').filter({ hasText: '工具（只读）' }).first()
+      await expect(toolCard).toBeVisible({ timeout: 20000 })
+      await toolCard.locator('.el-select').first().click()
+
+      // ---------- 反空转对照：真只读工具必须还在，否则下面那条「查不到」可能只是下拉整个坏了 ----------
+      await toolCard.locator('input').first().fill(READONLY_CONTROL)
+      await expect(
+        page.locator('.el-select-dropdown__item:visible').filter({ hasText: READONLY_CONTROL }).first()
+      ).toBeVisible({ timeout: 15000 })
+
+      // ---------- 核心断言：降过险的写工具【不该】出现在只读下拉里 ----------
+      await toolCard.locator('input').first().fill(TARGET)
+      await expect
+        .poll(
+          async () =>
+            await page.locator('.el-select-dropdown__item:visible').filter({ hasText: TARGET }).count(),
+          {
+            timeout: 10000,
+            message:
+              `${TARGET} 的生效风险已被降成只读，但声明风险仍是 IRREVERSIBLE；` +
+              '后端 validateToolKeys 按声明值拒它，故下拉里不该出现这一项'
+          }
+        )
+        .toBe(0)
+    } finally {
+      // 恢复默认 = 删覆盖行。放在 finally：断言失败也必须把这次放松撤掉
+      const reset = await request.delete(
+        `${API_BASE_URL}/agent/tool-def/registered-reset?toolName=${encodeURIComponent(TARGET)}`,
+        { headers }
+      )
+      expect(reset.ok(), `恢复默认应成功，实际 ${reset.status()}`).toBeTruthy()
+      const restored = await readTarget()
+      expect(restored.riskLevel, '恢复默认后生效风险应退回声明值').toBe('IRREVERSIBLE')
+      expect(restored.overridden, '恢复默认后不该再有覆盖行').toBe(false)
+    }
   })
 })
