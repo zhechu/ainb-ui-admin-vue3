@@ -261,7 +261,8 @@ const scheduleDedup = () => {
       dedup.value = versions?.length ? 'taken' : 'free'
     } catch {
       if (seq !== dedupSeq) return
-      // 拦截器已经把后端的提示弹出去了（台账 #91：调用方拿不到 msg），这里只负责不撒谎
+      // 拦截器已经把后端那句提示弹出去了；C2 之后这里也拿得到 msg，但同一条原因弹两遍只会互相盖掉，
+      // 所以本处只负责不撒谎：把「查不动」与「编码没被占用」区分开
       dedup.value = 'error'
     }
   }, 400)

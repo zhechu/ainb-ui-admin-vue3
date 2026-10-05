@@ -375,8 +375,12 @@ const loadTools = async () => {
     toolLoadError.value = ''
   } catch (e: any) {
     toolList.value = []
-    toolLoadError.value =
-      e?.message || '工具目录加载失败（可能缺少 AI 配置查看权限），绑定工具将不可用'
+    // 🔴 真因与后果都要（C2 之后 e.message 终于是后端那句真因了）。原来那句兜底里的
+    //    「可能缺少 AI 配置查看权限」是**猜**的 —— 写它的时候压根拿不到真因，现在拿得到就不该再猜；
+    //    只在真因也缺失时才退回这个猜测。而「绑定工具将不可用」后端永远不会说，
+    //    少了它用户只看到一句孤立报错，分不清下面那个空下拉是坏了还是真的没有工具。
+    const cause = e?.message || '可能缺少 AI 配置查看权限'
+    toolLoadError.value = `工具目录加载失败（${cause}），绑定工具将不可用`
   }
 }
 

@@ -504,6 +504,12 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     const alert = page.getByTestId('catalog-error-alert')
     await expect(alert).toBeVisible({ timeout: 25000 })
     await expect(alert).toContainText('重试')
+    // 🔴 这一条是台账 C2 在真浏览器里的唯一可见证据，别删。
+    //    告警标题必须带上**后端那句真因**（就是上面 route 注入的 msg: '没有该操作权限'）。
+    //    C2 修之前拦截器 reject 的是字面量 'error'，nameCatalog 的 catch 里 e.message 是 undefined，
+    //    标题只能是那句写死的兜底文案 —— 用户在界面上永远看不到「到底是为什么坏的」，
+    //    只能看到「坏了」。修完之后真因与影响面同时出现在标题里。
+    await expect(alert).toContainText('没有该操作权限')
 
     // ② 摘要回落成机器键，而不是空白、也不是抛错整个画布白屏。
     //    「显示 form_list 至少能让人去搜、去问；显示空白等于把信息删了」——这条回落是 L1 的底线。

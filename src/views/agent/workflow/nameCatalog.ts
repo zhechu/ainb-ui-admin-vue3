@@ -59,7 +59,12 @@ export const ensureLoaded = async (): Promise<void> => {
     } catch (e: any) {
       // 🔴 不 rethrow：调用方都在渲染路径上，抛出去会变成控制台一行红字 + 界面依旧显示机器键，
       // 用户两头都看不到原因。写进 error 让消费方显式提示（G7）。
-      error.value = e?.message || '名称目录加载失败，界面将显示工具/控件的原始标识'
+      // 🔴 真因与后果都要，不能二选一（C2 之后 e.message 终于是后端那句真因了，如「没有该操作权限」）。
+      //    但后端那句不会说「所以界面要退回机器键」—— 影响面只有这一层知道。原来写的是
+      //    `e?.message || 兜底`，二选一的代价是：拿到真因就丢了影响面，用户看见一句孤立报错，
+      //    不知道画布上那些 form_list 是坏了还是本来就叫这个。
+      const cause = e?.message ? `（${e.message}）` : ''
+      error.value = `名称目录加载失败${cause}，界面将显示工具/控件的原始标识`
     } finally {
       loading.value = false
       inflight = null

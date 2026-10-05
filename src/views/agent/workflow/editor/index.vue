@@ -723,7 +723,7 @@ const handleManifest = async () => {
       provenance: byId ? '库里已保存的这一版' : '画布上未保存的改动'
     }
   } catch {
-    // 拦截器已把后端原因弹出去了（台账 #91：调用方拿不到 msg），这里再补一句只会盖掉它
+    // 拦截器已把后端原因弹出去了；C2 之后这里也拿得到 msg，但同一条原因弹两遍只会互相盖掉
   } finally {
     manifestLoading.value = false
   }
@@ -846,7 +846,7 @@ const handleRollback = async () => {
     message.success('已回滚出新草稿')
     await gotoDef(newId)
   } catch {
-    // 拦截器已弹出后端的具体原因（台账 #91），这里再补一句「回滚失败」只会盖掉它
+    // 拦截器已弹出后端的具体原因（C2 之后这里也拿得到 msg），再补一句「回滚失败」只会盖掉它
   } finally {
     rollingBack.value = false
   }

@@ -20,7 +20,7 @@ import { ApiEncrypt } from '@/utils/encrypt'
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const { result_code, base_url, request_timeout } = config
 
-// 需要忽略的提示。忽略后，自动 Promise.reject('error')
+// 需要忽略的提示：不弹任何提示，直接 Promise.reject(msg)（注意 reject 出去的是字符串，不是 Error）
 const ignoreMsgs = [
   '无效的刷新令牌', // 刷新令牌被删除时，不用提示
   '刷新令牌已过期' // 使用刷新令牌，刷新获取新的访问令牌时，结果因为过期失败，此时需要忽略。否则，会导致继续 401，无法跳转到登出界面
@@ -217,7 +217,10 @@ service.interceptors.response.use(
       } else {
         ElNotification.error({ title: msg })
       }
-      return Promise.reject('error')
+      // 🔴 reject 一个 Error(msg)，与上面 500 / 901 两个分支同形（台账 C2）。
+      //    原来这里 reject 的是字面量字符串 'error'：通知 4.5 秒就自己没了，而调用方 catch 里
+      //    连 e.message 都是 undefined，于是「后端说了什么」在界面上没有任何留得住的落点。
+      return Promise.reject(new Error(msg))
     } else {
       return data
     }

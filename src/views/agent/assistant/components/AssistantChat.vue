@@ -1664,11 +1664,11 @@ const gateDefId = ref<number>()
  */
 const handleConfirmWorkflow = async (item: any) => {
   if (!item.workflowCode) return
-  // 🔴 发布前先自己体一遍（S4b）。后端闸门确实会拒，但**拒回来的那段文字到不了这里**：
-  //    axios 拦截器把业务错误 reject 成字面量 'error'（台账 #91），`e.message` 恒为 undefined，
-  //    所以原来那句 catch 恒等于「发布失败：未知错误」—— 既没说原因，也没说去哪儿看，
+  // 🔴 发布前先自己体一遍（S4b）。C2 之后后端那句拒绝文案**能到这里了**（下面 catch 就把它拼了进去），
+  //    但预检依旧不是「少一次往返」的优化：那句话是七八条修正项用「；」拼成的一长串，
+  //    拦截器只会把它塞进一个 4.5 秒自动消失的通知标题，用户读不完它就没了，
   //    而这条路径上的草稿恰恰是 LLM 一次生成的、最可能不过体检的那种。
-  //    这个预检因此不是「优化」，它是这条路径唯一能把「改哪儿」说给人听的通道。
+  //    这个预检因此是这条路径唯一能把「改哪儿」**逐条、且停在那儿**说给人听的通道。
   // ⚠️ 但 /validate 要 agent:workflow:query，那是这条路径今天没有的一个权限要求，
   //    403 时按 publish-blind 降级照发（见 publishGate.ts），修 #70 时两个权限要一起给。
   const verdict = await precheckPublish(
@@ -1696,12 +1696,14 @@ const handleConfirmWorkflow = async (item: any) => {
     const published = await AgentPlannerApi.publishWorkflow(item.workflowCode)
     item.defStatus = published.status || 'PUBLISHED'
     item.cardStatus = 'published'
-  } catch {
-    // 🔴 不再拼 `e.message`（#91：恒为 undefined）。给一条走得通的路，比给一句假的错误信息有用：
-    //    闸门拒了而预检没拦住，多半是预检自己没体成（上面那句 warning 已经说过），
-    //    或者是预检与发布之间有人改了库 —— 两种都得去列表页那套完整体检里才看得清。
+  } catch (e: any) {
+    // 🔴 现在把 `e.message` 拼回来了（C2 已修：拦截器 reject 的是 Error(msg)，不再是字面量 'error'）。
+    //    但**只有真因还不够** —— 聊天卡这里没有逐条清单的落点：闸门拒了而预检没拦住，
+    //    多半是预检自己没体成（上面那句 warning 已经说过），或者是预检与发布之间有人改了库，
+    //    两种都得去列表页那套完整体检里才看得清。所以真因后面仍然要给一条走得通的路。
+    const reason = e?.message ? `：${e.message}` : ''
     message.error(
-      '发布被后端拒绝。请到「流程编排」列表页找到这条流程，点「设计」→「体检」查看逐条原因。'
+      `发布被后端拒绝${reason}。请到「流程编排」列表页找到这条流程，点「设计」→「体检」查看逐条原因。`
     )
     return
   }
