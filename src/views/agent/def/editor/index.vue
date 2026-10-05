@@ -202,6 +202,7 @@
                 <div class="form-hint mb-8px">
                   绑定后该 Agent 聊天时会先「思考→调工具查现状→再思考」直到给出结论，而非凭空作答。
                   <b>仅可绑定只读工具</b>（写操作须走 Plan 确认或工作流 tool 节点）；留空=直连问答。
+                  已被管理员停用的工具在候选里是灰的、挑不动（D4-25）。
                 </div>
                 <el-form-item prop="toolKeys" class="!mb-0">
                   <el-select
@@ -221,9 +222,17 @@
                       :key="t.name"
                       :label="keyedLabel(t.name, t.displayName)"
                       :value="t.name"
+                      :disabled="!t.enabled"
+                      :title="t.enabled ? undefined : disabledToolTitle(t)"
                     >
                       <span>{{ keyedLabel(t.name, t.displayName) }}</span>
                       <span class="text-12px text-[var(--el-text-color-secondary)] ml-8px">{{ t.description }}</span>
+                      <span
+                        v-if="!t.enabled"
+                        class="float-right text-12px text-[var(--el-text-color-danger)] ml-12px"
+                        data-testid="tool-option-block"
+                        >已停用</span
+                      >
                     </el-option>
                     <!-- 🔴 G7：目录加载失败时这里会是空的，必须说清原因而不是留一个空列表 -->
                     <template #empty>
@@ -235,6 +244,19 @@
                       </div>
                     </template>
                   </el-select>
+                  <!--
+                    🔴 D4-25：绑了个已停用的工具，保存和发布**都不拦**（后端 validateToolKeys 不看 enabled），
+                       要到用户真去聊天、模型调这个工具时才被安全网关拒。而折叠标签上只剩一个中文名，
+                       不点开下拉根本看不出它已被停用 —— 正是本模块头号缺陷「配了不生效且无提示」。
+                       故就地报警，并把两条出路（解绑 / 去工具管理重新启用）写进同一句里。
+                  -->
+                  <div
+                    v-if="disabledBoundWarning"
+                    class="mt-4px text-12px text-[var(--el-color-danger)] leading-18px"
+                    data-testid="tool-disabled-warning"
+                  >
+                    {{ disabledBoundWarning }}
+                  </div>
                 </el-form-item>
               </el-card>
             </div>
@@ -330,6 +352,17 @@ const loadKnowledge = async () => {
  * G7 要修的是「设计器拿不到工具目录」，不是「所有页面都走同一个接口」。
  * 展示名本来就由 `/agent/config/tool-list` 下发（`AgentConfigController` 早就 put 了 displayName），
  * 只是 `AgentToolVO` 此前没声明这个字段，TypeScript 眼里它不存在，页面就只能显示英文键。
+ *
+ * 🔴 停用的工具**留在列表里、置灰 + 说原因**，不滤掉（D4-25）。三条理由：
+ *   ① 滤掉只是把候选藏了，坑还在 —— 存量 `toolKeys` 里已经绑着的那个键不会因此消失；
+ *   ② 已选中但不在候选里的值，Element Plus 的 `getOption` 回落成 `{ currentLabel: value }`，
+ *      标签会退化成一串裸机器键（值不会丢，但用户再也认不出那是哪个工具）；
+ *   ③ `el-option` 的 disabled 是真挑不动（`selectOptionClick` 里 `if (!isDisabled.value)` 直接 return），
+ *      不是只画个灰色。与流程设计器 `agent_loop.tools` 的处置同口径（D4-24）。
+ * 🔴 这里的 `enabled` 读的是**生效值**，而上面的只读判据读的是**声明值** —— 不是笔误：
+ *   风险那几道闸（`AgentDefServiceImpl` / V3 / V11）读 `getDeclaredRisk()`，降险改不动它们；
+ *   而安全网关 `AgentSecurityGateway#checkTool` 读的是 `tool.isEnabled()`，即覆盖后的生效值，
+ *   「停用」这个维护动作**当次就真生效**。所以判「能不能用」必须按生效值，判「算不算只读」必须按声明值。
  */
 const toolList = ref<AgentToolVO[]>([])
 /** 目录加载失败的人话原因；🔴 G7 要求它可见 —— 空下拉 + 零提示就是原来的病 */
@@ -357,6 +390,42 @@ const selectedTools = computed<string[]>({
     formData.value.toolKeys = val && val.length ? val.join(',') : ''
   }
 })
+
+/**
+ * 已绑定、但当前被停用的工具（D4-25）。
+ *
+ * 🔴 目录还没加载完（或加载失败）时返回空 —— 那种形状下我们**不知道**某个键是否停用，
+ *    宁可不出这句警告，也不要凭猜测把用户往「解绑」上推（解绑是有代价的动作）。
+ * ⚠️ 刻意只覆盖「在候选里且 enabled=false」这一类。已绑定的键若压根不在候选里
+ *    （被管理员改成非只读、或工具已从代码里删掉），标签同样会退化成裸机器键，但那两类
+ *    后端 `validateToolKeys` 发布期就会拦（分别报「不是只读工具」「未登记」），属于 fail-loud，
+ *    与「静默失效」不是一回事，不在本条修复范围内。
+ */
+const disabledBoundTools = computed<AgentToolVO[]>(() => {
+  if (!selectedTools.value.length || !toolList.value.length) return []
+  const bound = new Set(selectedTools.value)
+  return toolList.value.filter((t) => bound.has(t.name) && !t.enabled)
+})
+
+/** 表单里那句就地警告；没有停用工具时为空串（模板据此不渲染） */
+const disabledBoundWarning = computed(() => {
+  if (!disabledBoundTools.value.length) return ''
+  const names = disabledBoundTools.value
+    .map((t) => keyedLabel(t.name, t.displayName))
+    .join('、')
+  return (
+    `已绑定的 ${names} 当前被停用。保存和发布都不会拦你，但这个 Agent 每次调用它们都会被安全网关拒绝`
+    + '（后端报「AI 助手工具(<工具键>)已被停用」），聊天里只会看到一句失败、看不出是工具被关掉了。'
+    + '请把这几个工具从上面的绑定里移除，或到「工具管理」页重新打开它的「启用」开关。'
+  )
+})
+
+/** 候选行 title：为什么挑不动，以及两条出路 */
+const disabledToolTitle = (t: AgentToolVO): string =>
+  `「${t.displayName || t.name}」已被停用，不能再绑定。`
+  + '停用来自「工具管理」页的在线维护开关（或代码里本就声明为停用），安全网关读到停用会直接拒绝调用，'
+  + `后端报「AI 助手工具(${t.name})已被停用」。`
+  + '已经绑着的话请把它移除，或到「工具管理」页重新打开该工具的「启用」开关。'
 
 const formRules = reactive({
   code: [

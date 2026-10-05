@@ -538,3 +538,215 @@ test.describe('智能体设计器 · 工具下拉的只读过滤（D4-22）', ()
     }
   })
 })
+
+/**
+ * 🔴 D4-25：已绑定的只读工具被管理员**停用**之后，界面上此前一丝痕迹都没有
+ *
+ * 缺陷链条（三段都核过源码）：
+ *   ① `def/editor/index.vue` 的下拉只按【声明风险】过滤（D4-22 修的），**从不看 `enabled`** ⟹
+ *      停用的工具此前是**正常可挑**的候选，界面上与启用的一模一样；
+ *   ② 后端 `AgentDefServiceImpl.validateToolKeys` 也只查「有没有登记」+「声明风险是不是只读」，
+ *      **同样不看 enabled** ⟹ 保存、发布一路绿灯；
+ *   ③ 真炸的地方在运行期：`AgentSecurityGateway#checkTool` 读 `tool.isEnabled()`，
+ *      抛 `AGENT_TOOL_DISABLED`（「AI 助手工具({})已被停用」）—— 用户每次问话都失败，
+ *      而配置页上什么都看不出来。这就是本模块头号反模式「配了不生效且无提示」的教科书形态。
+ *
+ * 修法（本次）：候选行置灰 + 挂原因（`el-option` 的 disabled 是真挑不动，不只是画个灰色），
+ * 且**不把它从列表里滤掉** —— 存量已绑定的键还得显示得出中文名，否则 Element Plus 的 `getOption`
+ * 会回落成裸机器键；再在表单里就地报一句警，把「解绑 / 去工具管理重新启用」两条出路写在同一句里。
+ * 🔴 后端那半（发布期硬拒停用工具）**刻意没做**：它会让「管理员停用某个工具」之后，
+ *    所有绑了它的 Agent 连**无关的**改动都发布不了。那是产品决策，等裁定，不夹带在这一刀里。
+ *
+ * 🔴 为什么非要走浏览器：`enabled` 有没有下发用 curl 就能验，但「灰没灰、挑不挑得动、
+ *    那句警告出没出来、标签还是不是中文名」四件事全在 DOM 里，接口层一件都看不见。
+ * 🔴 时序刻意按真实事故排：**先绑定、后停用**。反过来（先停用再试着绑）验不到存量那一半，
+ *    而存量才是这条缺陷真正咬人的地方。
+ * 🔴 0 LLM token：保存草稿与发布都不调模型，全程只动 DOM 与两个管理接口。
+ * 🔴 数据自净用 try/finally，两笔都要还：给 `data_interface_list` 落的**停用覆盖行**
+ *    （不还的话整条 e2e 队列里所有依赖它的用例全废），以及本用例新建的**草稿 def**。
+ */
+test.describe('智能体设计器 · 停用工具的置灰与就地警告（D4-25）', () => {
+  test.setTimeout(240_000)
+
+  /** 被停用的目标：声明只读、代码默认启用，停用它不影响任何写路径 */
+  const TARGET = 'data_interface_list'
+  /** 对照工具：同样声明只读但**不**停用。没有它，「TARGET 挑不动」可能只是整个下拉坏了 */
+  const CONTROL = 'form_list'
+  const CODE = `e2e_dis_${Date.now().toString().slice(-8)}`
+  const CODE_PLACEHOLDER =
+    '小写字母开头，仅含小写字母/数字/下划线，如 order_assistant'
+
+  test('先绑定后停用 ⟹ 就地报警 + 标签仍是中文名 + 候选置灰挑不动（对照工具照旧可挑）', async ({
+    page,
+    request
+  }) => {
+    const token = await apiLogin(request)
+    const headers = apiHeaders(token)
+
+    const readTarget = async () => {
+      const resp = await request.get(`${API_BASE_URL}/agent/tool-def/registered-list`, { headers })
+      expect(resp.ok(), 'registered-list 应可读').toBeTruthy()
+      const body = await resp.json()
+      const hit = (body.data || []).find((t: any) => t.toolName === TARGET)
+      expect(hit, `应能在内置工具里找到 ${TARGET}`).toBeTruthy()
+      return hit
+    }
+
+    const before = await readTarget()
+    // 前提自检：这条用例的全部意义建立在「TARGET 声明只读、当前启用、没有存量覆盖行」之上
+    expect(before.declaredRiskLevel, `${TARGET} 应为声明只读，否则它压根不在下拉里`).toBe('READ_ONLY')
+    expect(before.enabled, `${TARGET} 应为启用态，否则「先绑定」这一步就假了`).toBe(true)
+    expect(before.overridden, `${TARGET} 不该有存量覆盖行，否则 finally 的「恢复默认」会抹掉别人的维护`).toBe(
+      false
+    )
+
+    let defId = ''
+    try {
+      // ---------- ① 趁它还启用，用 UI 建草稿并真绑定它 ----------
+      await login(page)
+      await gotoWithAuth(page, '/ai/agent/def')
+      await expect(page.getByText('编码').first()).toBeVisible({ timeout: 20000 })
+      await page.getByRole('button', { name: '新增', exact: true }).first().click()
+      await page.waitForURL(/\/agent-def\/editor/)
+
+      await page.getByPlaceholder('请输入名称，如「订单客服」').fill('E2E 停用工具助手')
+      await page.getByPlaceholder(CODE_PLACEHOLDER).fill(CODE)
+      await page.locator('[data-testid="agent-persona"]').fill('用于验证工具被停用后的界面提示。')
+
+      const toolCard = page.locator('.el-card').filter({ hasText: '工具（只读）' }).first()
+      await expect(toolCard).toBeVisible({ timeout: 20000 })
+      // 🔴 多选控件的 .el-select__placeholder 盖在 input 上，直接点 input 会被拦指针事件：
+      //    先点容器开菜单，再对 filter input 用 fill 触发过滤（与本文件第 3 条用例同款处置）
+      await toolCard.locator('.el-select').first().click()
+      await toolCard.locator('input').first().fill(TARGET)
+      const targetOpt = page
+        .locator('.el-select-dropdown__item:visible')
+        .filter({ hasText: TARGET })
+        .first()
+      await expect(targetOpt).toBeVisible({ timeout: 15000 })
+      // 停用之前它必须是**可挑的**，否则下面所有断言都在验一个压根没发生的场景
+      await expect(targetOpt).not.toHaveClass(/is-disabled/)
+      await expect(toolCard.locator('[data-testid="tool-disabled-warning"]')).toHaveCount(0)
+      await targetOpt.click()
+      await expect(
+        toolCard.locator('.el-tag').filter({ hasText: TARGET }).first()
+      ).toBeVisible({ timeout: 10000 })
+
+      await page.getByRole('button', { name: /保存草稿/ }).click()
+      await expect(page.locator('.el-message').filter({ hasText: '新建成功' }).first()).toBeVisible({
+        timeout: 15000
+      })
+      await expect(page).toHaveURL(/\/agent-def\/editor\?id=\d+/)
+      defId = new URL(page.url()).searchParams.get('id') || ''
+      expect(defId, 'URL 上应带出新草稿的 id').toBeTruthy()
+
+      // ---------- ② 管理员把它停用 ----------
+      // 🔴 registered-update 是【整份提交】：其余字段一律原样回填生效值。
+      //    少回填 permissions 会被后端当成「删空代码权限」= 一次货真价实的安全放松（D4-22 那条同款坑）。
+      //    停用是**收紧**不是放松，故不需要 confirmRelax。
+      const disable = await request.put(`${API_BASE_URL}/agent/tool-def/registered-update`, {
+        headers,
+        data: {
+          toolName: TARGET,
+          displayName: before.displayName,
+          description: before.description,
+          groupName: before.groupName,
+          permissions: before.permissions,
+          paramsSchema: before.paramsSchema,
+          riskLevel: before.riskLevel,
+          enabled: false,
+          remark: 'e2e-D4-25-探针-非真实停用'
+        }
+      })
+      expect(disable.ok(), `停用应成功，实际 ${disable.status()}`).toBeTruthy()
+      const after = await readTarget()
+      expect(after.enabled, '停用应已生效').toBe(false)
+      expect(after.declaredEnabled, '声明值不该被在线维护改动').toBe(true)
+      expect(after.permissions, '探针只改启用位，权限串不该被动过').toBe(before.permissions)
+
+      // ---------- ③ 重新打开这份草稿（= 用户第二天回来改点别的） ----------
+      // 🔴 必须 reload：loadTools 有 `if (toolList.value.length > 0) return` 的内存缓存，
+      //    不重载读到的还是停用前的目录，那就成了自己给自己造的假绿。
+      await page.reload()
+      await page.waitForURL(/\/agent-def\/editor\?id=\d+/)
+      const card2 = page.locator('.el-card').filter({ hasText: '工具（只读）' }).first()
+      await expect(card2).toBeVisible({ timeout: 20000 })
+
+      // (a) 标签仍是「中文名（机器键）」，没退化成裸机器键
+      const tag = card2.locator('.el-tag').filter({ hasText: TARGET }).first()
+      await expect(tag).toBeVisible({ timeout: 15000 })
+      await expect(tag).toContainText(before.displayName)
+
+      // (b) 表单里就地报警：说清「不会拦你」+「运行期会被网关拒」+ 两条出路
+      const warning = card2.locator('[data-testid="tool-disabled-warning"]')
+      await expect(warning).toBeVisible({ timeout: 15000 })
+      const warningText = (await warning.innerText()).replace(/\s+/g, '')
+      expect(warningText, '警告应点名被停用的工具').toContain(before.displayName)
+      expect(warningText, '警告应说清「保存/发布不拦」，否则用户以为界面会兜住').toContain(
+        '保存和发布都不会拦你'
+      )
+      expect(warningText, '警告应说清运行期的真实后果与安全网关').toContain('安全网关')
+      expect(warningText, '警告应原样引用后端错误码文案（红线：不替 error 编病因）').toContain(
+        '已被停用'
+      )
+      expect(warningText, '警告必须给出路：解绑').toContain('移除')
+      expect(warningText, '警告必须给出路：去工具管理重新启用').toContain('工具管理')
+
+      // (c) 下拉里它置灰、挂原因、且真挑不动
+      await card2.locator('.el-select').first().click()
+      await card2.locator('input').first().fill(TARGET)
+      const blockedOpt = page
+        .locator('.el-select-dropdown__item:visible')
+        .filter({ hasText: TARGET })
+        .first()
+      await expect(blockedOpt).toBeVisible({ timeout: 15000 })
+      await expect(blockedOpt).toHaveClass(/is-disabled/)
+      await expect(blockedOpt.locator('[data-testid="tool-option-block"]')).toHaveText('已停用')
+      await expect(blockedOpt).toHaveAttribute('title', /已被停用，不能再绑定/)
+      await expect(blockedOpt).toHaveAttribute('title', new RegExp(TARGET))
+      // 强点也挑不进去：绑定数仍是 1（disabled 不是「画个灰色」，是真拦）
+      await blockedOpt.click({ force: true })
+      await expect(card2.locator('.el-tag').filter({ hasText: CONTROL })).toHaveCount(0)
+      await expect(card2.locator('.el-select .el-tag')).toHaveCount(1)
+
+      // (d) 反空转对照：同下拉里没被停用的只读工具照样可挑
+      await card2.locator('input').first().fill(CONTROL)
+      const controlOpt = page
+        .locator('.el-select-dropdown__item:visible')
+        .filter({ hasText: CONTROL })
+        .first()
+      await expect(controlOpt).toBeVisible({ timeout: 15000 })
+      await expect(controlOpt).not.toHaveClass(/is-disabled/)
+      await expect(controlOpt.locator('[data-testid="tool-option-block"]')).toHaveCount(0)
+      await controlOpt.click()
+      // 🔴 这里**不能**按文字找 CONTROL 的 tag：控件开着 `collapse-tags`（maxCollapseTags=1），
+      //    选中第 2 个之后 DOM 里只有「第 1 个 tag + 一个折叠 tag」，折叠 tag 的文本由
+      //    Element Plus 的 select2.mjs 拼成 `" + " + (selected.length - maxCollapseTags)`，
+      //    CONTROL 的名字被折进 tooltip 里了（第一次跑就是在这里假红：element(s) not found）。
+      //    故改数 tag 个数 + 认那个 `+ 1`，同样能证明「点得进去」。
+      await expect(card2.locator('.el-select .el-tag')).toHaveCount(2, { timeout: 10000 })
+      await expect(card2.locator('.el-select .el-tag').last()).toContainText(/\+\s*1/)
+      // 第 1 个 tag 仍是 TARGET，且仍是中文名（折叠不改首个 tag 的 label）
+      await expect(card2.locator('.el-select .el-tag').first()).toContainText(before.displayName)
+    } finally {
+      // ---------- 还债 1：撤掉停用覆盖行 ----------
+      // 放在 finally 且在删草稿之前：这行不还，后面所有依赖 data_interface_list 的用例全废
+      const reset = await request.delete(
+        `${API_BASE_URL}/agent/tool-def/registered-reset?toolName=${encodeURIComponent(TARGET)}`,
+        { headers }
+      )
+      expect(reset.ok(), `恢复默认应成功，实际 ${reset.status()}`).toBeTruthy()
+      const restored = await readTarget()
+      expect(restored.enabled, '恢复默认后应退回启用').toBe(true)
+      expect(restored.overridden, '恢复默认后不该再有覆盖行').toBe(false)
+
+      // ---------- 还债 2：删掉本用例造的草稿 ----------
+      if (defId) {
+        const del = await request.delete(`${API_BASE_URL}/agent/def/delete?id=${defId}`, { headers })
+        expect(del.ok(), `删草稿应成功，实际 ${del.status()}`).toBeTruthy()
+        const delBody = await del.json()
+        expect(delBody.code, `删草稿应返回 code=0，实际 ${JSON.stringify(delBody)}`).toBe(0)
+      }
+    }
+  })
+})
