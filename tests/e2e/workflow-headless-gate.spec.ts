@@ -57,18 +57,18 @@ import { STEP_TIMEOUT_MS, boundedText, waitTerminal } from './helpers/terminal'
  * ### 🔴 ⑥⑦ 的判据为什么是「聊天确认卡」而不是看起来更直白的「没有人在场」
  * 因为**「没有人在场」不是 V13 独有的**，V11 的 error 分支（`WorkflowDslValidator#validateTriggerRiskGates`，
  * 无头 + IRREVERSIBLE + 上游没闸口）也印同一句「本流程由…触发、跑起来时没有人在场」，
- * 而且它的出路文案里**同样**写着 `hitl.bpm_approval`（:1313）。
+ * 而且它的出路文案里**同样**写着 `hitl.bpm_approval`。
  * 用这句当判据的话，⑥ 会因为 V11 报错而「通过」、⑦ 会因为 V11 报错而「失败」——
  * 两条断言都在验一条根本没打算验的规则，而且方向还反了。
- * 「一直停在 INTERRUPTED」也不行：V13(:1364) 与 V14(:1425/:1435) 都有它。
- * 在**错误文案**里唯一属于 V13 的是「推一张聊天确认卡然后挂起」（:1363）——
- * 该短语在本类的其余出现处（:191/:1210/:1525）全是注释，不会进 errors。
+ * 「一直停在 INTERRUPTED」也不行：V13 与 V14 都有它。
+ * 在**错误文案**里唯一属于 V13 的是「推一张聊天确认卡然后挂起」——
+ * 该短语在本类的其余出现处全是注释（grep 一遍即可复核），不会进 errors。
  *
- * ⑧ 的判据「上游没有人工闸口」没有这个问题：V11 的 error(:1304) 与 warning(:1320) 都用它，
+ * ⑧ 的判据「上游没有人工闸口」没有这个问题：V11 的 error 与 warning 都用它，
  * 而 ⑧ 只搜 errors，warning 撞不进来。
  *
  * ### 插一个光板 `hitl.bpm_approval`（config 为空）算不算闸口
- * 算。V11 收闸口只看节点 type（`:1264-1275`：`BPM_APPROVAL_TYPE.equals(node.getType())` 就进
+ * 算。V11 收闸口只看节点 type（判据就是 `BPM_APPROVAL_TYPE.equals(node.getType())` 就进
  * headlessGates），**不看 config**。所以 ⑦ 插进去的那个光板节点确实能满足 V11，
  * 不会因为「缺 bpmProcessDefKey」而让 V11 补一刀、把 ⑦ 的判据污染掉。
  * （这条是读代码确认的，不是猜的 —— 猜错的话 ⑦ 会变成一条恒红的断言。）
@@ -153,7 +153,7 @@ const PROBE_NODE_ID = 'e2e_gate_probe_node'
  * （V11 也印那一句，用它会验错规则、而且 ⑦ 的方向还会反过来）
  */
 const V13_MARK = '聊天确认卡'
-/** V11 的 error 判据。warning(:1320) 用同一句，但本用例只搜 errors，撞不进来 */
+/** V11 的 error 判据。warning 用同一句，但本用例只搜 errors，撞不进来 */
 const V11_MARK = '上游没有人工闸口'
 
 type ValidateResp = {
@@ -298,7 +298,7 @@ function syntheticUnguardedHeadlessDsl(): Dsl {
         config: {
           toolId: 'datamodel_create',
           outputVar: 'create_out',
-          // args 的形状照 DataModelParamResolver.CREATE_PARAMS_SCHEMA(:58-75)：
+          // args 的形状照 DataModelParamResolver.CREATE_PARAMS_SCHEMA：
           //   · 表名嵌在 model 里，不是顶层（这一点与 form_save_draft 的 mainTable 在顶层**不一样**，踩过）
           //   · 🔴 列的键是 columnName/columnComment/columnType，**不是** name/comment/type。
           //     写成 name 时干跑只回一句「存在没有字段名的列」，一条 × 列数，

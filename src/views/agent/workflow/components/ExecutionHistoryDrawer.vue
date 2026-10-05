@@ -217,7 +217,7 @@ const resumeAborts = new Map<number, AbortController>()
  * `hitl.bpm_approval` 读的是 `bpm_approved` / `bpm_status`
  * （`HitlBpmApprovalNodeExecutor#execute`）。只给 `hitl_approved` 的话它读到 null
  * → `isApproved=false` → 流程走**拒绝**分支，而执行状态照样报 SUCCEEDED ——
- * 正是那个执行器 :72-75 注释里点名的「审批通过了却没干活」（#46 修的就是这一类）。
+ * 正是 HitlBpmApprovalNodeExecutor#execute 里那段回退注释点名的「审批通过了却没干活」（#46 修的就是这一类）。
  * 运维点的是「恢复」，流程却按「驳回」续跑且一路绿灯，比卡死更难查。
  *
  * 两个键都给则各自只被对应的执行器读到、对另一种节点惰性无害；且这三个键都在
@@ -225,7 +225,7 @@ const resumeAborts = new Map<number, AbortController>()
  * `OverAllState.input()` 那道「只保留注册过 KeyStrategy 的键」的过滤。
  * 自定义了 `approveVar` 的流程也不用管：两个执行器读不到自定义键时都回退默认键。
  *
- * ⚠️ 刻意**不给** `bpm_status`：给了 4 会被 `resolveResult`（:108）判成「取消」，
+ * ⚠️ 刻意**不给** `bpm_status`：给了 4 会被 `HitlBpmApprovalNodeExecutor#resolveResult` 判成「取消」，
  * 而运维点的是恢复/拒绝、不是取消；留空则 bpmStatus=null，按 isApproved 判，语义才对。
  */
 const resumeFeedback = (approved: boolean) => ({

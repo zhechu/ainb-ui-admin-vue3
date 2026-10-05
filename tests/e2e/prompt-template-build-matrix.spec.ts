@@ -79,7 +79,7 @@ import { CLICK_TIMEOUT_MS, bounded, boundedText, waitTerminal } from './helpers/
  *          既不是「照教执行」也不是「系统性遗漏」（规划路径本来就钉了 `temperature=0.1`，
  *          `WorkflowPlannerServiceImpl#callModel`，所以高温采样解释不了这个抖动）。
  *        · case 59 三轮都真标了 **1 个**，报告却永远印「无」—— 那是**本文件自己的统计口径**造成的：
- *          下面 :571 那句 `.filter((x) => x.kind === 'FORM_CREATE')`，而 59 是 `FORM_UPDATE`
+ *          下面那句 `.filter((x) => x.kind === 'FORM_CREATE')`，而 59 是 `FORM_UPDATE`
  *          ⟹ 它标的那 1 个**永远不计入**。🔴 这条最要紧，因为它意味着 `manifest-search-conditions`
  *          这块**从来没被 FORM_UPDATE 路径验过**（连带缺陷记为 D4-20：加可查询字段时变更预演
  *          不画「查询条件」区块，属产品决定，先报不做）。

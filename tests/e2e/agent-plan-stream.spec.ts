@@ -170,7 +170,7 @@ test.describe('AI 助手规划路径（plan-as-workflow）', () => {
     // ===================================================================
     if (hasDraftCard) {
       // 🔴 nth(1) 可能压根不存在（卡片结构变化时），裸 textContent 就是无限等；
-      //    读到空串时下面 :191 的 `if (summaryBefore)` 本来就会跳过这条断言，语义不变
+      //    读到空串时下面那句 `if (summaryBefore)` 本来就会跳过这条断言，语义不变
       const summaryBefore = await boundedRawText(draftCard.locator('span').nth(1), STEP_TIMEOUT_MS)
       await page.reload()
       await expect(page.locator('[data-testid="workflow-draft-card"]')).toBeVisible({

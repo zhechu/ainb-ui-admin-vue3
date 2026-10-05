@@ -1225,7 +1225,7 @@ const handleResume = async () => {
  * e2e 断言「模型侧没答」时抓到的是空字符串，只能去翻后端日志才知道真因，
  * 而且第一眼的结论还是错的（以为意图分型没走 BUILD，其实是 Planner 挂了）。
  *
- * <p>MESSAGE(:1241) 与 WORKFLOW_CONFIRM(:1273) 早就各自手写了这两行、并各带一段同款注释，
+ * <p>applyChatEvent 的 MESSAGE 与 WORKFLOW_CONFIRM 两个 case 早就各自手写了这两行、并各带一段同款注释，
  * 唯独错误路径漏了 —— 故收成一个函数，让「标错误」与「撤卡片」不可能再被拆开。
  */
 const markError = (msg: any, text: string) => {

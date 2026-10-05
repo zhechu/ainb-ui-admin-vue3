@@ -544,7 +544,7 @@ const MARK_STREAM_TIMEOUT = '仍未答完'
  *    SSE 的 error 分支（AssistantChat.vue 的 applyChatEvent case 'ERROR'）会把 errorMsg 渲染成 `.el-alert--error`，
  *    只是原来的 ⑦ 先等气泡、等不到就抛，压根没走到查 alert 那一步。
  *
- * 🔴 连带后果比误报更坏：AgentIntentClassifier.classify(:118-123) 在异常时
+ * 🔴 连带后果比误报更坏：AgentIntentClassifier#classify 在异常时
  *    **回落成 CHAT**（设计如此，「分类挂了不能让整次对话跟着挂」），
  *    于是配额耗尽期间每一条都被判成 CHAT，② 那条「确实走了 CHAT 路径」**空过**，
  *    而 ⑧ 的拒答棘轮因为总体缩水（该答的没答）也跟着 vacuously 绿。
@@ -1343,7 +1343,7 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
      *
      * 模型侧没答的时候，⑧⑨⑩ 的分母都在缩水，三条都可能 vacuously 绿：
      *   · ⑧「拒答没超上限」—— 该答的没答，自然不算拒答
-     *   · ⑨「没有新增 CHAT→BUILD」—— AgentIntentClassifier.classify(:118-123) 在异常时
+     *   · ⑨「没有新增 CHAT→BUILD」—— AgentIntentClassifier#classify 在异常时
      *     **回落成 CHAT**（设计如此，「分类挂了不能让整次对话跟着挂」），
      *     于是配额耗尽期间每一条都被判成 CHAT，⑨ 和 ② 一起空过
      *   · ⑩「没有等不到答完」—— 报错比超时快得多，压根走不到那条断言
@@ -1455,13 +1455,13 @@ async function waitAnswerOrError(
  *    | ~14:36:46.31 | 「停止」消失 ⟹ **快照在这里读到 0** | 本用例 ② |
  *    | 14:36:46.435 | 前端才去取 `planner/workflow-draft?defId=437` 挂卡片 | 后端访问日志 |
  *
- *    读到 0 就走进 CHAT 分支去等问答气泡，而气泡与草稿卡在同一条消息上**互斥**（:57），
+ *    读到 0 就走进 CHAT 分支去等问答气泡，而气泡与草稿卡在同一条消息上**互斥**（见本文件开头 ⑥ 那段），
  *    永远等不到；30 秒后抛「问答气泡没渲染出来，页面上也没有 error alert」——
  *    这句**不含任何 MARK** ⟹ catch 里 `cls === null` ⟹「认不出类就是新故障，照原样红」⟹ 硬红。
  *
  * 🔴 后果比误报一条更坏：id=19 本来就该由 `KNOWN_MISCLASSIFIED_AS_BUILD` 棘轮降级成 ⚠️，
  *    被这一 race 一搅，变成了「一条不在已知集合里的新故障」。
- *    这正是 :972 那句注释预言过的改法 —— race 两种可见性，**不是**删掉这一步。
+ *    这正是本文件 ② 那句注释预言过的改法 —— race 两种可见性，**不是**删掉这一步。
  *
  * 🔴 只回答「有没有走编排」，不去判问答气泡：气泡与 error alert 谁先出现算谁，
  *    {@link waitAnswerOrError} 已经做对了，别在这儿抄第二遍（抄两份就会漂）。
@@ -1482,7 +1482,7 @@ async function waitBuildPath(page: Page, timeoutMs: number): Promise<string> {
   while (Date.now() < deadline) {
     if ((await bounded(card.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return '流程草稿卡'
     if ((await bounded(planning.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return '规划进度条'
-    // 问答气泡先出来就说明这条走的是问答路径，编排侧不用再等了（互斥，见 :57）
+    // 问答气泡先出来就说明这条走的是问答路径，编排侧不用再等了（互斥，见本文件开头 ⑥ 那段）
     if ((await bounded(answer.isVisible().catch(() => false), STEP_TIMEOUT_MS)) === true) return ''
     const left = deadline - Date.now()
     if (left <= 0) break
@@ -1588,9 +1588,14 @@ async function assertPlainAnswer(
  *
  * 🔴 这一步不能省，省了会**静默**毁掉整份报告。
  *   AssistantChat.vue 的 typewriter 把后端已经流完的正文按 24ms/格逐字往上贴
- *   （积压越多贴得越快，上限约 750 字/秒），而流**正常结束**时 onComplete（:1374）
- *   只把 streaming 置 false、**没有调 typewriter.flush()** —— 只有报错分支（:1366）
- *   和 handleStop（:1400）调了。于是「停止」按钮消失的那一刻，界面上的正文可能还差几千字没贴完。
+ *   （积压越多贴得越快，上限约 750 字/秒）。贴字没放完就去读，界面上的正文就是半截的。
+ *   ⚠️ 这里原先写的理由是「流正常结束时 onComplete 只把 streaming 置 false、**没有调**
+ *     typewriter.flush()，只有报错分支和 handleStop 调了」—— 🔴 **那条前提已经不成立**：
+ *     现在三条路径（onComplete / onerror / handleStop）都调了 flush，且 onComplete 那次
+ *     刻意排在空流判定之前，理由见 AssistantChat.vue 里 onComplete 那段
+ *     「先把打字机吐完，再置完成态。顺序是硬性的」的注释。
+ *   🔴 但本步骤**照旧保留**、这一批里不动它：E4 只改注释，而「flush 补齐之后这一步还需不需要」
+ *     是个产品行为问题，得真跑一轮才答得了 —— 记为 E4 的遗留项，不在注释里替它下结论。
  *   直接 innerText() 的后果有两个，都不好察觉：
  *     · 落盘的是**半截答案**。人工拿它去对 expect_hint 评审，等于对着残缺文本判分 ——
  *       比不评审更坏，因为它看起来像是评审过了。

@@ -9,7 +9,7 @@
  *    `GET /agent/workflow-def/node-io-contract` 跟这份镜像做 diff（agent-workflow-io-contract.spec.ts
  *    只验交互行为，不比对两份目录）。所以改完一侧务必手改另一侧，别指望测试会拦住漏改。
  *    实测更彻底：`src/` 下**没有任何一处**调用那个后端端点（`AgentWorkflowDefController` 的
- *    `GET /node-io-contract`，零前端调用者。这里刻意**不**写行号 —— 原先写的 `:147` 已实测漂到 `:207`），
+ *    `GET /node-io-contract`，零前端调用者。这里刻意**不**写行号 —— 原先钉的那个行号已实测漂了 60 行），
  *    UI 用的就是这份镜像 ⟹ 两份漂了连运行期信号都没有。
  *    🔴 台账 #104：照 `tests/e2e/form-widget-contract-sync.spec.ts` 的先例（打**运行中后端**的 HTTP 端点、
  *    与本地副本 diff ⟹ 不需要 CI 同时检出两个仓）把 `_evidence/p97-mirror-diff.py` 的结构比对升成一条 e2e。

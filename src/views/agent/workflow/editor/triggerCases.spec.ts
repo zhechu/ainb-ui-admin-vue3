@@ -64,7 +64,7 @@ const HEADLESS: WorkflowTriggerType[] = ['form_event', 'schedule', 'webhook']
  *     注释写着「有无头都能唤醒」）。把它列成禁用，等于教用户别用那个唯一能用的选项 ——
  *     照抄的人会把闸口整个删掉，那正是 V11 要拦的方向。
  *   · `wait` 必须按 waitType 分档：duration 有平台内的自动唤醒方
- *     （WorkflowWaitResumeScheduler 扫 resume_at 到点续跑），V14 明确不管它，理由写在 :1321-1324
+ *     （WorkflowWaitResumeScheduler 扫 resume_at 到点续跑），V14 明确不管它，理由写在 WorkflowDslValidator#validateWaitEventWakeup 的注释里：
  *     「一刀切禁掉所有 wait 会把『等 10 分钟再发通知』这种完全正常的自动化挡在门外」；
  *     只有 event 那一档靠外部系统调 POST /agent/workflow/event，而平台内**零调用方**。
  *
