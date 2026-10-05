@@ -151,8 +151,33 @@
                 @change="mutate"
               >
                 <!-- 🔴 label 是「中文名（机器键）」、value 仍是机器键：写进 DSL 的必须是键，
-                     把中文写进 agent_loop.tools 会让模型循环按名字查不到工具而静默退化 -->
-                <el-option v-for="o in tagsOptionsFor(f)" :key="o.value" :label="o.label" :value="o.value" />
+                     把中文写进 agent_loop.tools 会让模型循环按名字查不到工具而静默退化。
+                     🔴 block 的项**置灰但留在列表里**，右侧印短因、title 给长因（D4-24）：这个字段开着
+                     allow-create，滤掉候选拦不住手打，说清「为什么挑不动」才拦得住。
+                     置灰项若已在存量 DSL 里，Element 仍按 value 匹配出 label，不会退化成裸键。 -->
+                <el-option
+                  v-for="o in tagsOptionsFor(f)"
+                  :key="o.value"
+                  :label="o.label"
+                  :value="o.value"
+                  :disabled="!!o.block"
+                  :title="o.block?.long"
+                >
+                  <span class="float-left">{{ o.label }}</span>
+                  <span
+                    v-if="riskDotColor(gateRiskOf(o))"
+                    class="wf-dot wf-risk-dot"
+                    :style="{ background: riskDotColor(gateRiskOf(o)) }"
+                    :title="riskDotTitle(o)"
+                  ></span>
+                  <span
+                    v-if="o.block"
+                    class="float-right text-12px text-[var(--el-text-color-danger)] ml-12px"
+                    data-testid="tags-option-block"
+                  >
+                    {{ o.block.short }}
+                  </span>
+                </el-option>
               </el-select>
               <!-- 对象键值对 → KeyValueEditor（tool.args / hitl.bpm_approval.formVars） -->
               <KeyValueEditor

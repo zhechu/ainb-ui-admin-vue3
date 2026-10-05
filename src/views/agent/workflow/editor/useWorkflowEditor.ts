@@ -10,6 +10,7 @@ import type { NameCatalogToolVO } from '@/api/agent/workflow'
 import { layoutDsl, X_GAP, Y_GAP } from '../layout'
 import {
   ensureLoaded as ensureNameCatalog,
+  gateRiskOf,
   groupedToolOptions,
   keyedLabel,
   nameCatalogError,
@@ -64,6 +65,55 @@ import {
   type OutputDoc
 } from './ioReference'
 import { insertAfter, isConditionNode, isConditionalEdge, routeKeyCandidates } from './graphEdit'
+
+/**
+ * tags 字段（`agent_loop.tools` / `iteration.body` / `condition.llm.choices`）下拉的一项。
+ *
+ * 🔴 `block` 不是「暂时不可选」，是「选了必被后端 error 拦下」。short 印在选项行右侧、long 挂 title ——
+ *    只置灰不说原因，等于把「发布时才炸」提前成「不知道为什么点不动」，那还是同一个病换了个位置。
+ * 🔴 刻意用 disabled 而不是**从列表里滤掉**：这个字段开着 `allow-create`，任何键都能手打进去，
+ *    AI 生成 / 手写的 DSL 里也可能本来就有。滤掉只是把候选藏了，坑还在；置灰 + 说原因才是在教约束。
+ *    另外 Element Plus 对已选中的 disabled 项**照样给出 label**（`getOption` 只按 value 匹配 cachedOptions，
+ *    不看 disabled），所以存量 DSL 里的写工具仍显示「中文名（机器键）」，不会退化成一串裸键。
+ * 🔴 风险那几个字段由 tools 分支透传（`Partial<NameCatalogToolVO>`），面板据此画色点、写 title；
+ *    body / choices 分支不填，面板就不画点。
+ */
+export type TagsOption = {
+  label: string
+  value: string
+  block?: { short: string; long: string }
+} & Partial<NameCatalogToolVO>
+
+/**
+ * `agent_loop.tools` 里这一项为什么挑不动；能挑返回 undefined。
+ *
+ * 🔴 判据一律取【声明】风险（`declaredRequireConfirm` / `gateRiskOf`），与后端三道闸同地基：
+ *    `WorkflowDslValidator.checkToolRef`（体检，读 `declaredRiskOf`）、
+ *    `AgentLoopGraphBuilder` 编译期那道、以及它运行期循环里的最后一道。
+ *    按生效值判就是 D4-22 那个病：管理员把某工具降过险，界面说「可选」，点发布照样被拒。
+ * 🔴 「是不是只读」问的是 `requireConfirm`，不是自己拿风险串去比 `=== 'READ_ONLY'`：
+ *    后端 `RiskLevel` 五个值里只有 READ_ONLY 的 requireConfirm 是 false，这个等价关系是它自己给的；
+ *    前端再抄一份等级清单，将来后端加一档就会静默判错（`nameCatalog.RISK_TAG_TYPE` 注释里那种坏法）。
+ * 🔴 字段缺失（后端未升级 / 目录加载失败）时返回 undefined = 不置灰。宁可少拦一个，
+ *    也不要把整个下拉全灰掉；真正的闸在后端，这里只负责别把用户往坑里指。
+ *
+ * ⚠️ 还有一条这里**刻意没判**：`agent_loop.tools` 只认内置注册表（`AgentLoopGraphBuilder` 里
+ *    `toolRegistry.get(name) == null` 就抛「未登记」），故自定义工具（`source !== 'BUILTIN'`）
+ *    体检的结构层不报、要到编译期干跑才报。不在前端补这一条的理由与后端
+ *    `WorkflowDslValidator.validateToolRefs` 注释里那条「刻意不复制」相同：哪天编译期支持了
+ *    自定义只读工具，前端这份副本就成了假拦截。要补得先裁定，别顺手加。
+ */
+const agentLoopToolBlock = (t: NameCatalogToolVO): { short: string; long: string } | undefined => {
+  if ((t.declaredRequireConfirm ?? t.requireConfirm) !== true) return undefined
+  const risk = t.declaredRiskDescription || t.riskDescription || gateRiskOf(t) || '非只读'
+  return {
+    short: '非只读',
+    long:
+      `agent_loop 只允许只读工具，「${t.displayName || t.name}」的声明风险是「${risk}」。` +
+      '自主循环里的模型调用不逐次过 Plan 确认，把写工具放进去等于让模型无人值守地改数据。' +
+      '写操作请让 agent_loop 出结论后接 tool 节点，或在它前面加 hitl 确认。'
+  }
+}
 
 /**
  * 流程设计器的「共享编辑上下文」（增量8 / P4，Phase C）
@@ -674,11 +724,19 @@ export function useWorkflowEditor(
    * 🔴 value 一律是**机器键**（写进 DSL 的就是它），只有 label 是中文名。
    * 旧实现返回 `string[]`、label 与 value 同值，所以「把 label 改成中文」会连带把中文写进
    * `agent_loop.tools` —— 模型循环执行时按工具键查不到，静默退化。故这里必须拆成 {label,value}。
+   *
+   * 🔴 tools 分支还给每一项算 {@link agentLoopToolBlock}：字段标签写着「可用只读工具」，
+   * 而此前 30 个工具**一个不落**全给挑，写工具挑进去要到体检/发布才被 V3、V11 撞回来（D4-24）。
    */
-  const tagsOptionsFor = (f: ConfigField): { label: string; value: string }[] => {
+  const tagsOptionsFor = (f: ConfigField): TagsOption[] => {
     if (f.key === 'body') return (dslObject.value.nodes ?? []).map((n) => ({ label: n.id, value: n.id }))
     if (f.key === 'tools') {
-      return toolList.value.map((t) => ({ label: keyedLabel(t.name, t.displayName), value: t.name }))
+      return toolList.value.map((t) => ({
+        ...t,
+        label: keyedLabel(t.name, t.displayName),
+        value: t.name,
+        block: agentLoopToolBlock(t)
+      }))
     }
     return []
   }

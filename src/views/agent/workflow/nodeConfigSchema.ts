@@ -267,7 +267,12 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       label: '可用只读工具',
       kind: 'tags',
       placeholder: '输入工具键按回车添加',
-      hint: '🔴 只能放只读工具（查询类）；放写入类工具不会被执行且可能被后端校验拒绝。'
+      // 🔴 这条 hint 是**用户可见**的（面板 {{ f.hint }} 原样插值），别把 🔴/⚠️ 这类内部标记写进去。
+      // 🔴 原文是「放写入类工具不会被执行且可能被后端校验拒绝」——两处都不准：不是「可能」，
+      //    体检 V3/V11、发布期干跑、编译期、运行期循环四道都读**声明**风险级，一律 error；
+      //    也不是「不会被执行」，是编译就过不去。且它没说出路，用户只知道「不行」不知道「那怎么办」。
+      hint: '只能放只读（查询类）工具：下拉里写操作工具是灰的、挑不动。自主循环里的模型调用不逐次过人工确认，'
+        + '要写数据请让 agent_loop 出结论后接 tool 节点，或在它前面加 hitl 确认。（手打的工具键同样会被体检/发布拦下。）'
     },
     { key: 'maxSteps', label: '最大步数', kind: 'number', min: 1, max: 20, step: 1, hint: '防止模型无限循环，缺省 5。' },
     { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '最终答案写入的变量名' }
@@ -291,7 +296,10 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       label: '循环体节点',
       kind: 'tags',
       placeholder: '输入循环体内的节点 id 按回车添加',
-      hint: '🔴 body 里的节点仍写在顶层 nodes[]，但<b>不要</b>把它们连进 edges[]（编译器自动接线）。'
+      // 🔴 原来这条是 '🔴 body …但<b>不要</b>把它们连进 edges[]…'。面板是 {{ f.hint }} 原样插值，
+      //    于是用户在界面上看到的就是字面的 `<b>不要</b>` 和一个内部评审用的红点标记。
+      //    强调改用中文引号：它不需要渲染器，也不会退化成给用户看的标签源码。
+      hint: 'body 里的节点仍写在顶层 nodes[]，但「不要」把它们连进 edges[]（编译器会自动接线）。'
     }
   ],
   sub_workflow: [

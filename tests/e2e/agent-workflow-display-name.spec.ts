@@ -316,7 +316,7 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     await expect(subNode).toContainText(subSummary())
   })
 
-  test('设计器：画布摘要出中文，工具下拉按 groupName 分组、label 是「中文名（机器键）」、中英文都搜得到、只有非只读工具挂风险色点', async ({ page }) => {
+  test('设计器：画布摘要出中文，工具下拉按 groupName 分组、label 是「中文名（机器键）」、中英文都搜得到、只有非只读工具挂风险色点；agent_loop 的写工具候选置灰且说清原因', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, `/agent-workflow/editor?id=${defId}`)
 
@@ -389,6 +389,54 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     await expect(
       dropdown.locator('.el-select-dropdown__item').filter({ hasText: toolLabel }).first()
     ).toBeVisible({ timeout: 10000 })
+    await page.keyboard.press('Escape')
+
+    // 🔴 ⑦ D4-24：agent_loop 的「可用只读工具」不许把写工具当正常候选递出去。
+    //    字段标签写着「可用只读工具」，而此前 30 个工具一个不落全能挑；挑进去要到体检/发布才被
+    //    V3、V11 撞回来（AgentLoopGraphBuilder 编译期与运行期循环里还各有一道，都读声明值）。
+    // 🔴 断言落在「置灰 + 说原因」而不是「从列表里消失」：这个字段开着 allow-create，任何键都能手打，
+    //    滤掉候选只是把坑藏起来；能真正拦住的是把约束讲在挑的那一刻。见 useWorkflowEditor.agentLoopToolBlock。
+    // 🔴 用上面那两个已经过 beforeAll 预检的工具（form_list 声明 READ_ONLY、datamodel_create 声明
+    //    IRREVERSIBLE 且 requireConfirm）——「哪个该灰」这件事本身是被钉住的前提，不是这里现推的。
+    // 🔴 左目录默认收起，点竖条展开。这里**先看有没有再点**：rail-left 是个开关，
+    //    哪天它的开合被持久化（隔壁 devMode 就是 localStorage 存的），无脑点一下会变成「点开又关上」。
+    if ((await page.locator('.wf-palette__item').count()) === 0) {
+      await page.locator('[data-testid="rail-left"]').click()
+    }
+    await page.locator('.wf-palette__item').filter({ hasText: '自主循环' }).first().click()
+    const loopItem = panel.locator('.el-form-item').filter({ hasText: '可用只读工具' }).first()
+    await expect(loopItem).toBeVisible({ timeout: 15000 })
+    const loopSelect = loopItem.locator('.el-select').first()
+    await loopSelect.click()
+    const loopDd = page.locator('.el-select-dropdown:visible').last()
+    await expect(loopDd).toBeVisible({ timeout: 10000 })
+
+    const writeOpt = loopDd
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: `（${RISKY_TOOL_KEY}）` })
+      .first()
+    // 写工具**还在列表里**（藏起来等于没教），但置灰、右侧印短因、title 给长因
+    await expect(writeOpt).toBeVisible()
+    await expect(writeOpt).toHaveClass(/is-disabled/)
+    await expect(writeOpt.locator('[data-testid="tags-option-block"]')).toHaveText('非只读')
+    await expect(writeOpt).toHaveAttribute('title', /agent_loop 只允许只读工具/)
+    await expect(writeOpt).toHaveAttribute('title', new RegExp(riskyDesc))
+
+    const readOpt = loopDd
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: `（${TOOL_KEY}）` })
+      .first()
+    await expect(readOpt).toBeVisible()
+    await expect(readOpt).not.toHaveClass(/is-disabled/)
+    await expect(readOpt.locator('[data-testid="tags-option-block"]')).toHaveCount(0)
+
+    // 只读那项点得动、且写进去的是**机器键**（中文进 DSL 会让模型循环查不到工具而静默退化）
+    await readOpt.click()
+    await expect(loopSelect).toContainText(`${toolLabel}（${TOOL_KEY}）`)
+    // 置灰那项点不动：Element 的 selectOptionClick 自己就拦了，这里钉住「拦住了」这个事实，
+    // 免得哪天换成自定义渲染把那道 guard 弄丢，而置灰看着还在（纯视觉的灰不等于挑不动）
+    await writeOpt.click({ force: true })
+    await expect(loopSelect).not.toContainText(RISKY_TOOL_KEY)
   })
 
   test('聊天草稿卡：节点预览出「中文名（机器键）」（send-stream 用合成 SSE，0 LLM token）', async ({
