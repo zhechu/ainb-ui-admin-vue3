@@ -10,6 +10,7 @@
  * （含条件边的对应 case），避免留下悬空引用让后端编译期报「边指向不存在的节点」。
  */
 
+import { WAIT_TYPE } from './nodeConfigSchema'
 import { NODE_TYPE_META, nodeTypeMeta, type SummaryTagType } from './nodeSummary'
 
 /** DSL 节点（编辑器关心 id/type/name/config，其余字段原样保留） */
@@ -103,7 +104,9 @@ export const defaultConfig = (type: string): Record<string, any> => {
   if (type === 'knowledge_retrieval') return { knowledgeBaseId: undefined, query: '', topK: 5, outputVar: '' }
   if (type === 'hitl.confirm') return { approveVar: 'hitl_approved' }
   if (type === 'parallel') return { branches: [], join: 'all' }
-  if (type === 'wait') return { waitType: 'duration', duration: 30 }
+  // 缺省给 duration 而不是 event：只有 duration 那一档平台自己唤得醒（调度器扫 resume_at），
+  // 缺省成 event 会让新建的节点一挂起就等一个还不存在的外部调用方
+  if (type === 'wait') return { waitType: WAIT_TYPE.DURATION, duration: 30 }
   if (type === 'agent_loop') return { goal: '', tools: [], maxSteps: 5, outputVar: '' }
   if (type === 'iteration') return { itemsVar: '', itemVar: 'item', body: [] }
   if (type === 'sub_workflow') return { workflowId: '' }

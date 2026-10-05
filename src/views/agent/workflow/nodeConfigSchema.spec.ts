@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { NODE_TYPE_OPTIONS, defaultConfig } from './editorModel'
 import {
   NODE_CONFIG_SCHEMA,
+  WAIT_TYPE,
   fieldsFor,
   isFieldVisible,
   jsonHintFor,
@@ -16,7 +17,9 @@ import {
  * ② 字段键唯一、
  * kind 合法、select 必有选项来源；③ 字段键逐字对齐后端执行器读取的 config 键（抽查关键类型）；
  * ④ showIf 条件显隐正确（wait 按 waitType 分支）；⑤ 认不出的类型 fail-soft 返回空；
- * ⑥ 面板 hint 不许承诺运行期不会发生的事（hint 是用户唯一看得到的说明书，会被照做）。全是纯函数，不碰 Vue。
+ * ⑥ 面板 hint 不许承诺运行期不会发生的事（hint 是用户唯一看得到的说明书，会被照做）；
+ * ⑦ wait 的 waitType 取值全集逐字对齐后端 `WaitTypeEnum`，且 showIf / 预填值都指得到真实选项（缺陷 E2）。
+ * 全是纯函数，不碰 Vue。
  */
 describe('nodeConfigSchema', () => {
   it('NODE_TYPE_OPTIONS 里每种类型都有结构化 schema', () => {
@@ -78,6 +81,48 @@ describe('nodeConfigSchema', () => {
     expect(isFieldVisible(duration, {})).toBe(false)
     expect(isFieldVisible(event, {})).toBe(false)
     expect(isFieldVisible(duration, undefined)).toBe(false)
+  })
+
+  /**
+   * 🔴 waitType 的取值全集（缺陷 E2）
+   *
+   * 后端权威是 Java 的 `WaitTypeEnum`，前端这一份是**副本**：两仓之间没有代码生成，
+   * 改了一边另一边不会编译失败，只会静默地继续教旧取值。这一条就是那个「改了一边」的报警。
+   *
+   * 四条断言各挡一种死法：
+   * ① 取值逐字对不上后端 ⟹ 用户选出来的东西发布时被拒；
+   * ② `showIf.equals` 指向一个面板上选不出来的值 ⟹ 选了那一档、字段永远不显示，
+   *    既填不了也没有任何报错（与本模块最常见的「配置保存成功但不生效且无提示」同一种死法）；
+   * ③ 某一档一个字段都不跟 ⟹ 选了之后面板是空的，用户不知道该填什么；
+   * ④ 新建节点预填的那一档选不出来 ⟹ 拖出来就是个配不了的节点。
+   */
+  it('waitType 的选项值逐字对齐后端支持的两档，且 showIf / 预填值都指得到真实选项', () => {
+    // ① 逐字钉住常量本身：它是全前端唯一那份副本
+    expect(Object.values(WAIT_TYPE)).toEqual(['duration', 'event'])
+
+    const fields = fieldsFor('wait')
+    const waitType = fields.find((f) => f.key === 'waitType')!
+    const optionValues = (waitType.options ?? []).map((o) => String(o.value))
+    expect(optionValues, '面板上摆出来的选项必须恰好是后端支持的那两档（多一档就是教人去踩编译器会拒的坑）').toEqual([
+      WAIT_TYPE.DURATION,
+      WAIT_TYPE.EVENT
+    ])
+
+    // ② showIf 指得到
+    for (const f of fields) {
+      if (f.showIf?.key === 'waitType') {
+        expect(optionValues, `${f.key} 的 showIf 指向了一个面板上选不出来的值`).toContain(String(f.showIf.equals))
+      }
+    }
+    // ③ 每一档都至少带出一格
+    for (const v of optionValues) {
+      const shown = fields.filter((f) => f.showIf?.key === 'waitType' && String(f.showIf.equals) === v)
+      expect(shown.length, `选了「${v}」之后至少要显示出它自己那一格`).toBeGreaterThan(0)
+    }
+    // ④ 预填值选得出来
+    expect(optionValues, 'editorModel 给新建 wait 节点预填的那一档，必须是面板上选得出来的').toContain(
+      String(defaultConfig('wait').waitType)
+    )
   })
 
   it('jsonHintFor：结构化覆盖后仅 condition.rule 的嵌套条件组保留 JSON 提示', () => {

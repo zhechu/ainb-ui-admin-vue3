@@ -23,7 +23,7 @@
  * 🔴 绝不抛异常：卡片场景的 DSL 可能残缺（planner 产物、历史脏数据），任何字段缺失都优雅兜底。
  */
 
-import { fieldsFor } from './nodeConfigSchema'
+import { fieldsFor, WAIT_TYPE } from './nodeConfigSchema'
 
 export type SummaryTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
 
@@ -277,8 +277,10 @@ export const summarizeNode = (
       return n ? `${n} 条分支同时执行，全部完成后汇聚` : '并行分发（未配置分支）'
     }
     case 'wait': {
-      if (config.waitType === 'event') return `挂起等待外部事件「${config.eventKey || '未配置事件'}」`
-      if (config.waitType === 'duration' || config.duration) return `等待 ${config.duration ?? '?'} 秒后继续`
+      if (config.waitType === WAIT_TYPE.EVENT) return `挂起等待外部事件「${config.eventKey || '未配置事件'}」`
+      // `|| config.duration` 是给存量 DSL 留的兜底：后端 validateWaitConfig 对缺 waitType 是拒的，
+      // 但列表页仍要能描述一条已入库的旧流程，不能把「作者漏填」和「本模块读不懂」混成同一句话
+      if (config.waitType === WAIT_TYPE.DURATION || config.duration) return `等待 ${config.duration ?? '?'} 秒后继续`
       return '等待（未配置等待方式）'
     }
     case 'script':

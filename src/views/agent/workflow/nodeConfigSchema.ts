@@ -53,6 +53,30 @@ export interface ConfigField {
 }
 
 /**
+ * wait 节点 `waitType` 的取值全集（缺陷 E2）
+ *
+ * 🔴 后端权威是 Java 的 `WaitTypeEnum`（`yudao-module-agent/.../enums/WaitTypeEnum.java`），
+ * 这一份是**副本不是引用** —— 两个仓库之间没有代码生成，改了一边另一边不会编译失败。
+ * 所以：改这里之前先去改那个枚举，并同步 `WorkflowDslPlannerPrompt` 教给模型的那一行
+ * （它的强制点是 `WorkflowDslPlannerPromptTest#promptWaitTypeValues_coverExactlyTheSupportedEnumValues`）。
+ *
+ * 🔴 只有两档，且**刻意不含 hitl**：后端 `WaitTypeEnum.HITL` 存在但 `supported=false`，
+ * 编译器对它的答复是「等价 hitl.confirm 节点，请直接用 hitl.confirm」。这里若摆出第三档，
+ * 用户选了就必然发布失败 —— 而失败信息会叫他去用一个他刚刚没在列表里看见的节点类型。
+ *
+ * 🟡 抽成常量之前，这三个字面量散在本文件的 4 处（options 两条 + showIf 三条）与
+ * `editorModel.ts`（新建 wait 节点的缺省 config）、`nodeSummary.ts`（列表页摘要分支）里。
+ * 散开的后果不是「不好看」：`showIf.equals` 与 `options.value` 一旦对不上，
+ * 选了「等外部事件」也**不显示** eventKey 输入框 —— 用户既填不了、也看不到任何报错。
+ */
+export const WAIT_TYPE = {
+  /** 定时等待：由后端 WorkflowWaitResumeScheduler 扫 resume_at 到点自动唤醒 */
+  DURATION: 'duration',
+  /** 等外部事件：挂起时把 eventKey 落进执行记录，等 POST /agent/workflow/event 来唤醒 */
+  EVENT: 'event'
+} as const
+
+/**
  * 每种节点类型的结构化字段。键 = NODE_TYPE_OPTIONS 的每一种 type（当前 13 种）。
  * 顺序即渲染顺序（常用/必填在前）。
  *
@@ -195,8 +219,8 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       label: '等待方式',
       kind: 'select',
       options: [
-        { label: '定时等待', value: 'duration' },
-        { label: '等外部事件', value: 'event' }
+        { label: '定时等待', value: WAIT_TYPE.DURATION },
+        { label: '等外部事件', value: WAIT_TYPE.EVENT }
       ]
     },
     {
@@ -205,7 +229,7 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'text',
       placeholder: '数字秒或 ISO-8601，如 PT30S',
       hint: '必填，>0 秒且 ≤7 天。',
-      showIf: { key: 'waitType', equals: 'duration' }
+      showIf: { key: 'waitType', equals: WAIT_TYPE.DURATION }
     },
     {
       key: 'eventKey',
@@ -213,7 +237,7 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'text',
       placeholder: '等待的外部事件键',
       hint: '必填，长度 ≤128；由「发布外部事件」端点唤醒。',
-      showIf: { key: 'waitType', equals: 'event' }
+      showIf: { key: 'waitType', equals: WAIT_TYPE.EVENT }
     },
     {
       key: 'externalWakeup',
@@ -221,7 +245,7 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       kind: 'kv',
       placeholder: '如 { owner: "订单中心", endpoint: "POST /agent/workflow/event" }',
       hint: '等外部事件时声明谁会来唤醒（owner 负责人 / endpoint 调哪个端点 / note 备注）。无头流程体检会读它判断这个等待节点唤不唤得醒；不填体检会要求补充。',
-      showIf: { key: 'waitType', equals: 'event' }
+      showIf: { key: 'waitType', equals: WAIT_TYPE.EVENT }
     }
   ],
   parallel: [
