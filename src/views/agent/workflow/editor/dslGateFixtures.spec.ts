@@ -534,7 +534,7 @@ const FORM_CODE = (suffix: string) => `e2e_gate_probe_${suffix}`
  *
  * 🔴 V6 认的就是这个工具：{@code validateSaveDraftMainTable} 只扫 `toolId == form_save_draft` 的节点，
  *    读它 args 顶层的 `mainTable`；`validateSaveDraftColumns` 再读 `fields[].column`
- *    （缺省时用 `field` 顶，口径逐字照 {@code FormSaveDraftTool:211}）。
+ *    （缺省时用 `field` 顶，口径逐字照 {@code FormSaveDraftTool#build}）。
  *    拿 datamodel_update 去凑 V6 是**测错了规则**：那张表不存在时报的是干跑折叠出来的 V4
  *    「这么改跑不通 …… 找不到表对应的数据模型」，V6 的文案一个字都不会出现。
  * @param fields 省略 = 只测主表那半；给了 = 连列那半一起测（列那半是 V6 新增的、
@@ -1368,7 +1368,7 @@ describe('发布闸门夹具的自检（不需要后端）', () => {
   })
 
   it('V6 的夹具里不许有建表节点跑到 form_save_draft 上游 —— 有则后端整项跳过 V6，夹具会绿得毫无意义', () => {
-    // 🔴 后端 validateSaveDraftMainTable:790 见到「本流程会在 save_draft 之前建表」就 continue：
+    // 🔴 后端 WorkflowDslValidator#validateSaveDraftMainTable 见到「本流程会在 save_draft 之前建表」就 continue：
     //    表与列此刻还不存在，两项校验都无从谈起。这条 continue 是对的，
     //    但它意味着「顺手在 V6 夹具前面加一个 datamodel_create」会让拒绝侧静默失效 ——
     //    而放行侧照样绿（它断言的正是「没有 V6 文案」），于是只有半边会红，很容易被当成偶发

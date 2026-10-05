@@ -49,7 +49,7 @@ const PLACEHOLDER_ROOT = /\{\{\s*\$\.([a-zA-Z][a-zA-Z0-9_]*)/g
  *
  * 🔴 `none` **不在**里面，这不是漏项：none 压根不产 trigger 块（见文末 buildStarterDsl 那条断言），
  *    后端 triggerTypeOf 因此拿到 null，而 isHeadlessTrigger(null) 明确返回 false
- *    （WorkflowDslValidator:1457-1459）—— 这种定义只能由人点 run-stream 跑起来（沙箱、执行历史的重跑），
+ *    （WorkflowDslValidator#isHeadlessTrigger）—— 这种定义只能由人点 run-stream 跑起来（沙箱、执行历史的重跑），
  *    那个人就在场，聊天确认卡有地方推。把它算成无头，会把「沙箱里调 hitl.confirm」这条主路径整个堵死。
  */
 const HEADLESS: WorkflowTriggerType[] = ['form_event', 'schedule', 'webhook']
@@ -60,7 +60,7 @@ const HEADLESS: WorkflowTriggerType[] = ['form_event', 'schedule', 'webhook']
  * 🔴 原名 BLOCKING_TYPES，且列了 hitl.bpm_approval 和整个 wait —— **两项都是错的**：
  *   · `hitl.bpm_approval` 恰恰是 V13 给无头流程指的**出路**，错误文案原话就是
  *     「无头流程的人工介入请改用 hitl.bpm_approval（走 BPM 待办唤醒，有承办人、不依赖聊天窗口）」；
- *     V11 也把它同时放进 headlessGates 与 attendedGates（WorkflowDslValidator:1210-1212，
+ *     V11 也把它同时放进 headlessGates 与 attendedGates（WorkflowDslValidator#validateTriggerRiskGates，
  *     注释写着「有无头都能唤醒」）。把它列成禁用，等于教用户别用那个唯一能用的选项 ——
  *     照抄的人会把闸口整个删掉，那正是 V11 要拦的方向。
  *   · `wait` 必须按 waitType 分档：duration 有平台内的自动唤醒方
@@ -73,7 +73,7 @@ const HEADLESS: WorkflowTriggerType[] = ['form_event', 'schedule', 'webhook']
  */
 const HEADLESS_UNSAFE_TYPES = ['hitl.confirm']
 
-/** wait 在无头触发下唤不醒的那一档；大小写敏感，与 V14:1351-1355 同口径 */
+/** wait 在无头触发下唤不醒的那一档；大小写敏感，与 V14 同口径 */
 const WAIT_TYPE_EVENT = 'event'
 
 const notBlank = (v: any): boolean => typeof v === 'string' && v.trim() !== ''
@@ -85,8 +85,8 @@ const notBlank = (v: any): boolean => typeof v === 'string' && v.trim() !== ''
  *   · waitType **大小写敏感**地等于 event。「取值合不合法」是编译器 validateWaitConfig 的权威
  *     （EVENT 会被它判「未知，仅支持 duration/event」）；这里若放宽成不敏感，同一份 DSL 就会
  *     同时收到「未知 waitType」和「没声明唤醒方」两条 —— 一个根因说两遍。
- *   · 声明**只认 owner / endpoint，光写 note 不算**（wakeupDeclarationOf:1499 要求两者至少一个非空；
- *     V14:1332-1334 的理由是「只填一句 note 等于把问题抄了一遍当答案」）。
+ *   · 声明**只认 owner / endpoint，光写 note 不算**（WorkflowDslValidator#wakeupDeclarationOf 要求两者至少一个非空；
+ *     V14 的理由是「只填一句 note 等于把问题抄了一遍当答案」）。
  *
  * ⚠️ 声明了在后端只降到 warning，不是「安全」。本谓词返回 false 的含义是**不阻断发布**，
  *    与后端 error / warning 的分界同口径 —— 别把它当成「这么配就没风险了」。
@@ -179,7 +179,7 @@ describe('triggerCases 目录完整性', () => {
    *
    * 两条断言都不是在钉措辞，而是在钉**这条约束在不在场、给没给出路**：
    * 只说「不许放」会让作者把闸口整个删掉 —— 那正是 V11 要拦的方向
-   * （WorkflowDslValidator:1286-1287 同一条文案纪律）。
+   * （WorkflowDslValidator#validateHeadlessHitlConfirm 同一条文案纪律）。
    */
   it('每个无头案例都写明了无头约束，且都指出了「BPM 审批」这条出路', () => {
     for (const t of HEADLESS) {
@@ -346,13 +346,13 @@ describe('isHeadlessUnsafe 与后端 V13/V14/V11 同口径', () => {
 
   it('wait(event) 没声明唤醒方 → 唤不醒：平台内零调用方会去发那个事件', () => {
     expect(isHeadlessUnsafe(node('wait', { waitType: 'event', eventKey: 'k' }))).toBe(true)
-    // 光写 note 不算声明（V14:1332-1334：等于把问题抄了一遍当答案）
+    // 光写 note 不算声明（V14：等于把问题抄了一遍当答案）
     expect(
       isHeadlessUnsafe(
         node('wait', { waitType: 'event', externalWakeup: { note: '到时候会有人调' } })
       )
     ).toBe(true)
-    // 纯空白同样算没声明（wakeupDeclarationOf:1499 用的是 isBlank）
+    // 纯空白同样算没声明（WorkflowDslValidator#wakeupDeclarationOf 用的是 isBlank）
     expect(
       isHeadlessUnsafe(
         node('wait', { waitType: 'event', externalWakeup: { owner: '  ', endpoint: '' } })

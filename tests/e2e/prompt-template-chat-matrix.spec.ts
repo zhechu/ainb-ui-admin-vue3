@@ -53,7 +53,7 @@ import { CLICK_TIMEOUT_MS, STEP_TIMEOUT_MS, bounded, boundedText } from './helpe
  *        不代表模型答得符合 expect_hint。这一半的覆盖缺口是明示的，不是被藏起来的。
  *
  * 🔴 ⑥ 的「什么都没发生」为什么可信（方案 §6.3-6 要求先证明这一项探通了）
- *   AssistantChat.vue:120 是 `<template v-if="!item.cardStatus && !item.hitl">`，
+ *   AssistantChat.vue 的普通问答气泡是 `<template v-if="!item.cardStatus && !item.hitl">`，
  *   普通问答气泡（含 assistant-answer）与草稿卡在同一条消息上**互斥**。
  *   所以「assistant-answer 可见且非空」本身就是「这条消息没有 cardStatus」的证明 ——
  *   不是靠扫不到某个 testid 来推断的。选择器字符串本身写错的情形由 T2 兜住：
@@ -180,7 +180,7 @@ interface CaseRow {
   status?: number
 }
 
-/** AssistantChat.vue:591 INPUT_MAX_LENGTH。超过它 insertIntoInput 直接拒绝插入 */
+/** AssistantChat.vue 的 INPUT_MAX_LENGTH。超过它 insertIntoInput 直接拒绝插入 */
 const INPUT_MAX_LENGTH = 2000
 
 const REPORT_DIR = path.join(__dirname, '../../_evidence')
@@ -340,7 +340,7 @@ const SETTLE_STEP_MS = 4_000
 const REFUSAL_MARK = '手册里没有覆盖这个问题'
 /**
  * 同一句拒答的另一种写法，只差「中 / 里」一个字。逐字实测于 run14 的 id=65
- * （`_evidence/prompt-template-chat-matrix.md:512`，整篇正文就是这 12 字），见上面第四种错写法。
+ * （`_evidence/prompt-template-chat-matrix.md` 里「15/42 · id=65」那例，整篇正文就是这 12 字），见上面第四种错写法。
  * 🔴 加一种写法 = 放宽判据 = **口径变更**。必须同时做两件事，缺一件就是悄悄把尺子改宽：
  *    ① 在下面 `判据自检` 里钉住那条真实样本；② 在报告「棘轮结账」处注明本轮起拒答数不能与旧轮并排比。
  */
@@ -541,7 +541,7 @@ const MARK_STREAM_TIMEOUT = '仍未答完'
  *    后端把 assistant 消息以 status=FAILURE + error_msg 落库，token_count=0。
  *    那一轮 run3 的最后 10 条（cases 33~42）全中，而报告印的是「问答气泡没渲染出来」——
  *    把一次厂商配额故障指成了前端渲染缺陷。真因其实**就显示在页面上**：
- *    SSE 的 error 分支（AssistantChat.vue:1298）会把 errorMsg 渲染成 `.el-alert--error`，
+ *    SSE 的 error 分支（AssistantChat.vue 的 applyChatEvent case 'ERROR'）会把 errorMsg 渲染成 `.el-alert--error`，
  *    只是原来的 ⑦ 先等气泡、等不到就抛，压根没走到查 alert 那一步。
  *
  * 🔴 连带后果比误报更坏：AgentIntentClassifier.classify(:118-123) 在异常时
@@ -1402,7 +1402,7 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
  *
  * 🔴 不能只等气泡。2026-10-04 run3 的最后 10 条全是厂商配额耗尽，
  *    而报告印的是「问答气泡没渲染出来」—— 把一次外部配额故障指成了前端渲染缺陷。
- *    真因其实**就显示在页面上**：SSE 的 error 分支（AssistantChat.vue:1298）
+ *    真因其实**就显示在页面上**：SSE 的 error 分支（AssistantChat.vue 的 applyChatEvent case 'ERROR'）
  *    会把 errorMsg 渲染成 `.el-alert--error`，只是原来的 ⑦ 先等气泡、等不到就抛，
  *    压根没走到查 alert 那一步（alert 检查排在气泡断言**之后**）。
  *
@@ -1450,8 +1450,8 @@ async function waitAnswerOrError(
  *
  *    | 时刻 | 事件 | 出处 |
  *    |---|---|---|
- *    | 14:36:46.267 | chat 触发器只记类型 code(wf_plan_mutg750u_1) | `WorkflowTriggerExtractor:205` |
- *    | 14:36:46.308 | insertNewVersion(id=437, status=DRAFT) | `AgentWorkflowDefServiceImpl:254` |
+ *    | 14:36:46.267 | chat 触发器只记类型 code(wf_plan_mutg750u_1) | `WorkflowTriggerExtractor#applyChat` |
+ *    | 14:36:46.308 | insertNewVersion(id=437, status=DRAFT) | `AgentWorkflowDefServiceImpl#insertNewVersion` |
  *    | ~14:36:46.31 | 「停止」消失 ⟹ **快照在这里读到 0** | 本用例 ② |
  *    | 14:36:46.435 | 前端才去取 `planner/workflow-draft?defId=437` 挂卡片 | 后端访问日志 |
  *
@@ -1501,7 +1501,7 @@ function fmtIds(ids: number[]): string {
 /**
  * ③④⑤⑦：普通问答气泡上的四条机械断言
  *
- * 🔴 断在 assistant-answer 上，不能断整个气泡：AssistantChat.vue:131 的注释写得很清楚，
+ * 🔴 断在 assistant-answer 上，不能断整个气泡：AssistantChat.vue 里那个 data-testid 上方的注释写得很清楚，
  *    思维链内部也渲染 MarkdownView，不加这个 testid 的话「模型想过」就算通过，
  *    哪怕最终一个字都没答出来。
  *

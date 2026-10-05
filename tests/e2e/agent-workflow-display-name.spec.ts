@@ -488,7 +488,7 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     // 🔴 用「HTTP 200 + 业务码 403」而不是 route.abort()：这才是 G7 的真实形态——
     //    用户有编排权、但没有目录那个接口的权限，后端回 code!=0，而修复前 loadCatalogs 里的
     //    .catch(() => []) 把它吞成一个「空的且零提示」的下拉。abort() 只覆盖网络异常，证不了这一条。
-    // 🔴 别用 401：service.ts:152 对 401 会走刷新令牌/登出，页面会被踢回登录页，测的就不是 G7 了。
+    // 🔴 别用 401：src/config/axios/service.ts 对 401 会走刷新令牌/登出，页面会被踢回登录页，测的就不是 G7 了。
     await page.route('**/agent/workflow-def/name-catalog', (route) =>
       route.fulfill({
         status: 200,

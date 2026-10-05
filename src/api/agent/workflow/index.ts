@@ -213,7 +213,7 @@ export interface AgentNodeExecutionVO {
  * 🔴 与后端 {@code ChangeManifest}（{@code framework/agent/core/manifest/}）一一对应。
  * 三条**必须按后端语义渲染、不许前端自己编话**的地方：
  * 1. 整个对象为 `null` → 「清单不可用」，**不是**「本次不产生任何写操作」。
- *    后者是一句会让人放心点同意的假话（契约写在 {@code AgentWorkflowDefServiceImpl:344-346}）
+ *    后者是一句会让人放心点同意的假话（契约写在 {@code AgentWorkflowDefServiceImpl#resolveManifestSource}）
  * 2. `dryRun.outcome` 是**三态**：`NOT_PROBED` 要显示成黄色「本次没校验」，
  *    **不是**红色「不通过」—— 那是把「没核实」说成了「核实过且不行」
  * 3. `scope` 为 `null` 表示「没裁剪，这是整条流程」；非 null 时 `hidden*` 五个计数
@@ -320,7 +320,7 @@ export interface ManifestChangeItemVO {
   conflict?: ManifestConflictVO | null
 }
 
-/** TABLE_CREATE 的 detail（实测 {@code DataModelCreateChangeExtractor:49-72}） */
+/** TABLE_CREATE 的 detail（实测 {@code DataModelCreateChangeExtractor#extract}） */
 export interface ManifestTableDetailVO {
   modelName?: string | null
   columns?: ManifestColumnVO[]
@@ -352,7 +352,7 @@ export interface ManifestTableAlterDetailVO {
   dropColumns?: ManifestColumnVO[]
 }
 
-/** FORM_CREATE 的 detail（实测 {@code FormSaveDraftChangeExtractor:44-77}） */
+/** FORM_CREATE 的 detail（实测 {@code FormSaveDraftChangeExtractor#extract}） */
 export interface ManifestFormDetailVO {
   fields?: ManifestFormFieldVO[]
   fieldCount?: number
@@ -387,7 +387,7 @@ export interface ManifestFormUpdateDetailVO {
 
 /**
  * FORM_PUBLISH 的 detail。
- * 🔴 `menu` 是**联合类型**（实测 {@code ChangeManifestDryRunner:624} 与 {@code :644} 两个分支）：
+ * 🔴 `menu` 是**联合类型**（实测 {@code ChangeManifestDryRunner#previewMenu} 的字符串分支与对象分支）：
  * - 表单已绑过菜单 → 一句**字符串**说明「本次只出新版本，不新建菜单」
  * - 这次会新建菜单 → 一个 **对象** `{name, path, permissionCount}`
  * 且**只有后者**才有 `permissions`（前者刻意不写，否则 headline 会报一件不会发生的事）。
@@ -484,7 +484,7 @@ export interface ManifestUntrustedInputVO {
   depth: number
 }
 
-/** 16 个计数（实测 {@code ChangeManifest.ManifestStats:412-487}，全是 int） */
+/** 16 个计数（实测 {@code ChangeManifest.ManifestStats}，全是 int） */
 export interface ManifestStatsVO {
   tables: number
   alteredTables: number

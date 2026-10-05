@@ -745,7 +745,7 @@ const statChips = computed(() => {
   push('不可逆', s.irreversibleCount, true)
   push('预演被拒', s.dryRunRejected, true)
   push('本次没校验', s.dryRunNotProbed)
-  // 🔴 只读工具**刻意不进** changes（后端 WorkflowChangeManifestBuilder:146 的纪律），
+  // 🔴 只读工具**刻意不进** changes（后端 WorkflowChangeManifestBuilder#build 的纪律），
   //    但「扫过了几个」必须能被看见：少了这一格，「changes 里没有只读工具」就有两种读法 ——
   //    「扫过了，确实不写」和「压根没扫到」。这两种在界面上长得一模一样，
   //    而前者是清单可信的全部依据。标签里点明「不计入」，免得被读成一项写操作。

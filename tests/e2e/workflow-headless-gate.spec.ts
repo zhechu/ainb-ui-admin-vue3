@@ -55,7 +55,7 @@ import { STEP_TIMEOUT_MS, boundedText, waitTerminal } from './helpers/terminal'
  *      很可能撞上别的规则（那是它该撞的），本条只对 V13 这一条规则的有无表态。
  *
  * ### 🔴 ⑥⑦ 的判据为什么是「聊天确认卡」而不是看起来更直白的「没有人在场」
- * 因为**「没有人在场」不是 V13 独有的**，V11 的 error 分支（`WorkflowDslValidator:1309`，
+ * 因为**「没有人在场」不是 V13 独有的**，V11 的 error 分支（`WorkflowDslValidator#validateTriggerRiskGates`，
  * 无头 + IRREVERSIBLE + 上游没闸口）也印同一句「本流程由…触发、跑起来时没有人在场」，
  * 而且它的出路文案里**同样**写着 `hitl.bpm_approval`（:1313）。
  * 用这句当判据的话，⑥ 会因为 V11 报错而「通过」、⑦ 会因为 V11 报错而「失败」——
@@ -139,7 +139,7 @@ const PROMPT = [
 /**
  * ⑧ 的构造样本用的表名。两条硬约束，都是实测撞出来的：
  *   · 必须是一张**确定不存在**的表，否则干跑会先报「表名被占」
- *   · 🔴 必须以 `biz_` 开头（`DataModelParamResolver.CREATE_PARAMS_SCHEMA:60`）。
+ *   · 🔴 必须以 `biz_` 开头（`DataModelParamResolver.CREATE_PARAMS_SCHEMA`）。
  *     先前写成 `xpy_e2e_v11_probe`，干跑于是**多出一条无关错误**
  *     「表名 xpy_e2e_v11_probe 缺少业务表前缀，应改为 biz_…」——
  *     V11 照样报，但 ⑧ 红/绿的归因被污染了（§6.3-8 的第二个判据：红要红在对的原因上）
@@ -150,7 +150,7 @@ const PROBE_NODE_ID = 'e2e_gate_probe_node'
 
 /**
  * V13 在错误文案里**独有**的判据。为什么不用「没有人在场」见文件头 ⑥⑦ 那一节
- * （V11:1309 也印那一句，用它会验错规则、而且 ⑦ 的方向还会反过来）
+ * （V11 也印那一句，用它会验错规则、而且 ⑦ 的方向还会反过来）
  */
 const V13_MARK = '聊天确认卡'
 /** V11 的 error 判据。warning(:1320) 用同一句，但本用例只搜 errors，撞不进来 */

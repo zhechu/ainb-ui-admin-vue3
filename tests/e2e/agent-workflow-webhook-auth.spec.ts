@@ -18,7 +18,7 @@ import { openWorkflowCreatePanel } from './helpers/workflow'
  * <p>前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。
  *
  * <h3>数据自净为什么是两层</h3>
- * 用例内那次删除是**产品断言**（草稿态可删，对应 {@code AgentWorkflowDefServiceImpl:235} 的守卫），
+ * 用例内那次删除是**产品断言**（草稿态可删，对应 {@code AgentWorkflowDefServiceImpl#deleteDef} 的守卫），
  * 但它排在第 8 步——前面任何一步失败，用例就中止在那儿，草稿留在库里。
  * 这不是假想：{@code agent-workflow-editor.spec.ts} 同样是「删在最后」，实测已经漏过一行
  * （id=161，DRAFT，2026-10-01），而它的头注释也写着「数据自净」。
@@ -133,7 +133,7 @@ test.describe('webhook 触发器：鉴权方式只剩 hmac/token，验签密钥�
     expect(trigger.type).toBe('trigger.webhook')
     expect(trigger.config).toMatchObject({ path, authType: 'hmac', secret })
 
-    // 8. 自净第一层（产品断言）：草稿态可删 —— 对应 deleteDef:235 的守卫。
+    // 8. 自净第一层（产品断言）：草稿态可删 —— 对应 AgentWorkflowDefServiceImpl#deleteDef 的守卫。
     //    删成功后 afterAll 按 code 反查到空集，兜底那一层自然不动手。
     const del = await request.delete(`${API_BASE_URL}/agent/workflow-def/delete?id=${id}`, {
       headers: apiHeaders(token)

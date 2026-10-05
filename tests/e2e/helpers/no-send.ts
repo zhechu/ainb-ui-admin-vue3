@@ -19,7 +19,7 @@ import { expect, type Page } from '@playwright/test'
  *
  * ## 换成网络判据，阳性对照是白送的
  *
- * 发送只有一条路径：`POST /agent/assistant/send-stream`（`src/api/agent/assistant/index.ts:138`，
+ * 发送只有一条路径：`POST /agent/assistant/send-stream`（`src/api/agent/assistant/index.ts` 的 sendStream，
  * 全仓唯一）。于是判据改成「这条请求一条都没发出过」，而它的阳性对照同样免费 ——
  * 打开「示例 / 模板」页签时必然发一条 `simple-list`，页签里能列出数据就是它回来了。
  * 连 `simple-list` 都没记到，说明监听器压根没挂上，此时「没有 send-stream」一文不值，

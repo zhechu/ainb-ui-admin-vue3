@@ -77,7 +77,7 @@ import { CLICK_TIMEOUT_MS, bounded, boundedText, waitTerminal } from './helpers/
  *          而 run13 / run14 它都真标了 **4 个** searchable ⟹ 「一个都没标」不成立；
  *          且同一个 plus、同一段提问，run12 一个没标、run13 标了 4 个 ⟹ 是**遵从度不稳定**，
  *          既不是「照教执行」也不是「系统性遗漏」（规划路径本来就钉了 `temperature=0.1`，
- *          `WorkflowPlannerServiceImpl:323`，所以高温采样解释不了这个抖动）。
+ *          `WorkflowPlannerServiceImpl#callModel`，所以高温采样解释不了这个抖动）。
  *        · case 59 三轮都真标了 **1 个**，报告却永远印「无」—— 那是**本文件自己的统计口径**造成的：
  *          下面 :571 那句 `.filter((x) => x.kind === 'FORM_CREATE')`，而 59 是 `FORM_UPDATE`
  *          ⟹ 它标的那 1 个**永远不计入**。🔴 这条最要紧，因为它意味着 `manifest-search-conditions`
@@ -86,7 +86,7 @@ import { CLICK_TIMEOUT_MS, bounded, boundedText, waitTerminal } from './helpers/
  *        · 只有 case 55 真的是「照教执行」（正文确实没有查询要求，三轮都 0 个）。
  *      ⟹ 原结论**只在 1/3 的样本上成立**，却被当成「三条全部」写进了验收清单 ——
  *      与 D4-02「断言文案自带误诊」是同一个毛病：留着会把下一个人派去追一个不存在的遗漏，故就地改掉。
- *      `searchable` 的唯一一处教法在 `FormSaveDraftTool.java:507-508`——
+ *      `searchable` 的唯一一处教法在 `FormSaveDraftTool.java` 的 paramsSchema——
  *      「**用户说「列表里要用某字段查询」时**，给该字段传 true」。
  *      教法本身本轮**仍不改**，但理由换了：不是因为「AI 没错」，而是因为改法的时机不对
  *      （规划模型正在 failover 到 flash，这时候改提示词，量到的差异分不清是谁的功劳）。
@@ -142,7 +142,7 @@ interface DefRow {
   dsl?: string | null
 }
 
-/** AssistantChat.vue:591 INPUT_MAX_LENGTH */
+/** AssistantChat.vue 的 INPUT_MAX_LENGTH */
 const INPUT_MAX_LENGTH = 2000
 
 /** 单条 BUILD 等草稿卡的上限。agent-plan-stream 用的是 480 秒，照它 */
@@ -510,7 +510,7 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         )
 
         // ---------- 变更预演：折叠条默认收起时点开 ----------
-        // WorkflowDraftCard:308 的 manifestOpen 只在 IRREVERSIBLE/HIGH/dryRunRejected 时自动展开
+        // WorkflowDraftCard.vue 的 manifestOpen 只在 IRREVERSIBLE/HIGH/dryRunRejected 时自动展开
         const manifest = page.locator('[data-testid="draft-manifest"]')
         if (!(await manifest.isVisible().catch(() => false))) {
           await page
@@ -599,7 +599,7 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
           }, 0)
 
         // 四块的期望值全部**从后端口径反推**，不写死：AI 这轮规划出什么，界面就该画出什么。
-        // 🔴 表这一块要认三种 kind：ChangeManifestCard:585 的 tableGroups 依次吃
+        // 🔴 表这一块要认三种 kind：ChangeManifestCard.vue 的 tableGroups 依次吃
         //    TABLE_CREATE、TABLE_ALTER、**TABLE_REGISTER**（登记已有表）。漏了最后一种的话，
         //    一条「复用已有表」的正确规划会画出表区块、而期望值说「不该有」⟹ 红在正确答案上。
         //    这不是假想：示例 55 的第 1 步原文就是「查一下有没有能复用的表，别急着建新表」

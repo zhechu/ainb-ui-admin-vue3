@@ -4,7 +4,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
  * 自关联的端到端验证（B10 ③）
  *
  * 「同一张表里父子相认」——部门树、物料 BOM。设计方案把它列在 B10，
- * 交接文档记的是「`StepTableBinding.vue:632` 自关联明确不支持」。
+ * 交接文档记的是「`StepTableBinding.vue` 的 saveRelationTable 自关联校验里，自关联明确不支持」。
  *
  * 放开的只是**只读关联**（joinTable）：SQL 上靠别名区分两侧，机制本来就支持。
  * 副表 / 明细表的自关联仍然拒绝——它们要往那张表写数据，而那张表就是主表，

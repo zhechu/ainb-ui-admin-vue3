@@ -160,7 +160,7 @@ describe('nodeConfigSchema', () => {
   })
 
   /**
-   * 🔴 面板 hint 是用户唯一看得到的那份说明书（WorkflowPropertyPanel:163 渲染的就是这里的 f.hint，
+   * 🔴 面板 hint 是用户唯一看得到的那份说明书（WorkflowPropertyPanel.vue 渲染的就是这里的 f.hint，
    *    **不是** editor/nodeIoContract.ts 里那份 —— 那份的 InPort.hint 在前端根本没有消费者）。
    *    所以「hint 承诺了运行期不会发生的事」是会被用户照做的，不是无害的文案瑕疵。
    *

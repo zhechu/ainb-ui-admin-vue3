@@ -151,7 +151,7 @@ function stepBudget(deadline: number): number {
  *    后端规划失败、alert 早已挂上页面，它却继续空转到 480 秒预算耗尽才返回 null，
  *    调用方的判词又只能把 null 说成「N 秒内未收敛」—— 报告里印的病因与事实相反。
  *
- *    run7 的实测（后端 `_backend-run7.log` 里 `AgentAssistantServiceImpl:485` 那两行规划失败，
+ *    run7 的实测（后端 `_backend-run7.log` 里 `AgentAssistantServiceImpl#runWorkflowPlanner` 那两行规划失败，
  *    对照报告 `_evidence/prompt-template-build-matrix.md` 各例的耗时）：
  *    id=55 后端 **17:09:39** 就报了「轮次耗尽」，而它的 480 秒预算最早也要到 **17:15:54**
  *    才耗尽（报告头写于 17:07:53，本例耗时 480730ms）—— 中间**至少 6 分钟纯白等**；

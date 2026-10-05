@@ -15,7 +15,7 @@
  *    与本地副本 diff ⟹ 不需要 CI 同时检出两个仓）把 `_evidence/p97-mirror-diff.py` 的结构比对升成一条 e2e。
  *    ⚠️ 那条 e2e 在**台账 #70**（`agent:workflow:query` 授权给 0 个角色）清账之前只能用超管账号跑。
  *
- * ⚠️ 本文件的 `InPort.hint` 在前端**没有消费者**（WorkflowPropertyPanel:163 渲染的是 nodeConfigSchema.ts
+ * ⚠️ 本文件的 `InPort.hint` 在前端**没有消费者**（WorkflowPropertyPanel.vue 渲染的是 nodeConfigSchema.ts
  *    的 `f.hint`）。它存在的意义只是与后端那份保持同构，别以为改了这里用户就看得见；
  *    面向用户的提示语要改 nodeConfigSchema.ts，那份的强制点在 nodeConfigSchema.spec.ts。
  *

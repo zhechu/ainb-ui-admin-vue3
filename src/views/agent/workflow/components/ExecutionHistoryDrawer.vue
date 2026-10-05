@@ -81,7 +81,7 @@
         <template #default="{ row }">
           <el-button link type="primary" @click="onReplay(row.id)">画布回放</el-button>
           <!-- 🔴 只在 INTERRUPTED 行出现：其余状态调 resume 后端会直接抛 STATE_INVALID
-               （AgentWorkflowExecutionServiceImpl:160 的 isResumable 守卫），摆出来只是让人点了看报错。
+               （AgentWorkflowExecutionServiceImpl#resume 的 isResumable 守卫），摆出来只是让人点了看报错。
                这两个按钮是 §2-D10「卡死执行」的最后一条出路 —— V13 只拦得住**新发布**的无头流程，
                已经卡在 INTERRUPTED 的存量执行此前**没有任何 UI 能救**（路存在但等于不存在）。 -->
           <template v-if="row.status === 'INTERRUPTED'">
@@ -215,13 +215,13 @@ const resumeAborts = new Map<number, AbortController>()
  *
  * 方案 §2-D10 写的是「feedback 传 `{hitl_approved: true|false}`」，那**只对 `hitl.confirm` 成立**：
  * `hitl.bpm_approval` 读的是 `bpm_approved` / `bpm_status`
- * （`HitlBpmApprovalNodeExecutor:69-80`）。只给 `hitl_approved` 的话它读到 null
+ * （`HitlBpmApprovalNodeExecutor#execute`）。只给 `hitl_approved` 的话它读到 null
  * → `isApproved=false` → 流程走**拒绝**分支，而执行状态照样报 SUCCEEDED ——
  * 正是那个执行器 :72-75 注释里点名的「审批通过了却没干活」（#46 修的就是这一类）。
  * 运维点的是「恢复」，流程却按「驳回」续跑且一路绿灯，比卡死更难查。
  *
  * 两个键都给则各自只被对应的执行器读到、对另一种节点惰性无害；且这三个键都在
- * `KeyStrategyFactoryGenerator:47-53` 无条件注册过，能活过 resume 时
+ * `KeyStrategyFactoryGenerator#generate` 无条件注册过，能活过 resume 时
  * `OverAllState.input()` 那道「只保留注册过 KeyStrategy 的键」的过滤。
  * 自定义了 `approveVar` 的流程也不用管：两个执行器读不到自定义键时都回退默认键。
  *
@@ -244,7 +244,7 @@ const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
   try {
     // 🔴 纯文本插值，不开 dangerouslyUseHTMLString：currentNode 是服务端数据。
     // 🔴 措辞不能说「当前停在节点 X」：current_node 只在**节点跑完**时写
-    //    （AgentWorkflowExecutionServiceImpl:319-323 的 else 分支），挂起节点记在
+    //    （AgentWorkflowExecutionServiceImpl#runGraph 的 else 分支），挂起节点记在
     //    interruptedNode 里但**没有落库**，所以这一格是「最后跑完的那个」，
     //    真正的挂起点在它后面。说成「停在 X」会让运维去查一个其实已经跑完的节点。
     await ElMessageBox.confirm(
@@ -290,7 +290,7 @@ const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
           return
         }
         if (payload.code !== 0) {
-          // 后端把 ServiceException 也塞进流里（AgentWorkflowController:88-90），
+          // 后端把 ServiceException 也塞进流里（AgentWorkflowController#resumeStream），
           // 最常见的是这条执行已被轮询器/审批回调抢先恢复 → STATE_INVALID
           outcome = 'ERROR'
           detail = payload.msg || '恢复被后端拒绝'
@@ -316,7 +316,7 @@ const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
       },
       (err) => {
         // 🔴 必须 throw：onerror 不抛异常 fetchEventSource 就会无限重连，
-        //    把同一次恢复反复打后端（与 AssistantChat:1569 同一条纪律）
+        //    把同一次恢复反复打后端（与 AssistantChat.vue 的 handleHitlDecision 同一条纪律）
         if (!outcome) {
           outcome = 'ERROR'
           detail = '连接中断，恢复结果未知——请先刷新列表看这条执行的最新状态，不要直接再点一次'

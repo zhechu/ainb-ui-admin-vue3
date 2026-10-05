@@ -333,7 +333,7 @@ const manifestRisk = computed(() => {
   if ((m.stats?.dryRunRejected ?? 0) > 0) return { tag: 'danger' as const, text: '预演不通过' }
   if (m.riskLevel === 'IRREVERSIBLE') return { tag: 'danger' as const, text: '含不可逆动作' }
   if (m.riskLevel === 'HIGH') return { tag: 'warning' as const, text: '高风险' }
-  // 🔴 只读工具压根不进 changes（后端 WorkflowChangeManifestBuilder:146 的纪律），
+  // 🔴 只读工具压根不进 changes（后端 WorkflowChangeManifestBuilder#build 的纪律），
   //    所以 changes 为空确实等于「不写任何东西」，这句绿标不是猜的
   if (!m.changes?.length) return { tag: 'success' as const, text: '无写操作' }
   return null

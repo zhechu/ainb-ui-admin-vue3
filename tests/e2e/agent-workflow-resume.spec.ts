@@ -31,7 +31,7 @@ const API = 'http://127.0.0.1:48080/admin-api'
 /**
  * 形状刻意复刻编排器真会生成的那种闸口：`approveVar` 是**自定义名**（confirm_result）而非默认的
  * hitl_approved。于是本 spec 顺带钉住了前端那两个键的「对冲」能不能穿过
- * HitlConfirmNodeExecutor:56-58 的回退 —— 只发默认键，却要让一个自定义名的闸口判对。
+ * HitlConfirmNodeExecutor#execute 的回退 —— 只发默认键，却要让一个自定义名的闸口判对。
  */
 const dsl = (code: string) =>
   JSON.stringify(
@@ -230,7 +230,7 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
 
     // 🔴 判据 3：确认框的措辞必须跟着库里真值走。
     //    current_node 是「最后跑完的那个节点」（updateCurrentNode 只在非挂起分支写，
-    //    AgentWorkflowExecutionServiceImpl:319-323），挂起节点从不落库（#74）。
+    //    AgentWorkflowExecutionServiceImpl#runGraph），挂起节点从不落库（#74）。
     //    说成「当前停在节点 X」会把运维支去查一个其实早跑完的节点，故连反面一起钉。
     await suspended.getByRole('button', { name: '拒绝' }).click()
     const box = page.locator('.el-message-box').filter({ hasText: '拒绝挂起的执行' }).first()

@@ -887,7 +887,7 @@ let abortController: AbortController | null = null
  * 🔴 不把 SSE 收到的增量<b>直接</b>写进界面。
  * 厂商回包是一阵一阵的（几十字一坨），直接渲染会看到文字一块一块地蹦，
  * 比不做流式还难看。这里改成「收进缓冲区 + 定时匀速吐出」，
- * 并按积压量动态调速 —— 做法与 ai/chat 的 textRoll 一致（index.vue:581-591）。
+ * 并按积压量动态调速 —— 做法与 ai/chat 的 textRoll 一致（src/views/ai/chat/index/index.vue）。
  */
 const typewriter = {
   full: '',

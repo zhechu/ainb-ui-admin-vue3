@@ -33,12 +33,12 @@ import { deleteWorkflowDraftsByCode } from './helpers/workflow'
  *
  * 🔴 未覆盖：BPM 审批详情 + 通过弹层（宿主 #3）。S6 已把清单冻结进流程变量
  * `agent_change_manifest`（后端 `b8cf277486`），但**这个宿主至今没有 e2e**——
- * 而它恰好是台账 #90 的落点：`BpmProcessInstanceServiceImpl.fillOnlineFormData:440`
+ * 而它恰好是台账 #90 的落点：`BpmProcessInstanceServiceImpl#fillOnlineFormData`
  * 对**在线表单**流程会把 `formVariables` **整体替换**成业务表行、把注入的键抹掉。
  * S6 的真跑量具读的是 `/bpm/process-instance/manager-page`（裸 Flowable 变量，
  * **压根不经过 `fillOnlineFormData`**），所以那条路径结构上量不到 #90。
  * ⟹ 补这个宿主的 e2e 时必须打 `/bpm/process-instance/get-approval-detail`，那才是前端
- *   `detail/index.vue:360` 真读的端点（`api/bpm/processInstance/index.ts:95`）。
+ *   `detail/index.vue` 的 agentManifest 真读的端点（`api/bpm/processInstance/index.ts` 的 getApprovalDetail）。
  *   见台账 #90 与 `_evidence/verify90-approval-detail.py`（已在同款 fixture 上把两条通道并排量过）。
  *
  * 前置：后端 48080 + 前端 dev server 同时在跑。
