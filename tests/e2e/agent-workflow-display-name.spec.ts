@@ -64,6 +64,17 @@ const SUB_NODE_NAME = '调子流程'
  */
 const RISKY_TOOL_KEY = 'datamodel_create'
 
+/**
+ * D4-26 的**反空转对照**：一个全程启用中的声明只读工具。
+ *
+ * 🔴 必须有它：停用那两个变灰了，可能只是因为整个下拉坏了（目录没拉到、分组模板写错、
+ *   `:disabled` 绑成了一个恒真表达式）。有一个「本该可挑且确实可挑」的候选站在旁边，
+ *   「灰了」才是有意义的信号 —— 与 D4-22 那条用例的 READONLY_CONTROL 同一个作用。
+ * 🔴 它的声明风险在用例里现读现断（必须是 READ_ONLY），不写死假设：
+ *   若它哪天被改成写工具，它在 agent_loop 里本来就挑不动，对照就失效了，那时要说清「前提不成立」。
+ */
+const CONTROL_TOOL_KEY = 'data_interface_list'
+
 let token: string
 let defId: number
 /** form_list 的中文展示名，从目录现读（见文件头「不写死」的理由） */
@@ -512,5 +523,232 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
     const hint = page.getByTestId('catalog-empty-hint')
     await expect(hint).toBeVisible({ timeout: 10000 })
     await expect(hint).toContainText('可直接输入工具键后回车')
+  })
+
+  /**
+   * 🔴 D4-26：流程设计器的两个工具下拉此前都**不看 `enabled`**，把注定跑不通的停用工具当正常候选递出去。
+   *   与 D4-24（agent_loop 不过滤只读）、D4-25（def 编辑器不过滤停用）同源，
+   *   但这一处的失败形态与 D4-25 **不同**，别把两者的处置搞混：
+   *     · D4-25 那半是「静默失效」：`AgentDefServiceImpl.validateToolKeys` 压根不看 enabled，
+   *       存草稿、发布全过，要到用户真去聊天才被安全网关拒 ⟹ 界面必须就地报警。
+   *     · 本处是「界面指反方向」：`WorkflowDslValidator.checkToolRef` 里「已停用」那条**是 error**，
+   *       体检和发布都会拦 ⟹ 后端 fail-loud 本来就是对的，坏的是前端把必被拒的候选画成可挑，
+   *       用户照着挑、点体检才被打回来。所以这里只需「置灰 + 说原因」，不需要 D4-25 那种就地报警。
+   *
+   * 🔴 为什么非要走浏览器：后端那半（目录有没有下发 `enabled`）curl 就能验；
+   *   「这一项到底灰没灰、点不点得动」是 `:disabled` 与 Element Plus `selectOptionClick` 里
+   *   `if (!isDisabled.value) return` 的合力，接口层完全看不见。而纯视觉的灰 ≠ 挑不动，
+   *   故末尾那条 `click({ force: true })` 钉的是「真的挑不进去」。
+   * 🔴 一次停**两个**工具，各守一条不同判据：
+   *   `form_list`（声明只读）—— 它在 agent_loop 里本来是可挑的，停用是它变灰的**唯一**原因，
+   *     这才证明新加的那条分支真在跑，而不是被 D4-24 的「非只读」分支蒙对；
+   *   `datamodel_create`（声明 IRREVERSIBLE）—— 它**同时**满足「非只读」与「已停用」，
+   *     角标必须印「已停用」而不是「非只读」，钉住与 `checkToolRef` 相同的判定顺序。
+   *     顺序错了，用户会去找只读替代、甚至去降险，而真正要动的是「启用」开关。
+   * 🔴 全程 0 LLM token：只开设计器、开下拉、看选项、点候选，不保存、不发布、不聊天。
+   * 🔴 数据自净用 try/finally：这条用例**真的**给两个内置工具各落一条停用覆盖行。
+   *   断言中途失败也不能把它们留在开发库里 —— 那不是探针残留，那是两次没人知道的工具下线。
+   */
+  test('D4-26：tool 节点的工具下拉与 agent_loop 的只读工具下拉，都不许把已停用的工具当正常候选', async ({
+    page,
+    request
+  }) => {
+    test.setTimeout(240_000)
+    const probeToken = await apiLogin(request)
+    const headers = apiHeaders(probeToken)
+
+    const readTool = async (name: string) => {
+      const resp = await request.get(`${API_BASE_URL}/agent/tool-def/registered-list`, { headers })
+      expect(resp.ok(), 'registered-list 应可读').toBeTruthy()
+      const body = await resp.json()
+      const hit = (body.data || []).find((t: any) => t.toolName === name)
+      expect(hit, `应能在内置工具里找到 ${name}`).toBeTruthy()
+      return hit
+    }
+
+    const setEnabled = async (name: string, enabled: boolean) => {
+      const before = await readTool(name)
+      // 前提自检：本用例的意义建立在「探针动手前它是干净的、启用中的」之上。
+      // 🔴 overridden 必须是 false —— 否则 finally 里那次 registered-reset 会顺手抹掉别人
+      //    （或别的用例）留下的在线维护行。那不是清理，那是改配置。
+      expect(before.enabled, `${name} 在探针动手前就该是启用中的，前提不成立`).toBe(true)
+      expect(
+        before.overridden,
+        `${name} 已有在线维护覆盖行，换一个干净工具再验（本用例会 reset，会抹掉别人的维护）`
+      ).toBe(false)
+      // 🔴 registered-update 是【整份提交】：其余字段一律原样回填生效值。
+      //    少回填 permissions 会被后端当成「删空代码权限」= 一次货真价实的安全放松（D4-22 同款坑）。
+      //    停用是**收紧**不是放松，故不需要 confirmRelax。
+      const resp = await request.put(`${API_BASE_URL}/agent/tool-def/registered-update`, {
+        headers,
+        data: {
+          toolName: name,
+          displayName: before.displayName,
+          description: before.description,
+          groupName: before.groupName,
+          permissions: before.permissions,
+          paramsSchema: before.paramsSchema,
+          riskLevel: before.riskLevel,
+          enabled,
+          remark: 'e2e-D4-26-探针-非真实停用'
+        }
+      })
+      expect(resp.ok(), `${name} 改启用位应成功，实际 ${resp.status()}`).toBeTruthy()
+      const after = await readTool(name)
+      expect(after.enabled, `${name} 的启用位应已改成 ${enabled}`).toBe(enabled)
+      expect(after.declaredEnabled, `${name} 的声明启用位不该被在线维护改动`).toBe(true)
+      expect(after.permissions, `${name} 探针只改启用位，权限串不该被动过`).toBe(before.permissions)
+    }
+
+    const riskyRow = await readTool(RISKY_TOOL_KEY)
+    expect(
+      riskyRow.declaredRiskLevel,
+      `${RISKY_TOOL_KEY} 的声明风险应为 IRREVERSIBLE，否则「已停用优先于非只读」这条用例前提没了`
+    ).toBe('IRREVERSIBLE')
+    const controlRow = await readTool(CONTROL_TOOL_KEY)
+    expect(
+      controlRow.declaredRiskLevel,
+      `${CONTROL_TOOL_KEY} 应为声明只读，否则它在 agent_loop 里本来就挑不动，反空转对照失效`
+    ).toBe('READ_ONLY')
+
+    await setEnabled(TOOL_KEY, false)
+    await setEnabled(RISKY_TOOL_KEY, false)
+
+    try {
+      await login(page)
+      await gotoWithAuth(page, `/agent-workflow/editor?id=${defId}`)
+
+      // ==================== 腿① tool 节点的「工具」下拉 ====================
+      const node = page.locator('.vue-flow__node').filter({ hasText: TOOL_NODE_NAME }).first()
+      await expect(node).toBeVisible({ timeout: 20000 })
+      await node.click()
+      const panel = page.locator('.wf-panel').first()
+      await expect(panel).toBeVisible({ timeout: 15000 })
+      // 🔴 定位靠 combobox 的**可访问名**（= 表单项 label「工具 *」）并用 /^工具/ 锚定开头：
+      //    同面板里还有「工具入参」「工具返回结果」；有选中值时 placeholder 不落到 <input> 上，
+      //    按 placeholder 找必然找不到（这两条坑上面那条用例已经踩过并记了）。
+      const toolSelect = panel
+        .locator('.el-select')
+        .filter({ has: page.getByRole('combobox', { name: /^工具/ }) })
+        .first()
+      await expect(toolSelect).toBeVisible({ timeout: 10000 })
+
+      // 🔴 这个 tool 节点绑的**正是**被停用的 form_list。就地显示不许退化成裸机器键：
+      //    el-select 的 getOption 按 value 匹配、不看 disabled —— 这正是「置灰而不是从候选里滤掉」
+      //    的第三条理由（滤掉的话这里就只剩一串 form_list，用户认不出那是哪个工具）。
+      await expect(toolSelect).toContainText(`${toolLabel}（${TOOL_KEY}）`)
+
+      // 🔴 点 .el-select 根而不是里面那个 combobox <input>：有选中值时 input 被
+      //    .el-select__placeholder 那个 span 盖住，点 input 会被判成「指针事件被拦截」而重试到超时。
+      await toolSelect.click()
+      const dd = page.locator('.el-select-dropdown:visible').last()
+      await expect(dd).toBeVisible({ timeout: 10000 })
+      const optOf = (key: string) =>
+        dd.locator('.el-select-dropdown__item').filter({ hasText: `（${key}）` }).first()
+
+      // 反空转对照：启用中的只读工具仍是正常候选，否则下面那些「灰了」可能只是整个下拉坏了
+      const controlOpt = optOf(CONTROL_TOOL_KEY)
+      await expect(controlOpt).toBeVisible({ timeout: 10000 })
+      await expect(controlOpt).not.toHaveClass(/is-disabled/)
+      await expect(controlOpt.locator('[data-testid="tool-option-block"]')).toHaveCount(0)
+
+      const offOpt = optOf(TOOL_KEY)
+      await expect(offOpt).toBeVisible()
+      await expect(offOpt).toHaveClass(/is-disabled/)
+      await expect(offOpt.locator('[data-testid="tool-option-block"]')).toHaveText('已停用')
+      // 长因要说清四件事：说的是**哪一个**工具、为什么不能用（网关直接拒）、体检/发布也会拦、两条出路
+      const offTitle = (await offOpt.getAttribute('title')) || ''
+      expect(offTitle, '长因必须说清「已被停用」').toContain('已被停用')
+      expect(offTitle, '长因必须说清运行期后果（安全网关直接拒）').toContain('安全网关')
+      expect(offTitle, '长因必须给出路（去工具管理重新启用）').toContain('工具管理')
+      // 🔴 下面两条专治「title 里的工具名渲染成 undefined」。第一版实现正是这么坏的：
+      //    面板把只有 label/value 的**下拉选项**传给了一个读 name/displayName 的函数，
+      //    于是 title 成了「undefined 已被停用…」—— 而 `pnpm ts:check` 全绿（参数全可选，
+      //    少传字段不报错）、e2e 也全绿（上面那三条只查关键词在不在，不查工具名在不在）。
+      //    一排灰项里若不说清是哪一个，用户根本无从下手；这条断言就是那次假绿的补丁。
+      expect(offTitle, '长因必须指名道姓（中文名）').toContain(toolLabel)
+      expect(offTitle, '长因必须指名道姓（机器键）').toContain(TOOL_KEY)
+      expect(offTitle, '长因里出现了 undefined：标识串没传对，读的人会以为在说别的工具').not.toContain(
+        'undefined'
+      )
+
+      const riskyOpt = optOf(RISKY_TOOL_KEY)
+      await expect(riskyOpt).toBeVisible()
+      await expect(riskyOpt).toHaveClass(/is-disabled/)
+      await expect(riskyOpt.locator('[data-testid="tool-option-block"]')).toHaveText('已停用')
+      const riskyOptTitle = (await riskyOpt.getAttribute('title')) || ''
+      expect(riskyOptTitle, '长因必须指名道姓').toContain(riskyLabel)
+      expect(riskyOptTitle, '长因里出现了 undefined').not.toContain('undefined')
+      await page.keyboard.press('Escape')
+
+      // ==================== 腿② agent_loop 的「可用只读工具」 ====================
+      // 🔴 左目录默认收起，点竖条展开。这里**先看有没有再点**：rail-left 是个开关，
+      //    哪天它的开合被持久化，无脑点一下会变成「点开又关上」。
+      if ((await page.locator('.wf-palette__item').count()) === 0) {
+        await page.locator('[data-testid="rail-left"]').click()
+      }
+      await page.locator('.wf-palette__item').filter({ hasText: '自主循环' }).first().click()
+      const loopItem = panel.locator('.el-form-item').filter({ hasText: '可用只读工具' }).first()
+      await expect(loopItem).toBeVisible({ timeout: 15000 })
+      const loopSelect = loopItem.locator('.el-select').first()
+      await loopSelect.click()
+      const loopDd = page.locator('.el-select-dropdown:visible').last()
+      await expect(loopDd).toBeVisible({ timeout: 10000 })
+      const loopOptOf = (key: string) =>
+        loopDd.locator('.el-select-dropdown__item').filter({ hasText: `（${key}）` }).first()
+
+      // form_list 声明只读 ⟹ 停用是它在这里变灰的**唯一**原因
+      const loopOff = loopOptOf(TOOL_KEY)
+      await expect(loopOff).toBeVisible({ timeout: 10000 })
+      await expect(loopOff).toHaveClass(/is-disabled/)
+      await expect(loopOff.locator('[data-testid="tags-option-block"]')).toHaveText('已停用')
+      const loopOffTitle = (await loopOff.getAttribute('title')) || ''
+      // 🔴 agent_loop 这一路的标识串是 `displayName || name`（不是下拉 label），
+      //    与它自己那句「非只读」长因同一个标识 —— 同一个选项的两种病因不能一个报中文、一个报键。
+      expect(loopOffTitle, '长因必须指名道姓').toContain(toolLabel)
+      expect(loopOffTitle, '长因里出现了 undefined').not.toContain('undefined')
+
+      // datamodel_create 同时「非只读」+「已停用」⟹ 只报「已停用」，与 checkToolRef 的顺序一致
+      const loopRisky = loopOptOf(RISKY_TOOL_KEY)
+      await expect(loopRisky).toBeVisible()
+      await expect(loopRisky).toHaveClass(/is-disabled/)
+      const riskyTitle = (await loopRisky.getAttribute('title')) || ''
+      expect(riskyTitle, '两条理由都成立时，title 必须给出「已停用」那条').toContain('已被停用')
+      expect(riskyTitle, '长因必须指名道姓').toContain(riskyLabel)
+      expect(riskyTitle, '长因里出现了 undefined').not.toContain('undefined')
+      expect(
+        riskyTitle,
+        '报了「已停用」就不该再报「非只读」——那会把用户指去降险或找只读替代，而真正要动的是「启用」开关'
+      ).not.toContain('agent_loop 只允许只读工具')
+
+      // 反空转对照：启用中的只读工具在 agent_loop 里仍点得动，且写进去的是**机器键**
+      const loopControl = loopOptOf(CONTROL_TOOL_KEY)
+      await expect(loopControl).toBeVisible()
+      await expect(loopControl).not.toHaveClass(/is-disabled/)
+      await expect(loopControl.locator('[data-testid="tags-option-block"]')).toHaveCount(0)
+      await loopControl.click()
+      await expect(loopSelect).toContainText(`（${CONTROL_TOOL_KEY}）`)
+
+      // 停用那项点不动：Element 的 selectOptionClick 自己就拦了。钉住「拦住了」这个事实，
+      // 免得哪天换成自定义渲染把那道 guard 弄丢，而置灰看着还在（纯视觉的灰不等于挑不动）
+      await loopOff.click({ force: true })
+      await expect(loopSelect).not.toContainText(TOOL_KEY)
+    } finally {
+      // 🔴 两个 reset **先都做完、再一起断言**：断言写在循环里的话，第一个失败就会把第二个的清理
+      //    一起带走，开发库里留下一个真被停用的内置工具 —— 那是一次没人知道的工具下线。
+      const statuses: string[] = []
+      for (const name of [TOOL_KEY, RISKY_TOOL_KEY]) {
+        const reset = await request.delete(
+          `${API_BASE_URL}/agent/tool-def/registered-reset?toolName=${encodeURIComponent(name)}`,
+          { headers }
+        )
+        statuses.push(`${name} HTTP ${reset.status()}`)
+      }
+      for (const name of [TOOL_KEY, RISKY_TOOL_KEY]) {
+        const restored = await readTool(name)
+        expect(restored.enabled, `${name} 恢复默认后应重新启用（${statuses.join('，')}）`).toBe(true)
+        expect(restored.overridden, `${name} 恢复默认后不该再有覆盖行（${statuses.join('，')}）`).toBe(false)
+      }
+    }
   })
 })

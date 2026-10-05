@@ -70,7 +70,14 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       label: '工具',
       kind: 'select',
       optionsFrom: 'tool',
-      placeholder: '选择或输入工具键'
+      placeholder: '选择或输入工具键',
+      // 🔴 用户可见（面板 {{ f.hint }} 原样插值），别写 🔴/⚠️ 这类内部标记。
+      // 🔴 这条 hint 说的是「停用」（生效值），不是「风险」（声明值）：tool 节点本来就允许写工具，
+      //    唯一在这里就注定跑不通的是被管理员停用的那个 —— 安全网关读到停用当次就拒，
+      //    体检 checkToolRef 也报 error。不写这句的话，用户看见的只是一个灰掉的候选，
+      //    不知道要去「工具管理」开开关（D4-26）。
+      hint: '已被管理员停用的工具在候选里是灰的、挑不动：安全网关会直接拒绝调用，体检和发布也会拦下。'
+        + '请改用其他工具，或到「工具管理」页重新打开它的「启用」开关。（手打的工具键同样会被拦下。）'
     },
     {
       key: 'args',
@@ -272,7 +279,9 @@ export const NODE_CONFIG_SCHEMA: Record<string, ConfigField[]> = {
       //    体检 V3/V11、发布期干跑、编译期、运行期循环四道都读**声明**风险级，一律 error；
       //    也不是「不会被执行」，是编译就过不去。且它没说出路，用户只知道「不行」不知道「那怎么办」。
       hint: '只能放只读（查询类）工具：下拉里写操作工具是灰的、挑不动。自主循环里的模型调用不逐次过人工确认，'
-        + '要写数据请让 agent_loop 出结论后接 tool 节点，或在它前面加 hitl 确认。（手打的工具键同样会被体检/发布拦下。）'
+        + '要写数据请让 agent_loop 出结论后接 tool 节点，或在它前面加 hitl 确认。'
+        + '被管理员停用的工具也是灰的（候选右侧写着原因，处置办法与上面不同：要去「工具管理」重新启用）。'
+        + '（手打的工具键同样会被体检/发布拦下。）'
     },
     { key: 'maxSteps', label: '最大步数', kind: 'number', min: 1, max: 20, step: 1, hint: '防止模型无限循环，缺省 5。' },
     { key: 'outputVar', label: '结果存到', kind: 'text', placeholder: '最终答案写入的变量名' }

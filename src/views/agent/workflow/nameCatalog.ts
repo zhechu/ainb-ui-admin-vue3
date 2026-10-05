@@ -140,6 +140,16 @@ export interface ToolOptionGroup {
     declaredRiskDescription?: string
     declaredRequireConfirm?: boolean
     riskOverridden?: boolean
+    /**
+     * 这一项为什么挑不动（当前只有「已停用」一种，见 {@link disabledToolBlock}）；能挑则是 undefined。
+     *
+     * 🔴 **在这里算好**、而不是把 `enabled` 透传给面板让它自己判：`tags` 分支（`agent_loop.tools`）
+     *    早就是这个形状（`tagsOptionsFor` 里算 `block`，面板只读 `o.block`）。两个分支同构，
+     *    面板就不必各判一套 —— 否则哪天判据多一条（比如权限缺失），改了这里忘了改面板的
+     *    `:disabled`，就会出现「title 说不能用、项却还点得动」。
+     * 🔴 判据读的是**生效值** `enabled`，与上面那组声明值刻意不同源，理由见 {@link disabledToolBlock}。
+     */
+    block?: { short: string; long: string }
   }[]
 }
 
@@ -200,6 +210,54 @@ export const gateRiskOf = (t: {
   risk?: string | null
 }): string | null | undefined => t.declaredRisk ?? t.risk
 
+/**
+ * 这一项工具为什么挑不动：**已被停用**。能挑返回 undefined。
+ *
+ * 供流程设计器的两个工具下拉共用（`tool` 节点的 `toolId`、`agent_loop.tools`），
+ * 两处的**病因与出路必须一字不差**，否则同一个工具在两个字段里会给出不同的处置建议。
+ *
+ * 🔴 参数是「已算好的展示串 + 生效启用位」而不是整个工具对象：两个调用方手上的形状**不同**
+ *    （`agentLoopToolBlock` 拿的是目录原始行 `NameCatalogToolVO`，属性面板拿的是
+ *    `groupedToolOptions()` 切出来的下拉选项，后者只有 `label`/`value` 没有 `name`/`displayName`）。
+ *    收一个全可选字段的对象会让 TS 对这种错配一声不吭 —— 第一版就是这么写的，
+ *    面板传进去的对象里 `displayName`/`name` 都不存在，title 于是渲染成「undefined 已被停用」，
+ *    而 `pnpm ts:check` 全绿、e2e 也全绿（断言只查了「已被停用」在不在，没查工具名在不在）。
+ *    拆成两个位置参数，缺标识串就是编译期少传一个实参，骗不过去。
+ * @param shown 这一项在下拉里显示的那个串；调用方各自取手上最完整的那个
+ *              （面板取 `label` = 「中文名（机器键）」，agent_loop 取 `displayName || name`，
+ *              与它自己那句「非只读」的长因同一个标识，两句不会一个说中文一个说键）
+ * @param enabled **生效值**。🔴 与 {@link gateRiskOf} 那组声明值判据刻意反向 —— 不是笔误：
+ *              `AgentSecurityGateway#checkTool` 读 `ToolDefinition#isEnabled()`，即覆盖后的生效值，
+ *              「停用」这个在线维护动作**当次就真生效**；而运行期各道风险闸读 `getDeclaredRisk()`，
+ *              降险推不动它们。判「能不能用」按生效值，判「算不算只读」按声明值，
+ *              与 `def/editor/index.vue` 同口径（D4-25）。
+ *
+ * 🔴 判 `=== false` 而不是 `!enabled`：字段缺失（后端未升级、目录加载失败、
+ *    自定义工具那一行压根没下发）时**不置灰**。宁可少拦一个，也不要把整个下拉全灰掉；
+ *    真正的闸在后端，这里只负责别把用户往坑里指。
+ * 🔴 文案与 `WorkflowDslValidator.checkToolRef` 里「已停用」那条 **error** 同因同果，不另编病因：
+ *    停用工具在体检/发布期就会被拒，界面若照旧把它当正常候选递出去，就是 D4-24 那个形状
+ *    （配了不生效 + 界面主动指反方向）。
+ *
+ * ⚠️ 与 `def/editor/index.vue` 的 `disabledToolTitle` **刻意不合并**：那一句说的是
+ *    「保存和发布都不会拦你」（`AgentDefServiceImpl.validateToolKeys` 确实不看 enabled），
+ *    本句说的是「体检和发布也会拦下来」（`checkToolRef` 确实报 error）。两道闸不同，
+ *    合并成一份就等于在其中一处说谎。
+ */
+export const disabledToolBlock = (
+  shown: string | null | undefined,
+  enabled: boolean | null | undefined
+): { short: string; long: string } | undefined =>
+  enabled === false
+    ? {
+        short: '已停用',
+        long:
+          `「${shown || '该工具'}」已被停用，运行期安全网关会直接拒绝调用` +
+          '（后端报「AI 助手工具(<工具键>)已被停用」），流程走到这一步必失败，体检和发布也会拦下来。' +
+          '请改用其他工具，或到「工具管理」页重新打开它的「启用」开关。'
+      }
+    : undefined
+
 /** 无分组的工具归到这一组（后端 groupName 空串即「不分组」） */
 const UNGROUPED = '未分组'
 
@@ -218,8 +276,9 @@ export const groupedToolOptions = (): ToolOptionGroup[] => {
       current = { label: g, options: [] }
       groups.push(current)
     }
+    const label = keyedLabel(t.name, t.displayName)
     current.options.push({
-      label: keyedLabel(t.name, t.displayName),
+      label,
       value: t.name,
       desc: t.description,
       requireConfirm: t.requireConfirm,
@@ -228,7 +287,11 @@ export const groupedToolOptions = (): ToolOptionGroup[] => {
       declaredRisk: t.declaredRisk,
       declaredRiskDescription: t.declaredRiskDescription,
       declaredRequireConfirm: t.declaredRequireConfirm,
-      riskOverridden: t.riskOverridden
+      riskOverridden: t.riskOverridden,
+      // 🔴 标识串就用上面那个 label（= 「中文名（机器键）」），与选项行里显示的完全一致。
+      //    别改成 `t.displayName || t.name`：本条改动前正是因为面板拿不到 name/displayName，
+      //    title 渲染成了「undefined 已被停用」，而 ts:check 与 e2e 全绿（见 disabledToolBlock 的注释）。
+      block: disabledToolBlock(label, t.enabled)
     })
   }
   return groups

@@ -9,6 +9,7 @@ import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
 import type { NameCatalogToolVO } from '@/api/agent/workflow'
 import { layoutDsl, X_GAP, Y_GAP } from '../layout'
 import {
+  disabledToolBlock,
   ensureLoaded as ensureNameCatalog,
   gateRiskOf,
   groupedToolOptions,
@@ -87,10 +88,12 @@ export type TagsOption = {
 /**
  * `agent_loop.tools` 里这一项为什么挑不动；能挑返回 undefined。
  *
- * 🔴 判据一律取【声明】风险（`declaredRequireConfirm` / `gateRiskOf`），与后端三道闸同地基：
+ * 🔴 **两类判据、两种取值方向**，别混：
+ *    ①「已停用」读**生效值** `enabled`（停用当次就真生效，见 {@link disabledToolBlock}）；
+ *    ②「非只读」读【声明】风险（`declaredRequireConfirm` / `gateRiskOf`），与后端三道闸同地基：
  *    `WorkflowDslValidator.checkToolRef`（体检，读 `declaredRiskOf`）、
  *    `AgentLoopGraphBuilder` 编译期那道、以及它运行期循环里的最后一道。
- *    按生效值判就是 D4-22 那个病：管理员把某工具降过险，界面说「可选」，点发布照样被拒。
+ *    按生效值判②就是 D4-22 那个病：管理员把某工具降过险，界面说「可选」，点发布照样被拒。
  * 🔴 「是不是只读」问的是 `requireConfirm`，不是自己拿风险串去比 `=== 'READ_ONLY'`：
  *    后端 `RiskLevel` 五个值里只有 READ_ONLY 的 requireConfirm 是 false，这个等价关系是它自己给的；
  *    前端再抄一份等级清单，将来后端加一档就会静默判错（`nameCatalog.RISK_TAG_TYPE` 注释里那种坏法）。
@@ -104,6 +107,13 @@ export type TagsOption = {
  *    自定义只读工具，前端这份副本就成了假拦截。要补得先裁定，别顺手加。
  */
 const agentLoopToolBlock = (t: NameCatalogToolVO): { short: string; long: string } | undefined => {
+  // 🔴 「已停用」排在「非只读」**前面**，与后端 `checkToolRef` 的判定顺序一致（先判能不能用，
+  //    再判算不算只读）。反过来报会让用户去找只读替代、甚至去降险，而真正要动的是「启用」开关 ——
+  //    界面指错方向比不指更坏（D4-24 的教训）。
+  // 🔴 标识串取 `displayName || name`，与下面那句「非只读」长因用的是同一个：
+  //    同一个选项的两种病因若一个报中文名、一个报机器键，读的人会以为是两个工具。
+  const disabled = disabledToolBlock(t.displayName || t.name, t.enabled)
+  if (disabled) return disabled
   if ((t.declaredRequireConfirm ?? t.requireConfirm) !== true) return undefined
   const risk = t.declaredRiskDescription || t.riskDescription || gateRiskOf(t) || '非只读'
   return {

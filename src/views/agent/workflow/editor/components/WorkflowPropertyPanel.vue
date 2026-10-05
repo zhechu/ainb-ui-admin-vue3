@@ -70,7 +70,21 @@
                      label 一律是「中文名（机器键）」，于是 filterable 输中文、输英文键都能搜到。 -->
                 <template v-if="f.optionsFrom === 'tool'">
                   <el-option-group v-for="g in toolOptionGroups" :key="g.label" :label="g.label">
-                    <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value">
+                    <!-- 🔴 停用的工具**置灰但留在列表里**，右侧印短因、title 给长因（D4-26），
+                         与下面 tags 分支的处置逐字同构（那边读 `o.block`，这边也读 `o.block`，
+                         block 都由数据层算好，面板不自己判 —— 判据只有一份，才不会两边漂）。
+                         三条理由与 D4-24/D4-25 相同：
+                         ① 这个 select 开着 allow-create，滤掉候选拦不住手打工具键；
+                         ② 存量 DSL 里已经绑着的那个键不会因为你把候选藏了就消失；
+                         ③ 已选中但不在候选里的值，el-select 的 getOption 回落成裸机器键，用户认不出那是哪个工具。 -->
+                    <el-option
+                      v-for="o in g.options"
+                      :key="o.value"
+                      :label="o.label"
+                      :value="o.value"
+                      :disabled="!!o.block"
+                      :title="o.block?.long"
+                    >
                       <span class="float-left">{{ o.label }}</span>
                       <!-- 🔴 风险色点（重构 S1）：只读工具不画点。30 个里大半是只读，
                            全画上一排绿点等于没画，反而把「这条不可逆」淹掉。见 riskDotColor 注释。
@@ -86,6 +100,13 @@
                         class="float-right text-12px text-[var(--el-text-color-secondary)] ml-12px max-w-140px truncate"
                       >
                         {{ o.desc }}
+                      </span>
+                      <span
+                        v-if="o.block"
+                        class="float-right text-12px text-[var(--el-text-color-danger)] ml-12px"
+                        data-testid="tool-option-block"
+                      >
+                        {{ o.block.short }}
                       </span>
                     </el-option>
                   </el-option-group>
