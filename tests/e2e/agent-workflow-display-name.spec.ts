@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
+import { deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 「机器键 → 中文名」端到端验证（重构 S1 / L1 名称目录层）
@@ -277,12 +278,15 @@ test.describe('名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草
   })
 
   test.afterAll(async ({ request }) => {
-    // DRAFT 可删（PUBLISHED 不行）；本 spec 从不发布，所以这里一定删得掉
-    if (defId) {
-      await request.delete(`${API_BASE_URL}/agent/workflow-def/delete?id=${defId}`, {
-        headers: apiHeaders(token)
-      })
-    }
+    // DRAFT 可删（PUBLISHED 不行）；本 spec 从不发布，所以这里一定删得掉。
+    // 🔴 改成按 code 走 helper，不再按 beforeAll 记下的 defId：defId 为空时（beforeAll 建草稿就失败了）
+    //    原来那段 `if (defId)` 会**整段跳过** —— 而那恰恰是最可能留下半截数据的时候。
+    // 🔴 helper 会断言删除请求真的成功。原来这里是裸 `await request.delete(...)`：
+    //    删失败也全绿，残留照留，报告照绿 —— 正是 D4-04 在 T2 里修掉的同一个毛病。
+    //    本文件的 afterAll 被方案 §9.4 F1 当成「已经写对、可直接照抄」的样板，
+    //    样板自己不合 §4.7 的话，照抄一次就把缺陷复制一份。
+    const cleanupToken = await apiLogin(request)
+    await deleteWorkflowDraftsByCode(request, cleanupToken, WF_CODE)
   })
 
   test('只读画布：节点摘要出「中文名（机器键）」，工具与子流程两格都翻译到', async ({ page }) => {

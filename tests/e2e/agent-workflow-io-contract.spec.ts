@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { login, gotoWithAuth } from './helpers/auth'
+import { login, gotoWithAuth, apiLogin } from './helpers/auth'
 import { monacoOf, setMonacoText } from './helpers/monaco'
-import { createWorkflowDraft } from './helpers/workflow'
+import { createWorkflowDraft, deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 流程设计器「类型化输入/输出端口 + 上游变量引用」端到端验证（6 项优化 Req5 / Phase E）
@@ -14,7 +14,9 @@ import { createWorkflowDraft } from './helpers/workflow'
  *   属性面板真渲染出类型色点/产出区、点『引用上游变量』真弹出上游产出、点选真把 {{$.var}} 写进字段并
  *   同步回事实源 DSL」——这些只有真实 DOM 才暴露。
  *
- * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。数据自净：末尾删除新建草稿。
+ * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。
+ * 数据自净：两条用例各自在末尾走 UI 删一次（顺带验删除交互），`afterAll` 再按 code 兜一次底 ——
+ *           用例红在半路时也不留草稿（F1 / §4.7）。
  *
  * 判据：经典案例（chat）的工具节点「按问题查表单」（outputVar=forms）选中后 → 属性面板出「本节点产出（供下游引用）」列出
  *       forms（对象）→ 开发者模式注入 tool→llm 链 → 选中 llm → 提示词字段出「引用上游变量」入口 →
@@ -92,17 +94,38 @@ const MODE_DSL = {
   settings: { recovery: 'forward', executionTimeoutSeconds: 120 }
 }
 
+/**
+ * 两条用例各建一份草稿，编码都提到模块级。
+ *
+ * 🔴 必须提到模块级：`afterAll` 是用例体之外的钩子，读不到用例里的局部变量。
+ *    原来两处 `const code` 都写在各自用例体内，兜底清理就永远不知道该删谁 —— F1 的同一个根因。
+ * 🔴 两个前缀有包含关系（`wf_io_` 是 `wf_iomode_` 的前缀），但分页接口的 code 是 like 匹配、
+ *    helper 又按**全等**复核了一遍，故互不误删。
+ */
+const STAMP = Date.now()
+const WF_CODE_IO = `wf_io_${STAMP}`
+const WF_CODE_MODE = `wf_iomode_${STAMP}`
+
 test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）', () => {
   test.setTimeout(150_000)
+
+  /**
+   * 兜底清理（F1 / §4.7）。两条用例的草稿都收，任何一条红在半路都不会把数据留在库里。
+   * 用例体末尾那两段 UI 删除验的是「删除按钮 + 二次确认」这条交互，与本钩子目的不同，别二选一。
+   */
+  test.afterAll(async ({ request }) => {
+    const token = await apiLogin(request)
+    for (const code of [WF_CODE_IO, WF_CODE_MODE]) {
+      await deleteWorkflowDraftsByCode(request, token, code)
+    }
+  })
 
   test('属性面板产出区 + 引用上游变量选择器写入 {{$.var}}', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板；触发方式默认 chat → 「表单问答助手」案例）→ 跳设计器
-    const stamp = Date.now()
-    const code = `wf_io_${stamp}`
-    await createWorkflowDraft(page, { code, name: `IO测试${stamp}` })
+    await createWorkflowDraft(page, { code: WF_CODE_IO, name: `IO测试${STAMP}` })
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
     const flowNodes = page.locator('.vue-flow__node')
@@ -154,9 +177,9 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
       timeout: 10000
     })
 
-    // 清理：硬跳回列表删除草稿
+    // 清理 + 顺带验删除交互：硬跳回列表删除草稿。真正的兜底在 describe 顶上的 afterAll。
     await gotoWithAuth(page, '/ai/agent/workflow')
-    const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    const row = page.locator('.el-table__body tr').filter({ hasText: WF_CODE_IO }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
@@ -192,9 +215,7 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
     await login(page)
     await gotoWithAuth(page, '/ai/agent/workflow')
 
-    const stamp = Date.now()
-    const code = `wf_iomode_${stamp}`
-    await createWorkflowDraft(page, { code, name: `IO模式${stamp}` })
+    await createWorkflowDraft(page, { code: WF_CODE_MODE, name: `IO模式${STAMP}` })
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
     await expect(page.locator('.vue-flow__node').first()).toBeVisible({ timeout: 20000 })
 
@@ -234,9 +255,9 @@ test.describe('流程设计器：类型化 I/O 端口 + 上游引用（Req5）',
     await expect(formVarsItem.locator('[data-testid="vref-trigger"]')).toHaveCount(0)
     await expect(formVarsItem.locator('.wf-panel__hint')).toContainText('不会被替换')
 
-    // 清理
+    // 清理 + 顺带验删除交互。真正的兜底在 describe 顶上的 afterAll。
     await gotoWithAuth(page, '/ai/agent/workflow')
-    const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    const row = page.locator('.el-table__body tr').filter({ hasText: WF_CODE_MODE }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()

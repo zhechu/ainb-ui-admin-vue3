@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { login, gotoWithAuth } from './helpers/auth'
+import { login, gotoWithAuth, apiLogin } from './helpers/auth'
 import { monacoOf, setMonacoText, expectMonacoVisible } from './helpers/monaco'
-import { createWorkflowDraft } from './helpers/workflow'
+import { createWorkflowDraft, deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 流程编排「新增面板 → 整页设计器」端到端验证
@@ -20,14 +20,28 @@ import { createWorkflowDraft } from './helpers/workflow'
  *
  * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。DSL 里不放大模型节点以外的真实调用，
  * 「大模型」节点只是加进画布并不运行，故不消耗额度。
- * 数据自净：新建的草稿在最后回列表删除（用唯一 code 定位）。
+ * 数据自净：用例体末尾回列表删一次（顺带验删除交互），`afterAll` 再按 code 兜一次底 ——
+ *           本用例有 20 多个断言、180s 预算，红在任何一步都不该把草稿留在库里（F1 / §4.7）。
  */
 
 const LIST_URL = /\/ai\/agent\/workflow$/
 const EDITOR_URL = /\/agent-workflow\/editor/
 
+/**
+ * 🔴 提到模块级是为了 `afterAll` 能读到：钩子在用例体之外，局部变量它看不见。
+ * 注意本 code 与 `agent-workflow-form.spec.ts` 同前缀（都是 `wf_e2e_`），故兜底清理
+ * 必须按**全等**复核，不能拿 like 的结果直接删 —— 见 helpers/workflow 里的说明。
+ */
+const STAMP = Date.now()
+const WF_CODE = `wf_e2e_${STAMP}`
+
 test.describe('流程编排：新增弹窗 → 整页设计器', () => {
   test.setTimeout(180_000)
+
+  test.afterAll(async ({ request }) => {
+    const token = await apiLogin(request)
+    await deleteWorkflowDraftsByCode(request, token, WF_CODE)
+  })
 
   test('新增建草稿 → 三栏设计器 → 顶栏缩放/开发者模式 → JSON 放大 → ＋加节点 → 删除免确认 → 撤销重做', async ({
     page
@@ -43,9 +57,7 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     await expect(addBtn).toBeVisible()
 
     // 点「新增」→ 页内元信息面板（Req2 新增与设计分开；Req1 由弹窗改页内，定位见 helpers/workflow）
-    const stamp = Date.now()
-    const code = `wf_e2e_${stamp}`
-    await createWorkflowDraft(page, { code, name: `E2E测试流程${stamp}` })
+    await createWorkflowDraft(page, { code: WF_CODE, name: `E2E测试流程${STAMP}` })
 
     // 建草稿后跳整页设计器
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
@@ -175,16 +187,17 @@ test.describe('流程编排：新增弹窗 → 整页设计器', () => {
     await expect(page.locator('[data-testid="sandbox-drawer"]')).toBeVisible({ timeout: 10000 })
     // 不关抽屉：下面走 page.goto 硬跳，Vue Router 的未保存守卫拦不到，也就没必要跟关闭按钮较劲
 
-    // 清理：硬跳回列表（绕过未保存改动守卫）→ 删除刚建的草稿（数据自净）
+    // 清理 + 顺带验删除交互：硬跳回列表（绕过未保存改动守卫）→ 删除刚建的草稿。
+    // 🔴 这段别删、也别指望它兜底 —— 真正的兜底在上面的 afterAll，这段只在用例走到这里时才执行。
     await gotoWithAuth(page, '/ai/agent/workflow')
-    const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    const row = page.locator('.el-table__body tr').filter({ hasText: WF_CODE }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
     await expect(page.locator('.el-message').filter({ hasText: '删除成功' }).first()).toBeVisible({
       timeout: 15000
     })
-    await expect(page.locator('.el-table__body tr').filter({ hasText: code })).toHaveCount(0, {
+    await expect(page.locator('.el-table__body tr').filter({ hasText: WF_CODE })).toHaveCount(0, {
       timeout: 15000
     })
     await expect(page).toHaveURL(LIST_URL)

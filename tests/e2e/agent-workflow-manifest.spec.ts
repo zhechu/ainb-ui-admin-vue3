@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpers/auth'
+import { deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 变更清单（ChangeManifest）四处宿主渲染 —— 端到端验证（重构 S3 / Req 3）
@@ -246,12 +247,12 @@ test.describe('变更清单渲染（S3）：四处宿主共用一个组件，三
   })
 
   test.afterAll(async ({ request }) => {
-    // DRAFT 可删（PUBLISHED 不行）；本 spec 从不发布，所以这里一定删得掉
-    if (defId) {
-      await request.delete(`${API_BASE_URL}/agent/workflow-def/delete?id=${defId}`, {
-        headers: apiHeaders(token)
-      })
-    }
+    // DRAFT 可删（PUBLISHED 不行）；本 spec 从不发布，所以这里一定删得掉。
+    // 🔴 按 code 走 helper 而非 beforeAll 记下的 defId：defId 为空时原来那段会整段跳过，
+    //    而那正是最可能留下半截数据的时候。helper 还会断言删除真的成功 ——
+    //    原来的裸 `await request.delete(...)` 删失败也全绿（§4.7 / D4-04 的同一个毛病）。
+    const cleanupToken = await apiLogin(request)
+    await deleteWorkflowDraftsByCode(request, cleanupToken, WF_CODE)
   })
 
   test('宿主④ 设计器影响面：四块明细 + 预演三态同屏不塌 + 独立污点计数', async ({ page }) => {

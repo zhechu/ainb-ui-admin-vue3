@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
-import { login, gotoWithAuth } from './helpers/auth'
+import { login, gotoWithAuth, apiLogin } from './helpers/auth'
 import { monacoOf, setMonacoText } from './helpers/monaco'
-import { createWorkflowDraft } from './helpers/workflow'
+import { createWorkflowDraft, deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 流程设计器「沙箱测试」端到端验证（6 项优化 Req4b / Phase D）
@@ -17,10 +17,22 @@ import { createWorkflowDraft } from './helpers/workflow'
  *   - form_list  = READ_ONLY → 真实执行（状态应为「成功」，绝不打 mock 标）
  *   - form_data_create = LOW（非 READ_ONLY）→ 被沙箱 mock（状态「已模拟写操作」）
  *
- * 前置：后端 48080 + 前端 dev server 同时在跑。数据自净：末尾删除新建草稿。
+ * 前置：后端 48080 + 前端 dev server 同时在跑。
+ * 数据自净：用例体末尾走 UI 删一次（顺带验「删除按钮 + 二次确认 + 删除成功」这条交互），
+ *           `afterAll` 再按 code 兜一次底 —— 用例红在半路时也保证库里不留草稿（F1 / §4.7）。
  */
 
 const EDITOR_URL = /\/agent-workflow\/editor/
+
+/**
+ * 本 spec 造的草稿编码与时间戳。
+ *
+ * 🔴 必须提到模块级：`afterAll` 是用例之外的钩子，读不到用例体里的局部变量。
+ *    原来 `const code` 写在用例体内，兜底清理就永远不知道该删谁 —— 这也是 F1 那 5 个 spec
+ *    「头注释写着数据自净、实际一红就漏」的同一个根因。
+ */
+const STAMP = Date.now()
+const WF_CODE = `wf_sbx_${STAMP}`
 
 /** 注入用：START→只读工具(form_list)→写工具(form_data_create)→END。写工具会被沙箱 mock，只读工具真跑 */
 const SANDBOX_DSL = {
@@ -53,14 +65,24 @@ const SANDBOX_DSL = {
 test.describe('流程设计器：沙箱测试（Req4b）', () => {
   test.setTimeout(150_000)
 
+  /**
+   * 兜底清理（F1）。本用例有 30s 级的沙箱等待，中间任何一步红掉，用例体末尾那段 UI 删除
+   * 就永远走不到 —— 而那恰恰是最需要清理的时刻。走接口按 code 删，不依赖页面还停在哪儿。
+   *
+   * 🔴 与用例体末尾的 UI 删除**并存**：那段验的是删除交互本身，这段保证的是不留残渣。
+   *    用例体已经删干净时这里删到 0 行，属正常，不报错。
+   */
+  test.afterAll(async ({ request }) => {
+    const token = await apiLogin(request)
+    await deleteWorkflowDraftsByCode(request, token, WF_CODE)
+  })
+
   test('运行沙箱：只读工具真跑、写工具被 mock、逐节点时间线渲染', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/ai/agent/workflow')
 
     // 新增 → 经典案例草稿（默认模板）→ 跳设计器；随后整份 DSL 会被替换成沙箱专用链，模板内容不影响断言
-    const stamp = Date.now()
-    const code = `wf_sbx_${stamp}`
-    await createWorkflowDraft(page, { code, name: `沙箱测试${stamp}` })
+    await createWorkflowDraft(page, { code: WF_CODE, name: `沙箱测试${STAMP}` })
     await page.waitForURL(EDITOR_URL, { timeout: 20000 })
 
     await expect(page.locator('.vue-flow__node').first()).toBeVisible({ timeout: 20000 })
@@ -109,9 +131,10 @@ test.describe('流程设计器：沙箱测试（Req4b）', () => {
       drawer.locator('.sbx__detail').filter({ hasText: '写操作已模拟' }).first()
     ).toBeVisible({ timeout: 10000 })
 
-    // 清理：硬跳回列表删除草稿
+    // 清理 + 顺带验删除交互：硬跳回列表删除草稿。
+    // 🔴 这段别删、也别指望它兜底 —— 它只在用例走到这里时才执行，真正的兜底在上面的 afterAll。
     await gotoWithAuth(page, '/ai/agent/workflow')
-    const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    const row = page.locator('.el-table__body tr').filter({ hasText: WF_CODE }).first()
     await expect(row).toBeVisible({ timeout: 20000 })
     await row.getByRole('button', { name: '删除' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()

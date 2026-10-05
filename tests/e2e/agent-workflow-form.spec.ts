@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { login, gotoWithAuth } from './helpers/auth'
+import { login, gotoWithAuth, apiLogin } from './helpers/auth'
+import { deleteWorkflowDraftsByCode } from './helpers/workflow'
 
 /**
  * 流程定义 新建 → 体检 → 保存草稿 → 编辑元信息 → 设计 → 删除 全生命周期端到端验证
@@ -19,7 +20,8 @@ import { login, gotoWithAuth } from './helpers/auth'
  *   这些只有真实 DOM 才暴露（本模块头号缺陷正是「配了/点了但不生效且无提示」）。
  *
  * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。经典案例模板不含大模型节点的真实调用。
- * 数据自净：用例创建的 wf_e2e_* 草稿在用例内删除。
+ * 数据自净：第 9 步的删除**本身就是被测行为**（顺带把数据带走）；`afterAll` 再按 code 兜一次底，
+ *           保证用例红在第 1~8 步任何一处时草稿也不会留在库里（F1 / §4.7）。
  *
  * 判据：新增面板建草稿 → 设计器挂载（骨架 ≥3 节点、非 0 高、URL 带 ?id=）→ 编码只读且等于面板里填的
  *       → 体检「通过」→ 改名后保存草稿「保存成功」→ 返回列表见新行 → 「编辑」面板 code 只读 + name 回填
@@ -30,16 +32,31 @@ import { login, gotoWithAuth } from './helpers/auth'
 const EDITOR_URL = /\/agent-workflow\/editor/
 const LIST_URL = /\/ai\/agent\/workflow$/
 
+/**
+ * 唯一 code，匹配 ^[a-z][a-z0-9_]{1,63}$。
+ *
+ * 🔴 提到模块级是为了 `afterAll` 能读到。与 `agent-workflow-editor.spec.ts` 同前缀（都是 `wf_e2e_`），
+ *    故兜底清理按**全等**复核后才删 —— 否则两个 spec 并行跑时会互删对方的草稿。
+ */
+const WF_CODE = `wf_e2e_${Date.now().toString(36)}`
+
 test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', () => {
   test.setTimeout(150_000)
+
+  /**
+   * 兜底清理（F1）。第 9 步走通时草稿已经删掉了，这里删到 0 行是**预期结果**，不是失败；
+   * 它真正起作用的是「用例红在第 1~8 步」那种情况 —— 而那恰恰是最容易漏数据的时候。
+   */
+  test.afterAll(async ({ request }) => {
+    const token = await apiLogin(request)
+    await deleteWorkflowDraftsByCode(request, token, WF_CODE)
+  })
 
   test('全生命周期', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/ai/agent/workflow')
 
-    // 唯一 code，匹配 ^[a-z][a-z0-9_]{1,63}$
-    const code = `wf_e2e_${Date.now().toString(36)}`
-    const name = `E2E 表单流程 ${code}`
+    const name = `E2E 表单流程 ${WF_CODE}`
 
     // 1. 列表页「新增」→ 页内元信息面板（Req1：由弹窗改页内；Req2：新增与设计分开）
     await page.getByRole('button', { name: '新增', exact: true }).click()
@@ -54,7 +71,7 @@ test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', 
     await expect(form.locator('.el-form-item__label').filter({ hasText: '描述' })).toHaveCount(1)
     await expect(form.locator('.el-form-item__label').filter({ hasText: '备注' })).toHaveCount(0)
     await form.locator('input[placeholder="请输入流程名称"]').fill(name)
-    await form.locator('input[placeholder*="小写字母开头"]').fill(code)
+    await form.locator('input[placeholder*="小写字母开头"]').fill(WF_CODE)
     // 起步模板选「经典案例」：按当前触发方式生成一条完整可过双层校验的骨架
     // 🔴 用 .el-radio 容器定位而不是 getByText：面板内联的案例卡与 form-tip 里也出现「经典案例」四个字，
     //    getByText 会撞严格模式（多匹配）而失败
@@ -74,7 +91,7 @@ test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', 
 
     // 2c. 编码在顶栏只读回填（Req2 之后编码只在新增面板里定，设计器不再让人改）
     await expect(page.locator('input[placeholder="流程编码"]')).toBeDisabled({ timeout: 15000 })
-    await expect(page.locator('input[placeholder="流程编码"]')).toHaveValue(code)
+    await expect(page.locator('input[placeholder="流程编码"]')).toHaveValue(WF_CODE)
     await expect(page.locator('input[placeholder="流程名称"]')).toHaveValue(name)
 
     // 3. 体检 → 内联展示「体检通过」（经典案例骨架合法，能过后端双层校验）
@@ -97,7 +114,7 @@ test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', 
     // 5. 返回列表（保存后 dirty=false，返回不弹确认）→ 新行出现，且显示的是改后的名字
     await page.locator('button[title="返回列表"]').click()
     await page.waitForURL(LIST_URL, { timeout: 15000 })
-    const newRow = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    const newRow = page.locator('.el-table__body tr').filter({ hasText: WF_CODE }).first()
     await expect(newRow).toBeVisible({ timeout: 15000 })
     await expect(newRow).toContainText(renamed)
 
@@ -106,7 +123,7 @@ test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', 
     await expect(panelTitle).toHaveText('编辑流程信息', { timeout: 15000 })
     const editForm = page.locator('form.el-form')
     await expect(editForm.locator('input[placeholder*="小写字母开头"]')).toBeDisabled()
-    await expect(editForm.locator('input[placeholder*="小写字母开头"]')).toHaveValue(code)
+    await expect(editForm.locator('input[placeholder*="小写字母开头"]')).toHaveValue(WF_CODE)
     await expect(editForm.locator('input[placeholder="请输入流程名称"]')).toHaveValue(renamed)
     // 取消 → 面板卸载、列表回来（v-else-if 切换，不是隐藏），故断言 count 0 而不是 hidden
     await page.locator('.panel-header').getByRole('button', { name: /取\s*消/ }).click()
@@ -123,14 +140,16 @@ test.describe('流程定义：新增面板-体检-保存-编辑-设计-删除', 
     await page.waitForURL(LIST_URL, { timeout: 15000 })
 
     // 9. 删除（既验证删除、又清理数据）：列表页删除仍保留二次确认（不可逆，且这里没有撤销兜底）
-    const targetRow = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    // 🔴 这一步是**被测行为**，不是纯清理，别搬进 afterAll —— 搬走就等于不验删除了。
+    //    兜底交给 describe 顶上那个 afterAll，它负责的是「本步之前就红掉」那种情况。
+    const targetRow = page.locator('.el-table__body tr').filter({ hasText: WF_CODE }).first()
     await expect(targetRow).toBeVisible({ timeout: 15000 })
     await targetRow.getByRole('button', { name: '删除' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
     await expect(page.locator('.el-message').filter({ hasText: '删除成功' }).first()).toBeVisible({
       timeout: 15000
     })
-    await expect(page.locator('.el-table__body tr').filter({ hasText: code })).toHaveCount(0, {
+    await expect(page.locator('.el-table__body tr').filter({ hasText: WF_CODE })).toHaveCount(0, {
       timeout: 15000
     })
   })
