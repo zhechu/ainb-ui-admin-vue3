@@ -494,12 +494,36 @@ const openCases = () => caseRef.value?.open()
  * 🔴 S4b 之后后端发布闸门（`assertPublishable`）会拒掉体检不通过的流程，而那条拒绝文案
  *    被 axios 拦截器吞成一个 4.5 秒自动消失的通知（台账 #91：`Promise.reject('error')` 是字面量）。
  *    所以「逐条说清改哪儿」只能在这里、发请求之前做完 —— 预检不是省一次往返的优化，是唯一可读的通道。
+ *
+ * 🔴 B6 / S16 之后「发布」与「生效」是两件事，本函数必须在**用户点确认之前**就说清这一版会不会立刻上线：
+ *    后端只在该 code **没有「钉着且仍在生效」的主版本**时，才把刚发布这版钉为主版本；已经钉过时
+ *    发布不动线上生效版本（要切得去「版本」抽屉里显式点「设为主版本」）。原先那句「发布后可被执行」
+ *    在第二种情况下是个不成立的承诺 —— 正是本平台头号缺陷形态「操作成功但不生效且无提示」。
  */
 const gateRef = ref()
 const gateRow = ref<AgentWorkflowDefVO>()
 const handlePublish = async (row: AgentWorkflowDefVO) => {
+  // 挡住上线的那一版（该 code 已钉的主版本，且不是当前这行）；undefined = 这一版发出去就是线上生效版本。
+  // 🔴 必须同时要求 status === 'PUBLISHED'：`disableDefById` 只翻状态、**不清 primary_flag**，
+  //    所以「主版本被停用」是能经正常操作走到的状态，不是脏数据。而后端选生效版本的
+  //    `selectPublishedByCode` 带 `status = 'PUBLISHED'` 过滤 —— 一个被停用的主版本压根不参与裁决，
+  //    生效版本会回落到「PUBLISHED 里 version 最大」。少了这个条件，这里就会指着一个已停用的版本
+  //    说「线上跑的还是它」，把话说反（正是本刀要消灭的那类假提示）。
+  // 🔴 查不动就当成「不挡」：这一步只负责把话说准，不该变成一道没人授权过的新闸门
+  //    （与下面 `publish-blind` 分支同一个原则）。真查不动时后端照样是权威，最坏是提示说得含糊一点。
+  let blocker: AgentWorkflowDefVO | undefined
   try {
-    await message.confirm(`确认发布流程「${row.name || row.code}」(v${row.version})？发布后可被执行。`)
+    const pinned = (await AgentWorkflowApi.getVersionList(row.code)).find(
+      (v) => v.primaryFlag && v.status === 'PUBLISHED'
+    )
+    blocker = pinned && pinned.id !== row.id ? pinned : undefined
+  } catch {}
+  const liveClause = blocker
+    ? `发布后线上生效版本仍是 v${blocker.version}（该流程钉着主版本，发布不自动切换）；` +
+      '要让新版接线上，请到「版本」里对它点「设为主版本」。'
+    : '发布后它就是线上生效版本。'
+  try {
+    await message.confirm(`确认发布流程「${row.name || row.code}」(v${row.version})？${liveClause}`)
   } catch {
     return // 用户取消
   }
@@ -528,7 +552,16 @@ const handlePublish = async (row: AgentWorkflowDefVO) => {
   }
   try {
     await AgentWorkflowApi.publishDef(row.id)
-    message.success('发布成功')
+    // 🔴 两种结果必须长得**不一样**：都报「发布成功」就等于把 B6 拆开的两件事又在提示里黏回去，
+    //    用户以为上线了、线上跑的还是旧版。没上线那一种用 warning 而不是 success。
+    if (blocker) {
+      message.warning(
+        `已发布 v${row.version}，但线上生效版本仍是 v${blocker.version}。` +
+          '需要它接线上请到「版本」里点「设为主版本」。'
+      )
+    } else {
+      message.success(`发布成功，v${row.version} 已是线上生效版本`)
+    }
     await getList()
   } catch {}
 }
