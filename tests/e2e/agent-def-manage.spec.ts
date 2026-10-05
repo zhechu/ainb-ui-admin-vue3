@@ -14,7 +14,9 @@ import { login, gotoWithAuth, apiLogin, apiHeaders, API_BASE_URL } from './helpe
  *   往返若丢了，表现为「选了工具保存成功、重新打开却空了」，curl/单测全绿，只有浏览器走一遍才暴露。
  *
  * 前置（0 LLM token）：后端 48080 + 前端 dev server 同时在跑。
- * 本 spec 全程通过 UI 自建数据（不预播种），用时间戳保证 code 唯一，跑完自清理（删草稿）。
+ * 本 spec 全程通过 UI 自建数据（不预播种），用时间戳保证 code 唯一。
+ * 🔴 每条用例**自己清掉自己造的行**（草稿直接删，已发布/已停用先停用再删）——
+ *    谁造谁清才扛得住 `-g` 单跑：只跑其中一条时，库里也不该多出探针数据。
  */
 
 const CODE = `e2e_def_${Date.now().toString().slice(-8)}`
@@ -25,8 +27,10 @@ const BUILTIN_CODE = 'platform_assistant'
 /**
  * 按编码把列表收敛到本用例关心的行。
  *
- * 🔴 不能省：列表是全租户共享的（当前已有 12+ 条 Agent），只靠 `filter({hasText: CODE})` 断言，
- * 一旦新行被排到第 2 页就会「查不到」，看起来像功能坏了，实际是分页。搜索后行数确定，断言才有意义。
+ * 🔴 不能省：列表是**同租户所有人共用**的一份（不是本 spec 私有的），行数随别人建的数据、
+ * 以及历次探针没清干净的残留一起涨。只靠 `filter({hasText: CODE})` 断言，一旦新行被排到第 2 页
+ * 就会「查不到」，看起来像功能坏了，实际是分页。搜索后行数确定，断言才有意义。
+ * （这里刻意不写「当前有 N 条」：那个数会烂，而理由不会。）
  */
 async function searchByCode(page: Page, code: string) {
   await page.getByPlaceholder('请输入编码').fill(code)
@@ -120,9 +124,29 @@ test.describe('智能体管理页', () => {
     await expect(page.getByRole('button', { name: /保存草稿/ })).toBeDisabled()
     await page.locator('button[title="返回列表"]').click()
     await page.waitForURL(/\/agent\/def$/)
+
+    // ---------- 清理：把本用例造的这一行带走 ----------
+    // 🔴 这段不是断言，是**还债**。文件头一直承诺「跑完自清理」，但本用例造的行走到最后是
+    //    「已停用」——既不是草稿，也没人删它；下一条用例名叫「清理本 spec 造的数据」，
+    //    删的却是它自己另造的 CODE2。于是每跑一次就在开发库里留一行 e2e_def_*，
+    //    多跑几轮就把真数据淹在探针数据里（§3.6 第 19 条：残留非空即本轮失败）。
+    //    已停用行本就可删（需求11），且「删除按钮在停用后出现」已被第五条用例断言过，
+    //    故这里只清数据、不再重复钉行为。
+    await searchByCode(page, CODE)
+    const leftover = page.locator('.el-table__body tr').filter({ hasText: CODE }).first()
+    await leftover.getByRole('button', { name: '删除' }).first().click()
+    await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
+    await expect(page.locator('.el-message').filter({ hasText: /删除成功/ }).first()).toBeVisible({
+      timeout: 15000
+    })
+    await expect(page.locator('.el-table__body tr').filter({ hasText: CODE })).toHaveCount(0, {
+      timeout: 15000
+    })
   })
 
-  test('草稿可删除（清理本 spec 造的数据）', async ({ page }) => {
+  // 🔴 名字原来叫「草稿可删除（清理本 spec 造的数据）」——后半句是假的：它删的是自己现造的
+  //    CODE2，第一条用例留下的 CODE 一行都没碰。改名的同时把那份债挪回欠它的人头上。
+  test('草稿可删除（自己造的自己删）', async ({ page }) => {
     await login(page)
     await gotoWithAuth(page, '/ai/agent/def')
 
