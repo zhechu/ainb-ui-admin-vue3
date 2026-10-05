@@ -59,6 +59,12 @@ function specIdSet(name) {
 }
 
 const REFUSAL_MARK = specStr('REFUSAL_MARK')
+/**
+ * 同一句拒答的另一种写法（「手册**中**没有覆盖这个问题」，2026-10-05 起因 run14 的 id=65 加进 spec）。
+ * 🔴 spec 加了它，这里必须跟着加：两边分类一旦不一致，上面那道对账闸**查不出来** ——
+ *    它只比「我算的 vs 报告印的」，不比「我算的 vs spec 算的」。
+ */
+const REFUSAL_MARK_ALT = specStr('REFUSAL_MARK_ALT')
 const REFUSAL_MARK_MAX_OFFSET = specNum('REFUSAL_MARK_MAX_OFFSET')
 const REFUSAL_MAX_LENGTH = specNum('REFUSAL_MAX_LENGTH')
 const MARK_PROVIDER_FAILURE = specStr('MARK_PROVIDER_FAILURE')
@@ -81,8 +87,14 @@ const NO_TEXT = (() => {
 function isRefusal(text) {
   const body = (text ?? '').trim()
   if (body.length === 0 || body.length > REFUSAL_MAX_LENGTH) return false
-  const at = body.indexOf(REFUSAL_MARK)
-  return at >= 0 && at <= REFUSAL_MARK_MAX_OFFSET
+  // 两种写法共用同一对阈值，比的是**最早**出现的那个位置（同 spec 的 matchedRefusalMark）
+  const at = Math.min(
+    ...[REFUSAL_MARK, REFUSAL_MARK_ALT].map((mark) => {
+      const i = body.indexOf(mark)
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i
+    })
+  )
+  return at <= REFUSAL_MARK_MAX_OFFSET
 }
 
 // ==================== 报告块解析 ====================
@@ -177,6 +189,12 @@ for (const { path, block } of summaryBlocks) {
   {
     const theirs = Number(refusal[1])
     // 汇总数的是**这一轮跑过的全部**（含 BUILD 那几条被本脚本跳过的），故只允许「它的 ≥ 我的」
+    // 🔴 已知的**唯一**合法触发场景：喂进来的报告是 2026-10-05 口径变更**之前**跑的 ——
+    //    那时 spec 只认「手册**里**没有覆盖这个问题」，而 run14 的 id=65 逐字是「手册**中**没有覆盖这个问题。」，
+    //    报告因此少算一条拒答（印 21、真值 22），本脚本按新口径重算就会**多于**它。
+    //    这种报告的汇总数天生偏小，处置是**重跑 T1 拿新口径报告**，不是放宽这道闸：
+    //    判据只会越认越宽（同一条正文只可能从「非拒答」翻成「拒答」，不会反向），
+    //    所以在**同期**报告上，「我的 > 它的」永远意味着判据或解析至少错了一处。
     const myRefusals = mine.filter((c) => c.cls === 'refusal').length
     if (myRefusals > theirs) {
       throw new Error(`拒答数对不上：${path} 汇总印 ${theirs} 条，本脚本重算 ${myRefusals} 条（还更多）—— 判据或解析至少错了一处`)
