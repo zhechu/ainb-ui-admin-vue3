@@ -120,9 +120,20 @@ test.describe('工具管理页（内置工具在线维护）', () => {
       page.locator('.panel-title').filter({ hasText: `维护内置工具 · ${BUILTIN_TARGET}` })
     ).toBeVisible({ timeout: 15000 })
     // 🔴 需求2 的核心断言：改页内之后，本页任何操作都不该再出现 el-dialog
+    //    （B1 之后本页多了一个「安全放松二次确认」的 el-dialog，但它是 v-model=false 且 EP 的
+    //     对话框内容 v-if="rendered" 首次打开前不渲染，所以这条在「刚进面板」时仍然成立 ——
+    //     下面那个 describe 会专门验它只在放松时才出现。）
     await expect(page.locator('.el-dialog')).toHaveCount(0)
-    // 面板顶部有安全提示（覆盖立即生效 + 安全放松会被审计）
-    await expect(page.locator('.el-alert').filter({ hasText: /覆盖立即生效/ }).first()).toBeVisible()
+    // 面板顶部有安全提示。
+    // 🔴 断言的文案 2026-10-05 改过：原文是「覆盖立即生效」+「把不可逆的建表工具降为只读后，
+    //    它将不再需要用户确认即可被 AI 调用」——**那半句是假的**（台账 D4-22）。迭代三之后运行期
+    //    各道闸读的全是 getDeclaredRisk()，降风险只改界面标注。旧断言 /覆盖立即生效/ 钉的正是
+    //    这句假话，所以它必须跟着一起改，而不是把假文案改回去迁就它。
+    await expect(page.locator('.el-alert').filter({ hasText: /运行期各道闸.*声明/ }).first()).toBeVisible()
+    // 新文案必须把「真闸是哪两个」讲出来，否则管理员还是会把风险等级当成安全旋钮
+    await expect(page.locator('.el-alert').filter({ hasText: /所需权限.*真闸/ }).first()).toBeVisible()
+    // 且必须明确否认那句假话
+    await expect(page.locator('.el-alert').filter({ hasText: /不会.*绕过发布判定/ }).first()).toBeVisible()
     // 每个字段都用帮助行回显【代码默认值】，让管理员看清自己在覆盖什么
     await expect(page.getByText(/代码默认：/).first()).toBeVisible()
     // 工具名不可改（它是代码里的身份，模型按它调用）
@@ -157,6 +168,162 @@ test.describe('工具管理页（内置工具在线维护）', () => {
     await expect(row.getByText('默认', { exact: true })).toBeVisible({ timeout: 15000 })
     await expect(row.getByText('E2E 维护展示名')).toHaveCount(0, { timeout: 15000 })
     await expect(row.getByText('启用', { exact: true })).toBeVisible({ timeout: 10000 })
+  })
+})
+
+test.describe('工具管理页（B1：安全放松要二次确认 + 文案讲清代价）', () => {
+  test.setTimeout(240_000)
+
+  /**
+   * 🔴 靶子刻意选 datamodel_create（声明 IRREVERSIBLE、声明权限 infra:data-model:create）：
+   *    它是本模块风险最高的工具，也正是旧文案拿来举例的那一个 ——
+   *    「把不可逆的建表工具降为只读后，它将不再需要用户确认即可被 AI 调用」（台账 D4-22：这句是**假的**）。
+   *    文案改对没有，就该在它身上验；换个低风险工具验，等于绕开了唯一会出事的那条路径。
+   *
+   * 🔴 分工：本用例只证**界面**（弹不弹、文案说什么、角标挂不挂）。
+   *    「审计行到底进没进库、进了哪几列」由 `_b1-api-check.py` 在库上验（那边 27 条断言）。
+   *    e2e 不 shell 出去连 mysql —— 本页也没有审计查询接口，硬要在这里验库就得开后门。
+   */
+  const RELAX_TARGET = 'datamodel_create'
+  const RELAX_TARGET_PERM = 'infra:data-model:create'
+  const RELAX_REMARK = 'e2e-B1-探针-非真实放松'
+
+  /** 放松二次确认框。🔴 不能用 toHaveCount(0) 判「已关」：EP 的对话框内容首次打开后就留在 DOM 里（v-show），
+   *    关掉之后 count 仍是 1。判可见性一律用 toBeVisible/toBeHidden。 */
+  const relaxDialog = (page: Page) =>
+    page.locator('.el-dialog').filter({ hasText: '本次维护会放松安全约束' }).first()
+
+  test('降风险/删权限 ⟹ 先弹框讲清两类代价；取消不落库；确认才落库并挂警示角标', async ({
+    page,
+    request
+  }) => {
+    await login(page)
+    await gotoWithAuth(page, '/ai/agent/tooldef')
+    await page.waitForURL(LIST_URL, { timeout: 15000 })
+
+    const token = await apiLogin(request)
+    // 自净前置：清掉可能残留的覆盖，保证从「默认」态开始（上次失败留脏会让 A 段假绿）
+    await request.delete(
+      `${API_BASE_URL}/agent/tool-def/registered-reset?toolName=${encodeURIComponent(RELAX_TARGET)}`,
+      { headers: apiHeaders(token) }
+    )
+
+    await formItem(pane(page), '关键字').locator('input').fill(RELAX_TARGET)
+    await pane(page).getByRole('button', { name: /刷新/ }).first().click()
+    const targetRow = () => pane(page).locator('.el-table__row').filter({ hasText: RELAX_TARGET }).first()
+    await expect(targetRow()).toBeVisible({ timeout: 15000 })
+    await expect(targetRow().getByText('默认', { exact: true })).toBeVisible({ timeout: 10000 })
+
+    const openPanel = async () => {
+      await targetRow().getByRole('button', { name: '维护' }).click()
+      await expect(
+        page.locator('.panel-title').filter({ hasText: `维护内置工具 · ${RELAX_TARGET}` })
+      ).toBeVisible({ timeout: 15000 })
+    }
+    const save = () => page.getByRole('button', { name: /保存并生效/ }).click()
+    /** 直接问后端「现在有没有覆盖行」——比读列表上的「维护中」标签硬，标签是渲染结果、这个是状态本身 */
+    const overriddenNow = async () => {
+      const resp = await request.get(`${API_BASE_URL}/agent/tool-def/registered-list`, {
+        headers: apiHeaders(token)
+      })
+      const list = (await resp.json()).data as Array<{ toolName: string; overridden?: boolean }>
+      return list.find((t) => t.toolName === RELAX_TARGET)?.overridden === true
+    }
+
+    // ==================== A. 纯改名 ⟹ 不弹框，直接保存 ====================
+    // 🔴 这一段是「二次确认没有退化成万能的确定吗」的反向判据：没有它，一个
+    //    「保存前一律弹框」的实现会让 B~E 全绿。
+    await openPanel()
+    await formItem(page, '展示名').locator('input').fill('E2E B1 改名探针')
+    await save()
+    await expect(page.locator('.panel-title')).toHaveCount(0, { timeout: 20000 })
+    await expect(relaxDialog(page)).toBeHidden()
+    expect(await overriddenNow(), 'A：纯改名应已落覆盖行').toBe(true)
+    await targetRow().getByRole('button', { name: '恢复默认' }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
+    await expect(targetRow().getByText('默认', { exact: true })).toBeVisible({ timeout: 15000 })
+
+    // ==================== B. 降风险 + 删权限 ⟹ 弹框，两块代价都在 ====================
+    await openPanel()
+    await formItem(page, '风险等级').locator('.el-select').click()
+    await visibleDropdown(page)
+      .locator('.el-select-dropdown__item')
+      .filter({ hasText: '只读' })
+      .first()
+      .click()
+    // 表单帮助行当场标红，不必等到点保存才知道自己在放松
+    await expect(formItem(page, '风险等级')).toContainText(/低于代码默认（安全放松）/, { timeout: 10000 })
+    await expect(formItem(page, '风险等级')).toContainText(/只改界面标注/)
+
+    await formItem(page, '所需权限').locator('input').fill('')
+    await expect(formItem(page, '所需权限')).toContainText(/安全放松/, { timeout: 10000 })
+    // 必须**点名**少了哪个权限点：只说「权限变少了」管理员没法判断后果
+    await expect(formItem(page, '所需权限')).toContainText(RELAX_TARGET_PERM)
+    await expect(formItem(page, '所需权限')).toContainText(/立即生效/)
+
+    await formItem(page, '备注').locator('textarea').fill(RELAX_REMARK)
+    await save()
+
+    const dlg = relaxDialog(page)
+    await expect(dlg).toBeVisible({ timeout: 10000 })
+    // —— 风险块：必须**否认**那句旧假话，并说清真会发生什么 ——
+    // 🔴 断言用的是「跨 <b> 标签的连续文本」而不是 .* 通配：文案里那句话被 <b>不会</b> 切开，
+    //    用 /不会.*绕过/ 的话，中间夹多少别的字都算过，等于没钉住这句话本身。
+    await expect(dlg).toContainText(/不可逆\s*→\s*只读/)
+    await expect(dlg).toContainText(/只改界面上的标注/)
+    await expect(dlg).toContainText(/不会让这个工具绕过发布判定/)
+    await expect(dlg).toContainText(/界面与校验会就此互相矛盾/)
+    // —— 权限块：必须说清这一条是**立即生效**的真放松 ——
+    await expect(dlg).toContainText(RELAX_TARGET_PERM)
+    await expect(dlg).toContainText(/立即生效/)
+    await expect(dlg).toContainText(/其 AI 从此也能调用这个工具/)
+    // 两块都在（不是一个笼统的「这会放松安全约束」）
+    await expect(dlg.locator('.relax-block')).toHaveCount(2)
+    // 备注已填 ⟹ 不该再喊「备注为空」
+    await expect(dlg).not.toContainText(/当前备注为空/)
+
+    // ==================== C. 点「再看看」⟹ 一个字都不落库 ====================
+    await dlg.getByRole('button', { name: '再看看' }).click()
+    await expect(dlg).toBeHidden({ timeout: 10000 })
+    // 还停在面板上（没被顺手保存掉）
+    await expect(page.locator('.panel-title')).toBeVisible()
+    expect(await overriddenNow(), 'C：取消之后不该有任何覆盖行').toBe(false)
+
+    // ==================== D. 只降风险（权限填回声明值）⟹ 只剩风险块 ====================
+    // 🔴 这一段钉的是「两类代价**分别**呈现」：混成一块的话，管理员会为一次只改标注的操作
+    //    以为自己放开了权限。
+    await formItem(page, '所需权限').locator('input').fill(RELAX_TARGET_PERM)
+    await expect(formItem(page, '所需权限')).not.toContainText(/安全放松/, { timeout: 10000 })
+    await save()
+    await expect(dlg).toBeVisible({ timeout: 10000 })
+    await expect(dlg.locator('.relax-block')).toHaveCount(1)
+    await expect(dlg).not.toContainText(/其 AI 从此也能调用这个工具/)
+
+    // ==================== E. 确认放松 ⟹ 落库 + 列表挂警示角标 ====================
+    await dlg.getByRole('button', { name: /确认放松并保存/ }).click()
+    await expect(page.locator('.panel-title')).toHaveCount(0, { timeout: 20000 })
+    expect(await overriddenNow(), 'E：确认后应落覆盖行').toBe(true)
+
+    await expect(targetRow().getByText('维护中')).toBeVisible({ timeout: 15000 })
+    // 🔴 风险格显示的是**生效值**（只读），必须挂角标 + tooltip 说明运行期仍按声明值判定。
+    //    不挂的话，这一格就是在替一次并不存在的降级作证 —— 而这正是管理员最容易误读的时刻。
+    const riskTag = targetRow().locator('td:nth-child(5) .el-tag').first()
+    await expect(riskTag).toContainText('只读')
+    await riskTag.hover()
+    await expect(page.locator('[role="tooltip"]:visible').first()).toContainText(/代码声明为「不可逆」/, {
+      timeout: 10000
+    })
+    await expect(page.locator('[role="tooltip"]:visible').first()).toContainText(/仍按声明值判定/)
+
+    // ==================== F. 恢复默认 ⟹ 生效值回到声明值，角标随之消失 ====================
+    await page.keyboard.press('Escape')
+    await targetRow().getByRole('button', { name: '恢复默认' }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: /确定|确认/ }).click()
+    await expect(targetRow().getByText('默认', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(targetRow().locator('td:nth-child(5) .el-tag').first()).toContainText('不可逆', {
+      timeout: 15000
+    })
+    expect(await overriddenNow(), 'F：收尾应无覆盖行').toBe(false)
   })
 })
 

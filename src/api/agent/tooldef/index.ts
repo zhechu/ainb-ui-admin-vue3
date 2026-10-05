@@ -132,6 +132,19 @@ export const AgentToolDefApi = {
  * @AgentTool 代码工具的执行体与默认值仍在代码里，不可新建/删除；但「运维旋钮」
  * （展示名/说明/分组/风险/权限/启用/参数说明）可在线维护，改完【立即生效、无需重启】。
  * 覆盖按【当前租户】生效。「恢复默认」= 删覆盖行、退回代码声明。
+ *
+ * 🔴 但「立即生效」这句话对这几个旋钮的**分量完全不同**，别一视同仁（2026-10-05 实测口径，台账 D4-22）：
+ * - **enabled / permissions**：真生效。{@code AgentSecurityGateway#checkTool} 读的就是覆盖后的
+ *   {@code isEnabled()} 与 {@code getPermissions()}，改完 AI 的调用当场被放行/拦下。
+ * - **风险（riskLevel）**：只改**界面上的标注**。迭代三之后运行期各道闸（V3/V11 只读校验、Planner
+ *   工具目录分桶、agent_loop 只读限制、沙箱 mock 判定、发布判定、变更清单）读的**全是
+ *   {@code getDeclaredRisk()}（代码声明值）**，一行覆盖数据改不动它们。所以「把不可逆工具降为只读」
+ *   **不会**让它绕过发布判定或沙箱 mock，真发生的只是设计器与工具清单从此把它标成「无需确认」，
+ *   而校验仍按声明值拒它 —— 界面与校验会就此**互相矛盾**。
+ * - 展示名/说明/分组/参数说明：纯展示与 prompt 文案，无安全含义。
+ *
+ * 放松（降风险 / 删权限）要走二次确认 + 落 {@code agent_tool_override_audit} 审计行，见
+ * {@link AgentRegisteredToolUpdateVO.confirmRelax}。
  */
 export interface AgentRegisteredToolVO {
   /** 工具名（= @AgentTool name / 注册表键），不可改 */
@@ -181,6 +194,20 @@ export interface AgentRegisteredToolUpdateVO {
   enabled: boolean
   paramsSchema?: string
   remark?: string
+  /**
+   * 二次确认：本次维护**放松了安全约束**（风险调低 / 权限删少）时必须传 true。
+   *
+   * 🔴 不传或传 false 而本次确实是放松，后端直接拒（错误码 1_041_009_001），
+   *    且【覆盖行与审计行都不落库】——判定在 upsert 之前，所以「被拒的放松」不会留下
+   *    一行记录着「一次并未发生的放松」的审计（那种审计比没有审计更难查）。
+   *
+   * 🔴 为什么后端也要判、不能只靠这个确认框：确认框是给人看的，curl / 别的控制台 / 批量脚本
+   *    绕得过它。真正的闸门在后端，前端这一层只负责把代价先讲清楚再让人点头。
+   *
+   * 🔴 这不是「禁止放松」的后门。产品决策（迭代四 §11 A-Ⅲ）是「保留 + 审计 + 二次确认」：
+   *    放松仍然允许，只是要求操作人表态、并在 {@code agent_tool_override_audit} 留一行。
+   */
+  confirmRelax?: boolean
 }
 
 export const AgentRegisteredToolApi = {

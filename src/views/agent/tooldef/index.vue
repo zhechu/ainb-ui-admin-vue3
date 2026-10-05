@@ -5,6 +5,10 @@
   · 内置工具（默认）：@AgentTool 代码工具。执行体与默认值在代码里、不可新建/删除，但「运维旋钮」
     （展示名/说明/分组/风险/权限/启用/参数说明）可在线维护，改完【立即生效、无需重启】，按【当前租户】生效。
     「恢复默认」= 删覆盖行、退回代码声明。接口不分页，故按关键字/分组过滤后在前端分页。
+    🔴 「立即生效」对各旋钮分量不同（2026-10-05 实测口径，台账 D4-22）：启用/权限是真闸
+       （安全网关读的就是覆盖后的值）；**风险等级只改界面标注** —— 运行期各道闸读的全是代码
+       【声明】的风险等级，故列表在这一格被改过时挂警示角标。放松（降风险/删权限）走
+       二次确认 + agent_tool_override_audit 审计行，见 components/BuiltinToolForm.vue。
   · 自定义工具：「无 Java 代码」的工具，本质是**数据接口的 AI 包装层**，落 agent_tool_def，服务端分页。
 
   🔴 新增/编辑一律【页内面板】而非弹窗：字段多（自定义工具还要展示所绑接口的入参定义），
@@ -86,9 +90,24 @@
                 <span v-else>—</span>
               </template>
             </el-table-column>
-            <el-table-column label="风险等级" align="center" prop="riskLevel" width="110">
+            <el-table-column label="风险等级" align="center" prop="riskLevel" width="120">
               <template #default="scope">
-                <el-tag :type="riskTagType(scope.row.riskLevel)" size="small">
+                <!--
+                  🔴 被维护改过风险等级时挂一个警示角标 + tooltip：界面显示的是【生效值】，
+                     而运行期各道闸读的是【代码声明值】，两者从此不一致（台账 D4-22）。
+                     不标出来的话，这一格就是在替一次并不存在的降级作证。
+                -->
+                <el-tooltip
+                  v-if="isRiskOverridden(scope.row)"
+                  placement="top"
+                  :content="`代码声明为「${riskLabel(scope.row.declaredRiskLevel)}」。运行期各道闸（只读校验、发布判定、agent_loop 只读限制、沙箱 mock）仍按声明值判定；这里的「${riskLabel(scope.row.riskLevel)}」只是界面标注，不会让它真的降级。`"
+                >
+                  <el-tag :type="riskTagType(scope.row.riskLevel)" size="small">
+                    {{ riskLabel(scope.row.riskLevel) }}
+                    <Icon icon="ep:warning" class="ml-3px align-middle" />
+                  </el-tag>
+                </el-tooltip>
+                <el-tag v-else :type="riskTagType(scope.row.riskLevel)" size="small">
                   {{ riskLabel(scope.row.riskLevel) }}
                 </el-tag>
               </template>
@@ -308,6 +327,17 @@ const riskLabel = (risk: string) => RISK_OPTIONS.find((r) => r.value === risk)?.
 // 🔴 riskTagType 不在本页定义：权威副本在 workflow/nameCatalog.ts（画布下拉的风险色点、config/index.vue 都吃它）。
 // 这里原本存着一份逐字等价的 if 链，漏改的表现是「同一风险等级两个页面不同色」，
 // 更坏的是未知等级静默回落成灰 info —— 灰在本模块的语义是「只读/安全」。
+
+/**
+ * 这一行的风险等级是否被在线维护改过（生效值 ≠ 代码声明值）。
+ *
+ * 🔴 为什么要单独标出来（台账 D4-22）：迭代三之后运行期各道闸读的**全是 getDeclaredRisk()**，
+ *    所以「把不可逆降成只读」并不会让它绕过发布判定或沙箱 mock，只会让界面标成「无需确认」。
+ *    列表上只显示生效值的话，管理员看到的是一个**自己刚改出来的、与校验口径不一致的**标签，
+ *    却没有任何线索提示这一点 —— 而这恰恰是最容易被误读成「我成功把它降级了」的时刻。
+ */
+const isRiskOverridden = (row: AgentRegisteredToolVO) =>
+  !!row.declaredRiskLevel && row.riskLevel !== row.declaredRiskLevel
 
 /** config 只有 {code,mode}，解析失败就当作没绑（旧数据里的 HTTP config 会走到这一支，显示 —） */
 const parseConfig = (row: AgentToolDefVO): { code?: string; mode?: string } => {
