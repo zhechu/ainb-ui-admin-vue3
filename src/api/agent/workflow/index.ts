@@ -203,7 +203,24 @@ export interface AgentNodeExecutionVO {
   id: number
   executionId: number
   nodeId: string
+  /**
+   * 节点显示名（执行当时的快照，迭代六 D2）。流程后来改了节点名，这里的既有行不回填；
+   * 列加上之前的老行为空。
+   */
+  nodeName?: string
+  /**
+   * 所属 sub_workflow / iteration / agent_loop 节点的**裸** id；空 = 顶层节点（迭代六 B5-1）。
+   * 🔴 不是自引用外键：那三种节点自身不落 trace 行，拿它去 trace 列表里找父行必然找不到。
+   * 🔴 嵌套 ≥2 层时只有直接父，祖父链还原不出来。
+   */
+  parentNodeId?: string
   nodeType: string
+  /**
+   * tool 节点调用的工具标识（迭代六 D2，抽屉「工具」列的数据来源）。
+   * 🔴 为空有**三**种含义，后端分不出来，所以前端不许把它渲染成异常：
+   * 不是 tool 节点 / agent_loop 的 act 行（每步现选工具，按构造就没有单一 toolId）/ 老行。
+   */
+  toolId?: string
   status: string
   attempt: number
   modelId?: number

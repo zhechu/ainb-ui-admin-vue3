@@ -30,12 +30,14 @@
               size="small"
               border
             >
-              <el-table-column
-                label="节点 id"
-                prop="nodeId"
-                min-width="140"
-                show-overflow-tooltip
-              />
+              <!-- 🔴 节点 id 保持显示机器 id（与设计器里画的一致，运维就是拿它对回去找节点），
+                   显示名（node_name，迭代六 D2）挂在 title 上 —— 与隔壁「类型」列「中文在外、原始 type 在 title」
+                   同一个套路。不单独开一列：子表已经 7 列，而名字对排障是辅助信息不是定位信息。 -->
+              <el-table-column label="节点 id" min-width="140" show-overflow-tooltip>
+                <template #default="scope">
+                  <span :title="scope.row.nodeName">{{ scope.row.nodeId }}</span>
+                </template>
+              </el-table-column>
               <!-- 🔴 类型中文化（重构 S1 / L1）：原来直出 condition.rule 这类 DSL 原始 type，
                    运维看执行历史时得先背一遍 13 种类型名。原始 type 留在 title 里，排障时悬停可看。 -->
               <el-table-column label="类型" width="130" show-overflow-tooltip>
@@ -45,6 +47,13 @@
                   }}</span>
                 </template>
               </el-table-column>
+              <!-- 工具（迭代六 D2）：这一列以前**压根不存在**，因为后端 trace 行里就没有 tool_id ——
+                   tool 节点执行时明明把 toolId 传给了工具执行器（还强校验了非空），却没落库，
+                   于是运维看到一行失败的 tool trace 只知道「某个工具炸了」。
+                   🔴 空格子**不要**渲染成告警标：为空有三种含义，其中「agent_loop 的 act 行」是按构造
+                      永远为空的（每步现选只读工具，不存在单一 toolId），给它打标会把每一轮循环都染成黄色、
+                      真出问题的行反而看不出来。详见 AgentNodeExecutionVO.toolId 的注释。 -->
+              <el-table-column label="工具" prop="toolId" min-width="120" show-overflow-tooltip />
               <el-table-column label="状态" prop="status" width="110">
                 <template #default="scope">
                   <el-tag :type="execTagType(scope.row.status)" size="small">

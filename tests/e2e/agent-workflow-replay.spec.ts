@@ -12,6 +12,10 @@ import { login, gotoWithAuth } from './helpers/auth'
  * 🔴 0 LLM token：seed 的流程只含一个只读 tool 节点（data_interface_list），全链路不调模型。
  *   beforeAll 真跑一次 run-stream 造出「执行实例 + 节点级 trace」，回放渲染的就是这份真实 trace。
  *
+ * 🔴 第二条用例顺带钉住「节点 trace 落库三列」（迭代六 D2：node_name / tool_id / parent_node_id）。
+ *   放这里是因为本文件的 seed 恰好是唯一现成的「真跑出来的 tool 节点 trace 行」，且 node.name（'list'）
+ *   刻意与 node.id（'step_1'）不同 —— 相同的话「名字没落库、前端把 id 显示两遍」也是绿的。
+ *
  * 前置：后端 48080 + 前端 dev :80 在跑；库里有 test_demo_* 数据接口（tool 节点数据源，无则返回空列表仍 SUCCESS）。
  * 自 seed 自净：afterAll 停用造的 chatflow（PUBLISHED 不可删；执行行留作惰性历史，不影响功能）。
  */
@@ -161,5 +165,78 @@ test.describe('节点级执行回放画布（增量15）', () => {
     // 关闭回放对话框（exact 只匹配页脚「关闭」，避开右上角 X）
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(dialog).toBeHidden({ timeout: 10000 })
+  })
+
+  test('节点 trace 落库三列：node_name / tool_id / parent_node_id（迭代六 D2）', async ({ page }) => {
+    // ===== 第一层：接口层（DO → RespVO）=====
+    // 🔴 为什么非走接口不可：BeanUtils.toBean 是**按字段名**映射的，名字打错它**静默跳过**——
+    //    编译过、后端单测全绿、这一列永远空。这就是本模块头号缺陷「配了但不生效且无提示」的形状，
+    //    而 NodeTraceRecorderTest 那 7 条单测只能证明 DO 上有值，证明不了它能出到线上。
+    const exec = await (
+      await api('/agent/workflow/execution/page?pageNo=1&pageSize=10&workflowDefId=' + wfId)
+    ).json()
+    const executionId = exec?.data?.list?.[0]?.id
+    expect(executionId, '取不到执行实例：' + JSON.stringify(exec)).toBeTruthy()
+
+    const traceBody = await (
+      await api('/agent/workflow/node-trace/list?executionId=' + executionId)
+    ).json()
+    const traces: any[] = traceBody?.data ?? []
+    expect(traces.length, '一条 trace 都没落库：' + JSON.stringify(traceBody)).toBeGreaterThan(0)
+
+    // 合成端点不落 trace 行（回放画布上的 START/END 是前端补的），否则回放会把它们当执行过的节点染色
+    expect(
+      traces.filter((t) => t.nodeId === 'START' || t.nodeId === 'END'),
+      '合成端点不该有 trace 行'
+    ).toHaveLength(0)
+
+    // 取末次尝试：seed 流程只跑一次就该只有一行，但失败重试会多一行，这里不该因重试而误红
+    const stepRows = traces.filter((t) => t.nodeId === 'step_1')
+    expect(stepRows.length, 'seed 的 step_1 没有 trace 行：' + JSON.stringify(traces)).toBeGreaterThan(
+      0
+    )
+    const t = stepRows.at(-1)
+
+    // 🔴 node_name：'list' ≠ 'step_1'，所以这条断言真的能区分「记了名字」和「把 id 又抄了一遍」
+    expect(t.nodeName, '节点显示名没落库（node_name）').toBe('list')
+    // 🔴 tool_id：这一列以前压根不存在，运维看到一行失败的 tool trace 只知道「某个工具炸了」
+    expect(t.toolId, 'tool 节点调的哪个工具没落库（tool_id）').toBe('data_interface_list')
+    // 🔴 parent_node_id：顶层节点为 NULL。用 ?? null 而不是 toBeUndefined —— 断言不该绑在
+    //    Jackson 是否序列化 null 字段这种与业务无关的策略上
+    expect(t.parentNodeId ?? null, '顶层节点不该有 parent_node_id').toBeNull()
+
+    // ===== 第二层：浏览器层（RespVO → VO → 模板）=====
+    await login(page)
+    await gotoWithAuth(page, '/ai/agent/workflow')
+
+    const search = page.locator('input[placeholder="请输入流程编码"]')
+    await search.fill(code)
+    await search.press('Enter')
+
+    const row = page.locator('.el-table__body tr').filter({ hasText: code }).first()
+    await expect(row).toBeVisible({ timeout: 15000 })
+
+    await row.getByRole('button', { name: '执行历史' }).click()
+    const drawer = page.locator('.el-drawer').filter({ hasText: '执行历史' }).first()
+    await expect(drawer).toBeVisible({ timeout: 15000 })
+
+    // 展开执行行 → 懒加载节点级 trace 子表（onExpandChange 才发请求）
+    const execRow = drawer.locator('.el-table__body tr').first()
+    await expect(execRow).toBeVisible({ timeout: 15000 })
+    await execRow.locator('.el-table__expand-icon').click()
+
+    const sub = drawer.locator('.el-table__expanded-cell .el-table').first()
+    const subRow = sub.locator('.el-table__row').first()
+    await expect(subRow).toBeVisible({ timeout: 15000 })
+
+    // 🔴 判据：「工具」列真渲染出 toolId（新增列，此前不存在）
+    await expect(sub).toContainText('data_interface_list')
+
+    // 🔴 判据：「节点 id」格子里显示机器 id，显示名挂在 title 上（刻意不单独占一列，子表已 7 列）。
+    //    这一条与上面的 toContainText 是两件事：toContainText 只证明串出现在子表某处，
+    //    这条才证明它落在「工具」那一列、而名字落在 title 属性上。
+    const idCell = subRow.locator('td').first().locator('span')
+    await expect(idCell).toHaveText('step_1')
+    await expect(idCell).toHaveAttribute('title', 'list')
   })
 })
