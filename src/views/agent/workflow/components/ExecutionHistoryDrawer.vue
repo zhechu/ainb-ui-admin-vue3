@@ -13,14 +13,14 @@
   落 S13 / 批二，见 §7.4-G 推荐的 G1）。这不是漏项，S13 会往 onResume 那个确认框里补。
 -->
 <template>
-  <el-drawer v-model="visible" :title="`执行历史 · ${title}`" size="65%" append-to-body destroy-on-close>
-    <el-table
-      v-loading="loading"
-      :data="list"
-      stripe
-      row-key="id"
-      @expand-change="onExpandChange"
-    >
+  <el-drawer
+    v-model="visible"
+    :title="`执行历史 · ${title}`"
+    size="65%"
+    append-to-body
+    destroy-on-close
+  >
+    <el-table v-loading="loading" :data="list" stripe row-key="id" @expand-change="onExpandChange">
       <el-table-column type="expand">
         <template #default="{ row }">
           <div class="px-40px py-8px">
@@ -30,12 +30,19 @@
               size="small"
               border
             >
-              <el-table-column label="节点 id" prop="nodeId" min-width="140" show-overflow-tooltip />
+              <el-table-column
+                label="节点 id"
+                prop="nodeId"
+                min-width="140"
+                show-overflow-tooltip
+              />
               <!-- 🔴 类型中文化（重构 S1 / L1）：原来直出 condition.rule 这类 DSL 原始 type，
                    运维看执行历史时得先背一遍 13 种类型名。原始 type 留在 title 里，排障时悬停可看。 -->
               <el-table-column label="类型" width="130" show-overflow-tooltip>
                 <template #default="scope">
-                  <span :title="scope.row.nodeType">{{ nodeTypeMeta(scope.row.nodeType).label }}</span>
+                  <span :title="scope.row.nodeType">{{
+                    nodeTypeMeta(scope.row.nodeType).label
+                  }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="状态" prop="status" width="110">
@@ -48,7 +55,12 @@
               <el-table-column label="尝试" prop="attempt" width="60" align="center" />
               <el-table-column label="token" prop="totalTokens" width="80" align="right" />
               <el-table-column label="耗时(ms)" prop="durationMs" width="90" align="right" />
-              <el-table-column label="失败原因" prop="errorMsg" min-width="160" show-overflow-tooltip />
+              <el-table-column
+                label="失败原因"
+                prop="errorMsg"
+                min-width="160"
+                show-overflow-tooltip
+              />
             </el-table>
             <el-empty
               v-if="!traceLoading[row.id] && (tracesMap[row.id] ?? []).length === 0"
@@ -68,14 +80,24 @@
         </template>
       </el-table-column>
       <el-table-column label="当前节点" prop="currentNode" min-width="130" show-overflow-tooltip />
+      <!-- 🔴 与「当前节点」并列摆，就是为了让这两格的差别看得见（迭代六 D1）：当前节点是「最后**跑完了**的」，
+           挂起闸口是「被 interruptsBefore 拦下、正在等的」。以前只有前者，救援按钮因此说不清要恢复哪里 ——
+           挂起节点只存在内存的 interruptedNode 里，刷新即丢，抽屉上根本没有这一格。 -->
+      <el-table-column label="挂起闸口" min-width="130" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span v-if="row.suspendNode">{{ row.suspendNode }}</span>
+          <el-tooltip
+            v-else-if="row.status === 'INTERRUPTED'"
+            :content="SUSPEND_NODE_UNKNOWN"
+            placement="top"
+          >
+            <el-tag type="warning" size="small">未知</el-tag>
+          </el-tooltip>
+        </template>
+      </el-table-column>
       <el-table-column label="触发用户" prop="userId" width="90" align="center" />
       <el-table-column label="耗时(ms)" prop="durationMs" width="90" align="right" />
-      <el-table-column
-        label="开始时间"
-        prop="beginTime"
-        width="180"
-        :formatter="dateFormatter"
-      />
+      <el-table-column label="开始时间" prop="beginTime" width="180" :formatter="dateFormatter" />
       <el-table-column label="失败原因" prop="errorMsg" min-width="160" show-overflow-tooltip />
       <el-table-column label="操作" width="180" align="center" fixed="right">
         <template #default="{ row }">
@@ -171,9 +193,7 @@ const EXEC_LABELS: Record<string, string> = {
   COMPENSATION_FAILED: '补偿失败'
 }
 const execLabel = (status: string) => EXEC_LABELS[status] ?? status
-const execTagType = (
-  status: string
-): 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
+const execTagType = (status: string): 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
   if (status === 'SUCCEEDED') return 'success'
   if (status === 'FAILED' || status === 'COMPENSATION_FAILED') return 'danger'
   if (status === 'INTERRUPTED') return 'warning'
@@ -234,6 +254,19 @@ const resumeFeedback = (approved: boolean) => ({
 })
 
 /**
+ * 「说不清挂在哪」这一档的统一措辞（列表的「未知」标签与恢复确认框共用一份）。
+ *
+ * 🔴 刻意抽成常量而不是两处各写一遍：这两处一旦措辞漂移，运维在列表看到的和在确认框看到的
+ * 就成了两件事，而这个字段的全部意义就是「让人知道要恢复哪里」。
+ *
+ * 后端取不到挂起节点时**刻意**留 NULL 而不回落成「最后跑完的节点」
+ * （`DslToStateGraphCompiler#resolveSuspendNodeId`）：NULL 只是说不清在哪恢复，
+ * 错值会把救援的人指到一个早已跑完的节点上，还让他确信自己是对的。所以这里必须直说「未知」。
+ */
+const SUSPEND_NODE_UNKNOWN =
+  '后端挂起时没能从 checkpoint 取到挂起节点，说不清会在哪个闸口续跑。仍可恢复，但请先确认这条执行的最后节点符合你的预期。'
+
+/**
  * 恢复 / 拒绝一条挂起的执行。
  *
  * <p>⚠️ 这不是「改个状态」的只读操作：确认之后流程会**从断点真跑下去**，
@@ -242,13 +275,23 @@ const resumeFeedback = (approved: boolean) => ({
 const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
   const verb = approved ? '恢复' : '拒绝'
   try {
-    // 🔴 纯文本插值，不开 dangerouslyUseHTMLString：currentNode 是服务端数据。
-    // 🔴 措辞不能说「当前停在节点 X」：current_node 只在**节点跑完**时写
-    //    （AgentWorkflowExecutionServiceImpl#runGraph 的 else 分支），挂起节点记在
-    //    interruptedNode 里但**没有落库**，所以这一格是「最后跑完的那个」，
-    //    真正的挂起点在它后面。说成「停在 X」会让运维去查一个其实已经跑完的节点。
+    // 🔴 纯文本插值，不开 dangerouslyUseHTMLString：suspendNode / currentNode 都是服务端数据。
+    // 🔴 措辞分两档，别混成一档（迭代六 B3-10）：
+    //    · suspend_node 有值 → 说「正挂在闸口 X」。X 是被 interruptsBefore 拦下、**还没跑**的那个节点，
+    //      恢复后第一个执行的就是它，所以这句话是可以照着去核对的。
+    //    · 为空 → **不能**改口说「停在 currentNode」。current_node 只在**节点跑完**时写
+    //      （AgentWorkflowExecutionServiceImpl#runGraph 的 else 分支），它记的是最后一个跑完的节点，
+    //      真正的挂起点在它后面；说成「停在 X」会让运维去查一个其实已经跑完的节点。
+    //      为空只有两种可能：非挂起态（本按钮只在 INTERRUPTED 行出现，故排除），或后端挂起时取不到
+    //      checkpoint 快照（那一刻意返回 null 而不回落成错值）。所以这一档必须直说「未知」，
+    //      与列表里那个「未知」标签同一份措辞（SUSPEND_NODE_UNKNOWN）。
+    const where = row.suspendNode
+      ? `正挂在闸口「${row.suspendNode}」上，恢复后第一个执行的就是它（它最后跑完的节点是「${
+          row.currentNode || '未知'
+        }」）。`
+      : `说不清挂在哪个闸口上。${SUSPEND_NODE_UNKNOWN}（它最后跑完的节点是「${row.currentNode || '未知'}」）`
     await ElMessageBox.confirm(
-      `执行 #${row.id} 最后跑完的节点是「${row.currentNode || '未知'}」，它停在这之后的挂起点上。` +
+      `执行 #${row.id} ${where}` +
         (approved
           ? '点「仍要恢复」= 以「同意」从断点续跑，后续节点会真执行（该写的库、该发的审批都会真的发生），不是预览。'
           : '点「仍要拒绝」= 以「不同意」从断点续跑，流程走拒绝分支，该分支上的节点同样会真执行。') +

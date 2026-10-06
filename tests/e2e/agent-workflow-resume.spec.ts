@@ -141,6 +141,23 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
       )
       if (hit) {
         seenExecId = hit.id
+        // 🔴 判据 0（迭代六 D1；也是「挂起节点 id 取错」那个缺陷在端到端侧唯一的钉子）：
+        //    本 spec seed 的形状是 START → list(tool) → gate(hitl.confirm)，正是实测表里
+        //    InterruptionMetadata.node() 会给错值的那一档 —— 它给的是最后跑完的 list，
+        //    而被 interruptsBefore 拦下的其实是 gate。
+        //    🔴 两列都断言、且它们必须不相等：只断言 suspendNode==='gate' 是弱的
+        //    （后端把 current_node 也写成 gate 的话，两列一起错也能过）；把 currentNode==='list'
+        //    一并钉住，才说明这两列真的各记各的。
+        //    后端那一半（两处 Service 改用 DslToStateGraphCompiler#resolveSuspendNodeId）
+        //    没有任何单测覆盖 —— 退回去不会让 agent 模块任何一条变红，这里是它唯一的验证口。
+        expect(
+          hit.suspendNode,
+          'suspend_node 应是被拦下的闸口 gate，而不是最后跑完的 list：' + JSON.stringify(hit)
+        ).toBe('gate')
+        expect(
+          hit.currentNode,
+          'current_node 应是最后跑完的 list（两列若相同，说明落库口径又被合并成一件事了）'
+        ).toBe('list')
         return hit
       }
       await new Promise((r) => setTimeout(r, 1000))
@@ -217,6 +234,14 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
     await expect(suspended.getByRole('button', { name: '恢复' })).toBeVisible()
     await expect(suspended.getByRole('button', { name: '拒绝' })).toBeVisible()
 
+    // 🔴 判据 1b（迭代六 D1）：抽屉上真有「挂起闸口」这一格，且值是 gate 而不是 list。
+    //    修订前这一格**压根不存在** —— 挂起节点只暂存在内存的 interruptedNode 里，刷新即丢，
+    //    于是运维在列表上只能看到「当前节点 list」，而流程其实停在 list 之后的 gate 上。
+    await expect(
+      suspended.locator('td').filter({ hasText: new RegExp('^\\s*gate\\s*$') }).first(),
+      '「挂起闸口」列没渲染出 gate（列没加、字段没进 VO、或后端没落 suspend_node）'
+    ).toBeVisible()
+
     // 🔴 判据 2：180px 的操作列没把三个 link 按钮挤到被裁掉。
     //    toBeVisible 检不出裁剪（元素照样布局在 overflow:hidden 的格子里），只能量滚动宽。
     const overflow = await suspended
@@ -228,10 +253,13 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
       })
     expect(overflow, '操作列被裁剪，三个按钮摆不下').toBeLessThanOrEqual(1)
 
-    // 🔴 判据 3：确认框的措辞必须跟着库里真值走。
-    //    current_node 是「最后跑完的那个节点」（updateCurrentNode 只在非挂起分支写，
-    //    AgentWorkflowExecutionServiceImpl#runGraph），挂起节点从不落库（#74）。
-    //    说成「当前停在节点 X」会把运维支去查一个其实早跑完的节点，故连反面一起钉。
+    // 🔴 判据 3：确认框的措辞必须跟着库里真值走，且必须**点名闸口**（迭代六 B3-10）。
+    //    suspend_node 落库之后（D1），确认框能说「正挂在闸口「gate」上，恢复后第一个执行的就是它」——
+    //    这一句是本判据的全部价值：运维点下去之前知道会续跑哪个节点。
+    //    🔴 同时保留「最后跑完的节点是「list」」那半，且**两半必须都在**：
+    //    只留闸口会让人以为 current_node 没用了（它仍是 trace/回放的入口），
+    //    只留 current_node 就是本判据修订前的形态（把运维支去查一个早跑完的节点）。
+    //    current_node 只在**节点跑完**时写（AgentWorkflowExecutionServiceImpl#runGraph 的 else 分支）。
     await suspended.getByRole('button', { name: '拒绝' }).click()
     const box = page.locator('.el-message-box').filter({ hasText: '拒绝挂起的执行' }).first()
     await expect(box).toBeVisible({ timeout: 10000 })
@@ -239,10 +267,18 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
     await expect(
       box.getByText(`最后跑完的节点是「${saidNode}」`, { exact: false }).first()
     ).toBeVisible()
-    await expect(box.getByText('挂起点', { exact: false }).first()).toBeVisible()
+    // 🔴 最锋利的一条：确认框必须报出**闸口**（suspend_node），而不只是最后跑完的节点。
+    //    这两个值在本 spec 的形状下必然不同（list vs gate），所以它不可能靠 current_node 蒙对。
+    await expect(
+      box.getByText(`正挂在闸口「${execReject.suspendNode}」上`, { exact: false }).first(),
+      '确认框没点名挂起闸口：suspend_node 没落库、没进 RespVO、或前端没读它'
+    ).toBeVisible()
     // 「真执行」提醒必须在：不给这句话，运维会以为「拒绝」只是打个标记
     await expect(box.getByText('真执行', { exact: false }).first()).toBeVisible()
     expect(await box.getByText('当前停在节点', { exact: false }).count()).toBe(0)
+    // 🔴 反面：suspend_node 有值时绝不能走「说不清挂在哪个闸口」那一档措辞。
+    //    两档混用会让运维在明明有真值时读到一句「未知」，那比一直没有这一格更难查。
+    expect(await box.getByText('说不清挂在哪个闸口', { exact: false }).count()).toBe(0)
 
     await box.getByRole('button', { name: '仍要拒绝' }).click()
 

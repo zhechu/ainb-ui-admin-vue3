@@ -175,6 +175,16 @@ export interface AgentWorkflowExecutionVO {
   /** CREATED/RUNNING/INTERRUPTED/SUCCEEDED/FAILED/COMPENSATING/COMPENSATED/COMPENSATION_FAILED */
   status: string
   currentNode?: string
+  /**
+   * 挂起时正在等待的闸口节点 id（迭代六 D1，列 `suspend_node`）。
+   *
+   * 🔴 与 `currentNode` 不是一回事：后者是「最后一个**跑完了**的节点」，本字段是「被 interruptsBefore
+   * 拦下、还没跑的那个」。两者只在挂起节点正好是 START 之后第一个时才相等。
+   * 「恢复」确认框必须用本字段，否则会把运维指到一个早已跑完的节点上。
+   *
+   * 为空 = 非挂起态，或后端挂起时取不到 checkpoint 快照（那一刻意不回落成错值）。
+   */
+  suspendNode?: string
   failedAtNode?: string
   userId?: number
   errorMsg?: string
