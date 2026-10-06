@@ -230,7 +230,20 @@ export interface ChangeManifestVO {
    * 所以降级时**必须**咽回「本次不产生任何写操作」那句安心话（见 ChangeManifestCard）。
    */
   degraded?: boolean
-  workflow: ManifestWorkflowRefVO
+  /**
+   * ⚠️ **可空**：后端真算出来的清单一定带它，但前端自己造的降级清单不带
+   * （见 `views/bpm/processInstance/detail/manifestFallback.ts` 的 `parseFailedManifest`）——
+   * 那种情况下载荷压根没解析出来，流程叫什么名字平台无从知晓。
+   * 🔴 此时**不要**回填一个空对象：`ChangeManifestCard` 的 `workflowLabel` 走的是
+   * `w.name || w.code || '未命名流程'` + `w.version == null ? '草稿' : …`，
+   * 一个 `{}` 会被它渲染成「未命名流程（草稿）」——
+   * 那是替一条我们读不出来的流程编了一个「它是草稿」的断言。
+   * ⚠️ 留空不是「那一行整条消失」：那行 `<div>` 没有 `v-if`，仍会渲染，只是
+   *    `workflowLabel` 返回空串 ⟹ **不印任何字**（旁边会留一小段空白）。诚实，但不是零痕迹。
+   * 🔴 留空不会炸：`ChangeManifestCard` 是全仓唯一读 `.workflow` 的地方，四处访问
+   *    （`workflowLabel` / `triggerNote` / markdown 导出 / 模板里那行）全部走了可选链或 `!w` 早退。
+   */
+  workflow?: ManifestWorkflowRefVO | null
   scope?: ManifestScopeVO | null
   /** 一句话总述，风险色条旁边就是它 */
   headline: string
@@ -471,7 +484,12 @@ export interface ManifestUntrustedInputVO {
   summary?: string | null
   /** 🔴 前三种（CHAT/WEBHOOK/FORM_EVENT）是**平台外**的人能直接投喂的，
    *  后两种（RETRIEVAL/TOOL_RESULT）是平台内部产物 —— 标红时按这个分轻重 */
-  sourceKind: 'TRIGGER_CHAT' | 'TRIGGER_WEBHOOK' | 'TRIGGER_FORM_EVENT' | 'RETRIEVAL' | 'TOOL_RESULT'
+  sourceKind:
+    | 'TRIGGER_CHAT'
+    | 'TRIGGER_WEBHOOK'
+    | 'TRIGGER_FORM_EVENT'
+    | 'RETRIEVAL'
+    | 'TOOL_RESULT'
   sourceLabel?: string | null
   sourceVar?: string | null
   sinkKind?: string | null

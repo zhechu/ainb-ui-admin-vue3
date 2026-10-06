@@ -187,6 +187,7 @@ import PrintDialog from './PrintDialog.vue'
 //    （null 不等于「没有变更」、NOT_PROBED 不是「不通过」）抄漏一条就是让审批人放心点通过
 import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
 import type { ChangeManifestVO } from '@/api/agent/workflow'
+import { readAgentManifest } from './manifestFallback'
 
 defineOptions({ name: 'BpmProcessInstanceDetail' })
 const props = defineProps<{
@@ -348,28 +349,22 @@ const activeTab = ref('form')
  * agent 流程挂到 BPM 审批上时的变更清单（S3 建渲染，S6 供数据）。
  *
  * 🔴 键名 `agent_change_manifest`，由 S6 在启动流程实例时冻结进流程变量。
- *    `null`（页签不出现）现在**只**应由「这条流程不是 agent 流程」或「作者关掉了 injectManifest」产生。
- *    清单构建失败不再走 null：后端注入一份 `degraded: true` 的降级清单，页签照常出现并说明失败
- *    —— 「没算出来」和「不改什么」在界面上必须是两句话，否则审批人会在盲批不可逆动作时看到一片安静。
  *
- * 🔴 冻结再读回来可能是对象、也可能是 JSON 字符串（取决于 BPM 的变量序列化），两种都接。
- *    解析失败一律当「没有」：这块渲染不出来顶多少一块信息，
- *    绝不能因为一个变量把整个审批详情页搞挂。
- *    ⚠️ 已知缺口（存量清单 #107）：`raw` 有值却解析不出来时这里返回 null ⟹ 页签消失 ⟹
- *    审批人读到的是「这条流程不改什么」，与上一条纪律相反。要补成降级清单，得先给
- *    `ManifestStatsVO` 那 15 个必填计数找一个不必逐个填零的形状，故本次未动，登记在案。
+ * 🔴 全部判定策略（含「读不出来时怎么办」）已抽到 `./manifestFallback`，
+ *    由 `manifestFallback.spec.ts` 钉住。抽出去的理由不是整洁：内联在 setup 体里时
+ *    它**没有任何强制点** —— 前端单测只收 `src` 下的 `*.spec.ts`，`.vue` 不在其中，
+ *    而「读不出来就沉默」正是缺陷 C10 本身。
+ *
+ * 🔴 这个 computed 只有**一种**情况返回 null：流程变量压根没有值
+ *    （「这条流程不是 agent 流程」或「作者关掉了 injectManifest」）——
+ *    这两种情况下页签不出现是对的，平台从没答应过要给一份清单。
+ *    `raw` 有值却读不出来时返回一份 `degraded: true` 的降级清单，页签照常出现并说明失败：
+ *    「没算出来」和「不改什么」在界面上必须是两句话，
+ *    否则审批人会在盲批不可逆动作时看到一片安静。
  */
-const agentManifest = computed<ChangeManifestVO | null>(() => {
-  const raw = processInstance.value?.formVariables?.agent_change_manifest
-  if (!raw) return null
-  if (typeof raw === 'object') return raw as ChangeManifestVO
-  try {
-    const parsed = JSON.parse(raw as string)
-    return parsed && typeof parsed === 'object' ? (parsed as ChangeManifestVO) : null
-  } catch {
-    return null
-  }
-})
+const agentManifest = computed<ChangeManifestVO | null>(() =>
+  readAgentManifest(processInstance.value?.formVariables?.agent_change_manifest)
+)
 
 /** 初始化 */
 const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表
