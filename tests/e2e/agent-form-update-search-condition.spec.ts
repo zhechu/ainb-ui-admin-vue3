@@ -22,32 +22,39 @@ import { deleteWorkflowDraftsByCode } from './helpers/workflow'
  * 拿它守卫 D4-20，下一轮可能因为模型换了个写法就红（假警报），
  * 也可能反过来因为碰巧写对而掩盖真回归。所以本文件把形状钉死，真发那条只作旁证。
  *
- * <h3>🔴 顺带量到的缺陷：第 ③ 条用例钉住它，**不是**认可它</h3>
- * 「改表加查询条件」有两条 patch 路线，实测结果完全相反
+ * <h3>🔴 第 ③ 条用例：路线 A 曾经是缺陷现场，2026-10-08 修好后改成钉**正确行为**</h3>
+ * 「改表加查询条件」有两条 patch 路线，修复前实测结果完全相反
  * （原始探针脚本 `C:/code/yudao/_tmp/r08-probe-patch.py`，输出 `r08-probe-out.txt`）：
  *
  * - **路线 B**（工具合法）：`patch.listConf.searchItems` 里加一项 ⟹ 查询条件**真的落地**，
  *   列表页查询区多出一项并且真能筛（第 ② 条用例）。
- * - **路线 A**（模型真发时用的那条）：`patch.formFields` 里塞**字段描述符对象** +
+ * - **路线 A**（模型真发时用的那条，缺陷 D4-31）：`patch.formFields` 里塞**字段描述符对象** +
  *   `searchable:true` ⟹ 工具返回 `code=0`「表单已修改」，但
  *   ①`listConf.searchItems` **一个都没多**（查询条件压根没落地）；
  *   ②`formFields` 是**整键替换**，原来 2 条 form-create 规则被换成 1 条；
  *   ③存进去的那条是描述符的 JSON 文本（`{"field":"memo",…,"searchable":true}`），
  *   **不是** form-create 规则（没有 `type`/`props`）⟹ 控件渲染不出来。
  *
- * 根因不在「模型不听话」，而在**教法缺口**：`FormSaveDraftTool`（新建表单）会把描述符
- * 转成规则、并按 `searchable=true` 生成 `searchItems`；而 `FormUpdateTool`（改表单）
- * 全文件对 `searchItems` / `listConf` / `searchable` **零提及** —— 它的 paramsSchema
- * 压根没教过「改表时怎么加查询条件」。模型于是把新建那套形状照搬过来，
- * 工具一声不响地收下、存成垃圾、还回一句「表单已修改」。
+ * 根因不在「模型不听话」，而在**教法缺口 + 合并语义缺失**：`FormSaveDraftTool`（新建表单）
+ * 会把描述符转成规则、并按 `searchable=true` 生成 `searchItems`；而 `FormUpdateTool`（改表单）
+ * 全文件对 `searchItems` / `listConf` / `searchable` **零提及**，`applyPatch` 又是一律
+ * 「整键覆盖」—— 模型把新建那套形状照搬过来，工具一声不响地收下、存成垃圾、还回一句「表单已修改」。
  * 这正是 AGENTS.md 点名的本子系统头号缺陷形态：「配置保存成功但不生效且无提示」。
  *
- * 🔴 **本轮只报不修**（方案 §9 的不做清单 + §2.5「撞上再报，不要自行决定」的同一纪律）。
- * 连带后果必须说清楚：D4-20 修好之后，变更预演**会**照路线 A 的 DSL 画出「查询条件」区块
- * （第 ① 条用例），因为清单的职责是如实反映 DSL 写了什么；但那份 DSL 真跑起来
- * 并不会产出这个查询条件。也就是「清单说的」与「跑出来的」在路线 A 上对不上 ——
- * 该补的是**校验器**的一条规则（`form_update.patch.formFields` 的元素必须是字符串规则，
- * 不是描述符对象），不是把清单再改回装看不见。
+ * <h3>修复的形状（第 ③ 条用例现在钉的就是这些）</h3>
+ * `FormUpdateTool` 对 `formFields` 改成**按 field 合并**（其余键仍是整键覆盖），
+ * 并与 `FormSaveDraftTool` 共用同一个 `FormFieldFactory` 做描述符→规则/列/查询项/映射的转换：
+ * - 已有字段只改动它提到的那几格，**没提到的字段与没提到的配置项原样保留**；
+ * - `searchable:true` 真的写进 `listConf.searchItems`（widget/operator 与前端 `searchWidget.ts` 同源推断）；
+ * - 新增字段连带补 `listConf.columns` 与 `tableBinding.fieldMapping`，否则「填了不落库」；
+ * - 🔴 删除必须显式写 `{"field":"该字段","remove":true}`：合并语义下**空数组等于什么都不改**，
+ *   而整份替换的旧语义下空数组等于删光 —— 两种意思不能共用一个写法；
+ * - 描述符与原始 rule 两种写法都收，但**不许混在一项里**（同时给 `type` 与 `widget` 会报错）。
+ *
+ * ⚠️ 修复前这里写的是「本轮只报不修」，并建议补一条**校验器**规则去拒掉描述符写法。
+ *    那条建议已被推翻：真发时 `patch` 是规划期**冻进 DSL** 的（def #467 / #570 都是描述符形状），
+ *    运行期不会再问模型 ⟹ 拒掉它等于整条流程失败，用户看到的是一张点了确认却报错的卡。
+ *    与其拒，不如按新建那套语义把它**接住**：模型会这么写，是因为它学的就是新建的教法。
  *
  * <h3>数据自净</h3>
  * 表单夹具绑的是既有的 `test_e2e_form_runtime`（`xpy-2026-09-10-e2e-form-runtime-fixture.sql`
@@ -179,9 +186,15 @@ async function readForm(request: APIRequestContext, token: string, formId: numbe
   expect(body.code, `读表单失败：${body.msg ?? ''}`).toBe(0)
   const raw = body.data?.listConf
   const conf = typeof raw === 'string' && raw ? JSON.parse(raw) : raw
+  const rawBinding = body.data?.tableBinding
+  const binding =
+    typeof rawBinding === 'string' && rawBinding ? JSON.parse(rawBinding) : rawBinding
   return {
-    searchItems: (conf?.searchItems ?? []) as Array<Record<string, unknown>>,
-    formFields: (body.data?.formFields ?? []) as unknown[]
+    searchItems: (conf?.searchItems ?? []) as Array<Record<string, any>>,
+    columns: (conf?.columns ?? []) as Array<Record<string, any>>,
+    formFields: (body.data?.formFields ?? []) as unknown[],
+    // 没有映射的字段在界面上能填、提交也提示成功，但值根本不会落库 —— 所以要一起读出来核
+    fieldMapping: (binding?.fieldMapping ?? {}) as Record<string, any>
   }
 }
 
@@ -437,16 +450,40 @@ test.describe('D4-20：改表也要能新增查询条件（浏览器实证）', 
     }
   })
 
-  test('③ 缺陷现场：模型真发时用的 patch.formFields 描述符路线，查询条件落不了地，却报「表单已修改」', async ({
+  /**
+   * 路线 A —— 模型真发时用的那条 —— 现在必须**从头到尾真的通**
+   *
+   * 🔴 这条用例 2026-10-08 之前钉的是**错误行为**（表征测试）。缺陷 D4-31 修好后按文件里
+   *    原先写好的交代把断言翻过来，而不是删掉这条用例：删了就等于把这个缺陷重新变成没人看的。
+   *    三条旧断言（searchItems 仍是 1 项 / formFields 被整份替换成 1 条 / 存进去的是描述符文本）
+   *    现在逐条反过来钉，并且**接着在浏览器里走一遍**：改表 → 重新发布 → 查询区多出「主页」
+   *    → 填值点搜索 → 发出去的条件里真有 `field=memo` → 列表只剩命中的那一条。
+   *    单测能证明落库形状对了，但「配了却不生效」这个缺陷形态只有在真 DOM 上才验得出来。
+   */
+  test('③ 模型真发时用的 patch.formFields 描述符路线：查询条件真的落地，且原有控件一条不少', async ({
+    page,
     request
   }) => {
     const token = await apiLogin(request)
     let form: FormFixture | undefined
     try {
       form = await createForm(request, token, [SEARCH_MOBILE])
+      await publishForm(request, token, form)
+      await seed(request, token, form.code)
+
       const before = await readForm(request, token, form.id)
       expect(before.searchItems, '夹具前提：初始只有一个查询项').toHaveLength(1)
       expect(before.formFields, '夹具前提：初始两条 form-create 规则').toHaveLength(2)
+
+      // 改之前先到列表页站一次：既要证明「主页」的查询框原本不存在（下面那次出现是本次改出来的），
+      // 也顺带确认发布过的版本真能打开
+      await login(page)
+      await gotoWithAuth(page, runtimePath(form.code))
+      await expect(page.locator('.el-table').first()).toBeVisible({ timeout: 60_000 })
+      await expect(searchItemOf(page, '手机号').first()).toBeVisible()
+      await expect(searchItemOf(page, '主页'), '还没改表，「主页」的查询项就该不存在').toHaveCount(
+        0
+      )
 
       // 与 def #570（2026-10-08 对照轮 case 59 真发产物）逐字同形的 patch
       const data = await runFormUpdate(request, token, form.id, {
@@ -464,36 +501,94 @@ test.describe('D4-20：改表也要能新增查询条件（浏览器实证）', 
         ]
       })
 
-      // 🔴 下面这些断言钉的是**当前的错误行为**，不是期望行为。
-      //    修好之后这条用例会红 —— 那时应当把断言**改成**「searchItems 多了一项、
-      //    原有规则还在」，而不是删掉这条用例。删了就等于把这个缺陷重新变成没人看的。
+      // ---------- ① 说清改了什么：D4-31 最难查的一环是「返回成功却什么都没发生」 ----------
+      const message = String(data?.message ?? '')
+      expect(message, '工具没有报成功，形状变了，重新量').toContain('表单已修改')
       expect(
-        String(data?.message ?? ''),
-        '工具竟然没报成功？那这条缺陷的形状变了，重新量'
-      ).toContain('表单已修改')
+        message,
+        '没提醒「必须重新发布」的话，AI 会告诉用户改好了，而用户看到的还是旧版本'
+      ).toContain('重新发布')
+      expect(data?.searchItemsAdded, '工具没把「查询项加了哪个」说出来').toEqual(['memo'])
+      expect(data?.fieldsUpdated, 'memo 是合并进已有控件，不是新增').toEqual(['memo'])
+      expect(data?.fieldsAdded ?? [], '不该凭空多出控件').toEqual([])
+      expect(data?.repairedFields ?? [], '夹具里没有旧版留下的描述符，不该触发就地修复').toEqual(
+        []
+      )
 
       const after = await readForm(request, token, form.id)
-      // ① 查询条件压根没落地
+
+      // ---------- ② 查询条件真的落地了（旧行为：一个都没多） ----------
       expect(
         after.searchItems,
-        'searchable:true 没有变成 listConf.searchItems —— 查询条件没落地，但工具报了成功'
-      ).toHaveLength(1)
-      expect(after.searchItems.some((s) => s.field === 'memo')).toBe(false)
-      // ② formFields 是整键替换，原有字段的规则被冲掉
+        `searchable:true 没有变成 listConf.searchItems，实际是 ${JSON.stringify(after.searchItems)}`
+      ).toHaveLength(2)
+      const memoItem = after.searchItems.find((s) => s.field === 'memo')
+      expect(memoItem, '原有的 mobile 查询项被挤掉了').toBeTruthy()
+      expect(after.searchItems.some((s) => s.field === 'mobile'), '同上').toBe(true)
+      // widget/operator 与前端 searchWidget.ts 同源推断：input → TEXT + LIKE
+      expect(memoItem, `查询项的形状不对：${JSON.stringify(memoItem)}`).toMatchObject({
+        label: '主页',
+        widget: 'TEXT',
+        operator: 'LIKE'
+      })
+
+      // ---------- ③ formFields 是按 field 合并，不是整份替换（旧行为：2 条被换成 1 条） ----------
       expect(
         after.formFields,
-        '原来两条规则被整键替换成一条 —— 另一个字段（手机号）从表单里消失了'
-      ).toHaveLength(1)
-      // ③ 存进去的是描述符 JSON 文本，不是 form-create 规则
-      const stored = after.formFields[0]
-      expect(typeof stored, '存进去的竟然不是字符串？形状变了，重新量').toBe('string')
-      const parsed = JSON.parse(String(stored))
-      expect(parsed.searchable, '存进去的确实是描述符（带 searchable）').toBe(true)
+        `原来两条规则被冲掉了，实际 ${after.formFields.length} 条 —— 手机号会从表单里消失`
+      ).toHaveLength(2)
+      const rules = after.formFields.map((raw) => JSON.parse(String(raw)))
+      const mobileRule = rules.find((r) => r.field === 'mobile')
+      const memoRule = rules.find((r) => r.field === 'memo')
+      expect(mobileRule, '没被 patch 提到的字段必须原样留着').toMatchObject(FIELD_MOBILE)
+
+      // ---------- ④ 存进去的是 form-create 规则，不是描述符文本（旧行为：没有 type/props） ----------
+      expect(memoRule, 'memo 的控件不见了').toBeTruthy()
+      expect(memoRule.type, '没有 type ⟹ 运行时渲染不出控件').toBe('input')
+      expect(memoRule.title).toBe('主页')
       expect(
-        parsed.type,
-        '描述符里没有 form-create 规则的 type ⟹ 运行时渲染不出控件'
-      ).toBeUndefined()
-      expect(parsed.props).toBeUndefined()
+        typeof memoRule.props,
+        `form-create 靠 props 挂控件属性，缺了就是一个空壳：${JSON.stringify(memoRule)}`
+      ).toBe('object')
+      // required 是描述符的键，规则里对应的是 $required；列可空 ⟹ 不该被抬成必填
+      expect(memoRule.$required, 'required:false 没有翻译成 $required').toBe(false)
+      for (const descriptorKey of ['searchable', 'widget', 'column', 'jdbcType', 'operator', 'required']) {
+        expect(
+          memoRule[descriptorKey],
+          `描述符的键 ${descriptorKey} 漏进了 rule —— form-create 认不得它，` +
+            `渲染出来是个坏控件：${JSON.stringify(memoRule)}`
+        ).toBeUndefined()
+      }
+
+      // ---------- ⑤ 落库映射还在（没有它，界面上能填、提交也提示成功，值却不进库） ----------
+      expect(
+        after.fieldMapping.memo,
+        `memo 的 fieldMapping 丢了：${JSON.stringify(after.fieldMapping)}`
+      ).toMatchObject({ column: 'memo', jdbcType: 'VARCHAR' })
+
+      // ---------- ⑥ 浏览器实证：重新发布后，用户真的能按「主页」查 ----------
+      await publishForm(request, token, form)
+      await gotoWithAuth(page, runtimePath(form.code))
+      await expect(page.locator('.el-table').first()).toBeVisible({ timeout: 60_000 })
+
+      const memo = searchItemOf(page, '主页').first()
+      await expect(memo, '路线 A 改出来的查询项没有出现在列表页查询区').toBeVisible()
+      await expect(memo.locator('input').first()).toBeVisible()
+
+      await memo.locator('input').first().fill(`r08-hit-${TS}`)
+      const rowCount = () => page.locator('.el-table__body-wrapper tbody tr').count()
+      const pagePromise = page.waitForResponse(
+        (r) => r.url().includes(`/runtime/${form!.code}/page`) && r.request().method() === 'POST'
+      )
+      await page.getByRole('button', { name: '搜索' }).click()
+      const response = await pagePromise
+      const sent = JSON.parse(response.request().postData() || '{}')
+      const condition = (sent.conditions || []).find((c: any) => c.field === 'memo')
+      expect(
+        condition,
+        `查询区画出来了但没拼进查询条件，发出去的是 ${JSON.stringify(sent.conditions)}`
+      ).toBeTruthy()
+      await expect.poll(rowCount, { timeout: 15_000 }).toBe(1)
     } finally {
       await deleteForm(request, token, form)
     }

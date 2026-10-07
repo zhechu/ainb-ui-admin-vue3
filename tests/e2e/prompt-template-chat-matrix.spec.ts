@@ -3,6 +3,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
 import { CLICK_TIMEOUT_MS, STEP_TIMEOUT_MS, bounded, boundedText } from './helpers/terminal'
+import {
+  cleanupOwnedConversations,
+  listConversationIdSet,
+  watchOwnedConversations,
+  type ConversationCleanupReport,
+  type ConversationOwnership
+} from './helpers/conversation-ownership'
 
 /**
  * T1：CHAT 类示例逐条真发（迭代二方案 §6.1）
@@ -571,6 +578,15 @@ const knownDefects: string[] = []
 
 let token = ''
 let baselineConversationIds = new Set<number>()
+/**
+ * 本轮**自己认领**的会话账本
+ *
+ * <p>🔴 afterAll 只删账本里的东西，判据与实现见 `helpers/conversation-ownership.ts`
+ *    （T2 / headless-gate 共用同一份）。墓碑在那边：原先的差集口径删掉过一条不属于本轮的会话。
+ *
+ * <p>⚠️ 可能仍是 undefined：beforeAll 就红了、真发用例压根没起跑，此时没有页面可挂钩子。
+ */
+let ownership: ConversationOwnership | undefined
 let baselineDefIds = new Set<number>()
 let allCases: CaseRow[] = []
 const failures: string[] = []
@@ -592,8 +608,6 @@ const rows: string[] = []
 
 const H = () => apiHeaders(token)
 const caseApi = `${API_BASE_URL}/agent/prompt-template-case/simple-list`
-const conversationPageApi = `${API_BASE_URL}/agent/assistant/conversation/page`
-const conversationDeleteApi = `${API_BASE_URL}/agent/assistant/conversation/delete`
 const defPageApi = `${API_BASE_URL}/agent/workflow-def/page`
 const defDeleteApi = `${API_BASE_URL}/agent/workflow-def/delete`
 
@@ -619,23 +633,6 @@ async function fetchCases(request: APIRequestContext): Promise<CaseRow[]> {
   const body = await resp.json()
   expectOk(body, '取示例清单')
   return (body.data ?? []) as CaseRow[]
-}
-
-/** 翻完所有页：只取第一页的话，本用例自己造的 42 条会把基线挤出去，差集就不准了 */
-async function listConversationIds(request: APIRequestContext): Promise<Set<number>> {
-  const ids = new Set<number>()
-  for (let pageNo = 1; pageNo <= 50; pageNo++) {
-    const resp = await request.get(conversationPageApi, {
-      headers: H(),
-      params: { pageNo, pageSize: 100 }
-    })
-    const body = await resp.json()
-    expectOk(body, `取会话分页 pageNo=${pageNo}`)
-    const list = body?.data?.list ?? []
-    for (const item of list) ids.add(item.id as number)
-    if (list.length < 100) break
-  }
-  return ids
 }
 
 /**
@@ -690,7 +687,7 @@ function isRefusal(text: string): boolean {
 test.describe('T1 · CHAT 类示例逐条真发', () => {
   test.beforeAll(async ({ request }) => {
     token = await apiLogin(request)
-    baselineConversationIds = await listConversationIds(request)
+    baselineConversationIds = await listConversationIdSet(request, H)
     baselineDefIds = await listDefIds(request)
     allCases = await fetchCases(request)
   })
@@ -708,15 +705,23 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
         rows.push(`\n---\n\n⚠️ 收尾重新登录失败，本轮残留**没有清理**，需人工核\n`)
       }
     }
-    let deletedConv = 0
     let deletedDef = 0
     if (token) {
-      const nowConv = await listConversationIds(request)
-      for (const id of nowConv) {
-        if (baselineConversationIds.has(id)) continue
-        const r = await request.delete(conversationDeleteApi, { headers: H(), params: { id } })
-        expectOk(await r.json(), `删除会话 ${id}`)
-        deletedConv++
+      // 🔴 会话只删**本轮自己认领的**：凭据是产品写进 localStorage 的「最近一次会话」id。
+      //    原先按「跑后 − 跑前」求差集，而差集回答的是「库里多了什么」、不是「多的这条是**谁**建的」——
+      //    T1 一轮要跑 45 分钟，这么长的窗口里别人（或另一个 e2e）新建的会话必被扫进来一起删掉。
+      //    T2 在 2026-10-07 真删过一条不属于本轮的会话：不可逆、无报错，
+      //    报告还印一句「删除本轮新建 1 条（基线原样保留）」，读起来像干得漂亮。
+      //    🔴 末尾那条 leftover 断言也换了口径：用别人的数据判自己的成败，
+      //       和用别人的数据决定删谁，是同一个错误的两面
+      let conversationCleanup: ConversationCleanupReport | undefined
+      if (ownership) {
+        conversationCleanup = await cleanupOwnedConversations({
+          request,
+          headers: H,
+          ownership,
+          baseline: baselineConversationIds
+        })
       }
       const nowDef = await listDefIds(request)
       for (const id of nowDef) {
@@ -725,27 +730,29 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
         expectOk(await r.json(), `删除流程 def ${id}`)
         deletedDef++
       }
-      // 🔴 差集必须非空的场景下不许是 0：这一轮真发了 N 条，每条一个新会话。
-      //    删出来 0 条只有两种可能 —— 要么上面某步静默失败了，要么这轮压根没发出去。
-      //    两种都得让人看见，不能拿一句「基线原样保留」盖过去
-      const afterConv = await listConversationIds(request)
+      // 🔴 绝对值必须一起印，不能只印差集。
+      //    差集口径对**历史残留天生免疫**：上一轮被人手杀掉时 afterAll 没跑、留下的孤儿会话，
+      //    这一轮 beforeAll 会把它当基线吃进去，于是差集永远是 0、核账永远绿 ——
+      //    而库里的垃圾一轮一轮往上叠，没人看得出来。2026-10-04 就真叠过一次
+      //    （11:47 那轮卡死被杀，留下会话 446 与消息 880/881，是人工用 SQL 查出来才清掉的）。
+      //    印上绝对值，读报告的人一眼就能发现「跑后会话 2 条」和「基线本来就该 1 条」对不上。
+      const afterConv = await listConversationIdSet(request, H)
       const afterDef = await listDefIds(request)
-      const leftoverConv = afterConv.size - baselineConversationIds.size
       const leftoverDef = afterDef.size - baselineDefIds.size
       rows.push(
         `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
-          `- 会话：跑前 ${baselineConversationIds.size} 条 → 删除本轮新建 ${deletedConv} 条 → 跑后多出 ${leftoverConv} 条\n` +
+          (conversationCleanup
+            ? conversationCleanup.lines.join('')
+            : `- 会话：本轮没跑到真发（未挂监听），一条都不删；基线 ${baselineConversationIds.size} 条原样保留\n`) +
           `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n` +
-          // 🔴 绝对值必须一起印，不能只印差集。
-          //    差集口径对**历史残留天生免疫**：上一轮被人手杀掉时 afterAll 没跑、留下的孤儿会话，
-          //    这一轮 beforeAll 会把它当基线吃进去，于是差集永远是 0、核账永远绿 ——
-          //    而库里的垃圾一轮一轮往上叠，没人看得出来。2026-10-04 就真叠过一次
-          //    （11:47 那轮卡死被杀，留下会话 446 与消息 880/881，是人工用 SQL 查出来才清掉的）。
-          //    印上绝对值，读报告的人一眼就能发现「跑后会话 2 条」和「基线本来就该 1 条」对不上。
           `- 绝对值（供人工核对历史残留）：跑后会话共 ${afterConv.size} 条 [${[...afterConv].join(',')}]，` +
           `流程 def 共 ${afterDef.size} 条 [${[...afterDef].join(',')}]\n`
       )
-      expect(leftoverConv, `会话没清干净，库里多出 ${leftoverConv} 条本轮残留（§6.2：残留非空即视为该轮失败）`).toBe(0)
+      expect(
+        conversationCleanup?.leftoverOwned ?? [],
+        `本轮自建的会话没清干净，库里还留着 ${(conversationCleanup?.leftoverOwned ?? []).join(', ')}` +
+          `（§6.2：残留非空即视为该轮失败）。别人的会话不算在这里 —— 见上面那几行 ⚠️`
+      ).toHaveLength(0)
       expect(leftoverDef, `流程 def 没清干净，库里多出 ${leftoverDef} 条本轮草稿（§6.2：残留非空即视为该轮失败）`).toBe(0)
     }
     // 🔴 全量重写而不是 append：rows 是**全量**累积的，用例体里每跑完一条就已经整份重写过一次，
@@ -1024,6 +1031,11 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
     const textarea = page.locator('textarea').first()
     await expect(textarea).toBeVisible({ timeout: 20_000 })
 
+    // 🔴 认领会话：产品收到 META 事件后把 conversationId 写进 localStorage 的「最近一次会话」，
+    //    那是「这条会话是本轮建的」唯一可信的凭据。afterAll 只删账本里的东西 ——
+    //    判据、钩子与拆台子都在 helpers/conversation-ownership.ts，T2 / headless-gate 共用一份
+    ownership = await watchOwnedConversations(page)
+
     /**
      * 🔴 两个计数器必须分开，合用一个会**污染后面所有条**
      *
@@ -1105,6 +1117,9 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
         await page.getByRole('button', { name: /发\s*送/ }).click({ timeout: CLICK_TIMEOUT_MS })
         // 🔴 点完就记账，不等断言：见上面 dispatched / answered 的注释
         dispatched++
+        // 会话认领数与它比，才能发现「META 一条都没抓到」这种抓取失效。
+        // 同样刻意不等断言：会话在后端已经建出来了，用例后面红不红与它无关
+        ownership?.noteSend()
         // 「停止」一闪而过的答案采不到，但这里采不到就说明**压根没进流式** ——
         // 那是要报的。真要遇到快速答案误红，改法是 race 两种可见性，不是删掉这一步
         // 🔴 这句预言在 2026-10-04 14:36 那轮应验了，只是应验在**下一步（⑥）**上：

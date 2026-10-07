@@ -3,6 +3,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { API_BASE_URL, apiHeaders, apiLogin, gotoWithAuth, login } from './helpers/auth'
 import { STEP_TIMEOUT_MS, boundedText, waitTerminal } from './helpers/terminal'
+import {
+  cleanupOwnedConversations,
+  listConversationIdSet,
+  watchOwnedConversations,
+  type ConversationCleanupReport,
+  type ConversationOwnership
+} from './helpers/conversation-ownership'
 
 /**
  * A4-d · 无头流程的人工闸口：真发一轮，验「规划器 + 体检 + 自修正回路」三件事合起来能不能收敛
@@ -90,13 +97,20 @@ import { STEP_TIMEOUT_MS, boundedText, waitTerminal } from './helpers/terminal'
  *   · access token 只活 1800 秒，而真发一轮可能几十分钟 ⟹ **afterAll 必须重新登录**再收尾，
  *     否则清单取成空集、删 0 条、还印一句像成功的话（T1 首轮就这么漏了 42 条会话）。
  *   · 所有清单类接口先验 `code`，再信 `data`（`expectOk`）。
- *   · 残留核账：会话与流程 def 都必须回到基线，**残留非空即视为该轮失败**（方案 §6.2）。
+ *   · 残留核账：**自己认领的**会话与流程 def 都必须清干净，残留非空即视为该轮失败（方案 §6.2）。
+ *     🔴 会话那半 2026-10-08 换了口径：原先也按「跑后 − 跑前」的差集判成败，
+ *     于是同一时间窗里别人新建的会话会把本轮判红 —— 用别人的数据决定删谁、
+ *     和用别人的数据判自己成败，是同一个错误的两面，两边一起改了。
  *   · 🔴 建表是 IRREVERSIBLE，本用例**只出草稿、绝不点「确认并运行」**，也绝不调 /publish。
  *     ⑧ 那份构造样本走的是 /validate，它只读不落库（端点自己的 @Operation 写着「只读不落库」）。
  *
  * ## 与其它用例的关系
- * 本文件**不与 T1/T2 同时跑**：三者的 afterAll 都是「拿基线做差集然后删」，
- * 并发时彼此新建的会话会被对方当成残留删掉。
+ * 本文件**仍不与 T1/T2 同时跑**，但理由已经收窄（2026-10-08）：
+ *   · 会话不再是理由 —— 三者都改成只删自己认领的（`helpers/conversation-ownership.ts`），
+ *     并发时彼此的会话会被如实报成 ⚠️「别人的会话，原样保留」，不会互删。
+ *   · 流程 def 仍是理由 —— 那半还是「跑后 − 跑前」的差集口径（刻意如此：用例中途红掉时
+ *     来不及认领的草稿会变成没人管的孤儿，只有差集兜得住），并发时会把对方新建的
+ *     **草稿** def 当成自己的残留删掉。已发布的 def 后端不许删，所以波及面止于草稿。
  */
 
 const REPORT_DIR = path.join(__dirname, '../../_evidence')
@@ -111,8 +125,6 @@ const REPORT_STAMPED = path.join(
 const PLAN_TIMEOUT = 600_000
 
 const H = () => apiHeaders(token)
-const conversationPageApi = `${API_BASE_URL}/agent/assistant/conversation/page`
-const conversationDeleteApi = `${API_BASE_URL}/agent/assistant/conversation/delete`
 const defPageApi = `${API_BASE_URL}/agent/workflow-def/page`
 const defGetApi = `${API_BASE_URL}/agent/workflow-def/get`
 const defDeleteApi = `${API_BASE_URL}/agent/workflow-def/delete`
@@ -169,6 +181,15 @@ type Dsl = { trigger?: { type?: string } | null; nodes?: DslNode[]; edges?: DslE
 
 let token = ''
 let baselineConversationIds = new Set<number>()
+/**
+ * 本轮**自己认领**的会话账本
+ *
+ * <p>🔴 afterAll 只删账本里的东西，判据与实现见 `helpers/conversation-ownership.ts`
+ *    （T1 / T2 共用同一份）。墓碑在那边：原先的差集口径删掉过一条不属于本轮的会话。
+ *
+ * <p>⚠️ 可能仍是 undefined：beforeAll 就红了、真发用例压根没起跑，此时没有页面可挂钩子。
+ */
+let ownership: ConversationOwnership | undefined
 let baselineDefIds = new Set<number>()
 const rows: string[] = []
 
@@ -190,22 +211,6 @@ function flushReport(): void {
  */
 function expectOk(body: any, what: string): void {
   expect(body?.code, `${what}失败（code=${body?.code}）：${body?.msg ?? ''}`).toBe(0)
-}
-
-async function listConversationIds(request: APIRequestContext): Promise<Set<number>> {
-  const ids = new Set<number>()
-  for (let pageNo = 1; pageNo <= 50; pageNo++) {
-    const resp = await request.get(conversationPageApi, {
-      headers: H(),
-      params: { pageNo, pageSize: 100 }
-    })
-    const body = await resp.json()
-    expectOk(body, `取会话清单第 ${pageNo} 页`)
-    const list = body.data?.list ?? []
-    for (const item of list) ids.add(item.id as number)
-    if (list.length < 100) break
-  }
-  return ids
 }
 
 async function listDefs(request: APIRequestContext): Promise<DefRow[]> {
@@ -363,7 +368,7 @@ function syntheticUnguardedHeadlessDsl(): Dsl {
 test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', () => {
   test.beforeAll(async ({ request }) => {
     token = await apiLogin(request)
-    baselineConversationIds = await listConversationIds(request)
+    baselineConversationIds = await listConversationIdSet(request, H)
     baselineDefIds = new Set((await listDefs(request)).map((d) => d.id))
     rows.push(
       `# A4-d · 无头流程的人工闸口\n\n` +
@@ -382,14 +387,21 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
         rows.push(`\n---\n\n⚠️ 收尾重新登录失败，本轮残留**没有清理**，需人工核\n`)
       }
     }
-    let deletedConv = 0
     let deletedDef = 0
     if (token) {
-      for (const id of await listConversationIds(request)) {
-        if (baselineConversationIds.has(id)) continue
-        const r = await request.delete(conversationDeleteApi, { headers: H(), params: { id } })
-        expectOk(await r.json(), `删除会话 ${id}`)
-        deletedConv++
+      // 🔴 会话只删**本轮自己认领的**（产品写进 localStorage 的那个「最近一次会话」id）。
+      //    原先按「跑后 − 跑前」求差集：差集回答的是「库里多了什么」，不是「多的这条是谁建的」，
+      //    于是同一时间窗里别人新建的会话会被当成残留删掉 —— 2026-10-07 真删过一条。
+      //    末尾那条 leftover 断言同时换了口径：用别人的数据判自己的成败，
+      //    和用别人的数据决定删谁，是同一个错误的两面
+      let conversationCleanup: ConversationCleanupReport | undefined
+      if (ownership) {
+        conversationCleanup = await cleanupOwnedConversations({
+          request,
+          headers: H,
+          ownership,
+          baseline: baselineConversationIds
+        })
       }
       for (const d of await listDefs(request)) {
         if (baselineDefIds.has(d.id)) continue
@@ -397,15 +409,20 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
         expectOk(await r.json(), `删除流程 def ${d.id}`)
         deletedDef++
       }
-      const leftoverConv = (await listConversationIds(request)).size - baselineConversationIds.size
       const leftoverDef = (await listDefs(request)).filter((d) => !baselineDefIds.has(d.id)).length
       rows.push(
         `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
-          `- 会话：跑前 ${baselineConversationIds.size} 条 → 删除本轮新建 ${deletedConv} 条 → 跑后多出 ${leftoverConv} 条\n` +
+          (conversationCleanup
+            ? conversationCleanup.lines.join('')
+            : `- 会话：本轮没跑到真发（未挂监听），一条都不删；基线 ${baselineConversationIds.size} 条原样保留\n`) +
           `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n` +
           `- 物理表：**本用例不建表**（只出草稿 + 只读体检），故不核表数\n`
       )
-      expect(leftoverConv, `会话没清干净（§6.2：残留非空即视为该轮失败）`).toBe(0)
+      expect(
+        conversationCleanup?.leftoverOwned ?? [],
+        `本轮自建的会话没清干净：${(conversationCleanup?.leftoverOwned ?? []).join(', ')}` +
+          `（§6.2：残留非空即视为该轮失败）。别人的会话不算在这里 —— 见上面那几行 ⚠️`
+      ).toHaveLength(0)
       expect(leftoverDef, `流程 def 没清干净（§6.2：残留非空即视为该轮失败）`).toBe(0)
     }
     flushReport()
@@ -454,8 +471,14 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
     await gotoWithAuth(page, '/ai/agent/assistant')
     const textarea = page.locator('textarea').first()
     await expect(textarea).toBeVisible({ timeout: 20_000 })
+    // 🔴 认领会话：产品收到 META 事件后会把 conversationId 写进 localStorage 的
+    //    「最近一次会话」，那是「这条会话是本轮建的」唯一可信的凭据。
+    //    afterAll 只删账本里的东西（判据见 helpers/conversation-ownership.ts）
+    ownership = await watchOwnedConversations(page)
     await textarea.fill(PROMPT)
     await page.getByRole('button', { name: /发\s*送/ }).click()
+    // 点到了就算发了一次：认领数与它比，才能发现「钩子压根没生效」这种抓取失效
+    ownership?.noteSend()
 
     // ---------- ② 走了 BUILD 路径 ----------
     const { outcome: card, sawPlanning, errorText } = await waitTerminal(page, PLAN_TIMEOUT)
