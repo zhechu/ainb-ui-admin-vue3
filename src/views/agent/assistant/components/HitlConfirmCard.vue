@@ -38,6 +38,25 @@
         </code>
       </div>
 
+      <!-- 🔴 执行实例编号必须显示出来（台账 B3-8）：它是去「执行历史」里找回这条执行的唯一钥匙。
+           此前它只活在组件 state 里，页面上一个字都没有 —— 连接一断，用户手上就只剩一句
+           「连接中断，请重试」，既不知道有哪条执行、也不知道去哪儿恢复。
+           ⚠️ 单独一行、不并在上面「挂起节点」那行里：后端从 checkpoint 取不到挂起节点时
+           nodeId 是空的（那行整个不渲染），而 executionId 照样有 —— 正是那种时候最需要它。
+           ⚠️ 这行是**常驻**的，不只在报错时出现：宿主的 el-alert 在 `item.hitl` 存在时压根不渲染
+           （模板那条 `v-if="!item.cardStatus && !item.hitl"`），把提示只写进 errorMsg 等于没写。 -->
+      <div
+        v-if="executionId != null"
+        data-testid="hitl-execution-id"
+        class="text-12px text-[var(--el-text-color-secondary)] mt-6px"
+      >
+        执行编号：
+        <code class="px-4px py-1px bg-[var(--el-fill-color)] rounded">{{ executionId }}</code>
+        <span class="ml-6px"
+          >聊天里恢复不了时，可凭这个编号到{{ EXECUTION_HISTORY_ROUTE }}里查看并恢复。</span
+        >
+      </div>
+
       <!-- 「点同意之后将会做什么」（S3 / Req 3 的落点）。
            🔴 三态要分清，别让历史消息上挂一堆假的「清单不可用」：
            - 有清单 → 渲染清单
@@ -102,6 +121,7 @@
 <script setup lang="ts">
 import type { ChangeManifestVO } from '@/api/agent/workflow'
 import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
+import { EXECUTION_HISTORY_ROUTE } from '@/views/agent/workflow/resumeRoute'
 
 defineOptions({ name: 'HitlConfirmCard' })
 
@@ -110,6 +130,13 @@ const props = defineProps<{
   content?: string
   /** 挂起所在的节点 id */
   nodeId?: string
+  /**
+   * 挂起的执行实例编号（台账 B3-8）。
+   * 🔴 有值就必须显示：连接中断后这是用户唯一能拿去找回这条执行的凭据。
+   *    null / undefined = 宿主确实没有（例如后端 WORKFLOW_CONFIRM 没带 id），此时整行不渲染 ——
+   *    宁可不显示，也不要显示一个假的编号把人支去查一条不存在的执行。
+   */
+  executionId?: number | null
   /**
    * 挂起节点的显示名（S3）：与进度句「正在执行：xx」同一份来源。
    * 空则回落 nodeId —— 但**不要**反过来把 nodeId 当显示名传进来，那等于没做这件事。

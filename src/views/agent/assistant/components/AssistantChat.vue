@@ -107,6 +107,7 @@
                 :content="item.hitl.content"
                 :node-id="item.hitl.nodeId"
                 :node-name="item.hitl.nodeName"
+                :execution-id="item.hitl.executionId"
                 :manifest="item.hitl.manifest"
                 :manifest-loading="item.hitl.manifestLoading"
                 :manifest-error="item.hitl.manifestError"
@@ -404,6 +405,7 @@ import {
 } from '@/views/agent/workflow/nameCatalog'
 import PublishGateDialog from '@/views/agent/workflow/components/PublishGateDialog.vue'
 import { precheckPublish } from '@/views/agent/workflow/publishGate'
+import { executionResumeHint } from '@/views/agent/workflow/resumeRoute'
 import SuggestionBar from './SuggestionBar.vue'
 import MessageLoadingDots from './MessageLoadingDots.vue'
 import WorkflowDraftCard from './WorkflowDraftCard.vue'
@@ -1388,7 +1390,20 @@ const handleSend = async (text?: string) => {
       streaming.value = false
       typewriter.flush()
       if (assistantMessage.status === 'STREAMING') {
-        markError(assistantMessage, '连接中断，请重试')
+        /**
+         * 🔴 B3-8：报错文案必须带上执行编号，否则用户手里只剩「请重试」，
+         * 不知道已经有一条执行建起来了、更不知道去哪儿找它 —— 于是重发问题，又跑一遍又计一次费。
+         *
+         * ⚠️ 这条路径上编号只可能来自 WORKFLOW_CONFIRM（后端 `AgentChatEvent` 只在
+         * `workflowConfirm(...)` 里塞 executionId，PLANNING/MESSAGE 都不带），故读 hitl.executionId。
+         * 🔴 而 hitl 一旦有值，下面这条 el-alert 就**不渲染**了（模板 `v-if="!item.cardStatus && !item.hitl"`），
+         * 所以编号另有一条常驻出路：HitlConfirmCard 自己把 executionId 印在卡片上。
+         * 两边都改才叫「页面上留着编号」—— 只改这里，在最常见的形态（撞了闸口后断连）下是看不见的。
+         */
+        markError(
+          assistantMessage,
+          `连接中断，请重试${executionResumeHint(assistantMessage.hitl?.executionId)}`
+        )
       }
       throw err
     },
@@ -1537,12 +1552,21 @@ const handleHitlDecision = async (item: any, approved: boolean) => {
       streaming.value = false
       typewriter.flush()
       hitl.running = false
+      /**
+       * 🔴 B3-8：三处里这一处最要紧。用户刚点了「同意」，resume 请求发出去了，然后连接断了 ——
+       * 后端可能已经把这条执行从 INTERRUPTED 推成 RUNNING（甚至已经跑完、副作用已经发生），
+       * 也可能压根没收到。前端**无从判断**，唯一诚实的出路是把编号交到用户手里，
+       * 让他去执行历史看那条执行**现在**到底是什么状态，而不是照着「请重试」再点一次同意。
+       *
+       * ⚠️ 编号在这里必然有值（入口 `!hitl.executionId` 就 return 了），故 hint 必然非空。
+       */
+      const hint = executionResumeHint(hitl.executionId)
       if (answerMessage.status === 'STREAMING') {
-        markError(answerMessage, '连接中断，请重试')
+        markError(answerMessage, `连接中断，请重试${hint}`)
       }
       if (item.cardStatus && !hitl.error) {
         item.runResult = 'error'
-        item.runError = '续跑连接中断，请重试'
+        item.runError = `续跑连接中断，请重试${hint}`
       }
       throw err
     },
@@ -1817,9 +1841,20 @@ const runWorkflow = (item: any): Promise<void> => {
       (err) => {
         // 🔴 必须 throw：onerror 不抛异常 fetchEventSource 就会自动无限重连，反复计费
         if (!item.runResult) {
+          /**
+           * 🔴 B3-8：编号取自 run-stream 的 META（`item.runExecutionId`）；
+           * 若 INTERRUPTED 已到达，`item.hitl.executionId` 上也有同一个编号，故 ?? 兜一层。
+           * 两者都没有 = META 都没回来，那条执行压根没建起来 ⟹ hint 是空串
+           * （🔴 不能凭空造一个编号：让人去查一条不存在的执行，比不提示更糟）。
+           */
           item.runResult = 'error'
-          item.runError = '连接中断，请重试'
+          item.runError = `连接中断，请重试${executionResumeHint(
+            item.runExecutionId ?? item.hitl?.executionId
+          )}`
         }
+        // ⚠️ 走到 `!item.runResult` 为假那一支（多半是 INTERRUPTED 已到、随后断连）时，
+        //    草稿卡显示的是「流程已挂起，等待人工确认」那条 alert，**不是** runError，
+        //    所以这里补的文案根本不会出现 —— 那种形态下编号由 HitlConfirmCard 的常驻行兜住。
         finish()
         throw err
       },
