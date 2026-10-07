@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { ElMessageBox } from 'element-plus'
 import type { Edge, Node } from '@vue-flow/core'
@@ -174,8 +174,17 @@ export function useWorkflowEditor(
 
   /** 编辑会话内的坐标覆盖层（视觉/节点 id → 位置），保存时经 getDslText 写回 DSL 各节点 position */
   const positions = ref<Record<string, { x: number; y: number }>>({})
-  const flowNodes = ref<Node[]>([])
-  const flowEdges = ref<Edge[]>([])
+  /**
+   * 🔴 用 shallowRef 而不是 ref：vue-flow 的 `Node`/`Edge` 是递归泛型，`ref<Node[]>` 会让 TS 去算
+   *    `UnwrapRef<Node[]>`，在任何逐元素读取处（如 `flowNodes.value.find(n => n.position)`）炸出
+   *    TS2589「类型实例化过深」。TS2589 的杀伤力不在报错本身，而在那个表达式**静默降级成 any** ——
+   *    从此 `.position` 写错名字、`.find()` 传错谓词都不再有人拦，类型检查被就地挖了个洞。
+   *    深层响应式在这里本来也没被用到：两个数组只由 buildFlow() 整体换新，
+   *    拖动结束写的是 `positions` 覆盖层与 DSL 节点的 position（onNodeDragStop），从不就地改这里的元素。
+   *    ⚠️ 所以别「顺手统一成 ref」：那会把类型洞挖回来，而且画布照旧能跑，看不出来。
+   */
+  const flowNodes = shallowRef<Node[]>([])
+  const flowEdges = shallowRef<Edge[]>([])
   const selectedNodeId = ref<string | null>(null)
   const selectedEdge = ref<{ from: string; to: string; route?: string } | null>(null)
   const dslText = ref('')
