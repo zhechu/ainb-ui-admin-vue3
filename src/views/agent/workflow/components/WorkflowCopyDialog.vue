@@ -102,7 +102,7 @@
 
       <el-alert type="warning" :closable="false" show-icon class="wcd__warn">
         <template #title>复制出的是一份草稿，复制这一步不做发布体检</template>
-        复制走的是「建新草稿」，不跑发布前那 19 条检查。也就是说，复制可以成功、
+        复制走的是「建新草稿」，不跑发布前那套 DSL 校验。也就是说，复制可以成功、
         而这份副本<b>将来发不出去</b>。下面的清单是你此刻唯一能看到的信号，请逐条读完。
       </el-alert>
     </el-form>

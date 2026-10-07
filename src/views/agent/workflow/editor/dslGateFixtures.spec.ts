@@ -6,7 +6,7 @@ import { buildStarterDsl, type WorkflowTriggerMeta, type WorkflowTriggerType } f
 import { TRIGGER_CASES, TRIGGER_CASE_ORDER } from './triggerCases'
 
 /**
- * 后端发布闸门（`WorkflowDslValidator` V1~V19）的**夹具生成器**（AI助手 流程编排优化 / S10-A4②）
+ * 后端发布闸门（`WorkflowDslValidator` 的 V 系列）的**夹具生成器**（AI助手 流程编排优化 / S10-A4②）
  *
  * <h3>为什么 DSL 在这里拼、不在 Python 里拼</h3>
  * 方案 §A4-② 的原话是「必须走前端自己的 {@code buildStarterDsl} 组装，不要在 Python 里另拼一份 DSL
@@ -32,9 +32,12 @@ import { TRIGGER_CASES, TRIGGER_CASE_ORDER } from './triggerCases'
  *   · V14 拒「等外部事件却没写谁来发」，同时放 duration 档、也放「写了唤醒方」那一档（只降到黄标）。
  *
  * <h3>⚠️ 关于 V9 与 V17</h3>
- * 后端 V 系列编号到 19，但**只有 17 条生效**：V9 从未实现（只在 {@code WorkflowDslValidator} 的一段
+ * 后端 V 系列**有些号不是一条生效规则**：V9 从未实现（只在 {@code WorkflowDslValidator} 的一段
  * Javadoc 里被提到），V17 结构上不可能触发（{@code UntrustedInputTracer} 只追顶层字符串入参）。
- * 故本文件不产这两条的夹具，也不该有人因为「凑不齐 19 条」而硬造 —— 硬造出来的夹具会稳定地绿，
+ * 🔴 号段到哪一号为止、其中几条真生效，权威只有 {@code WorkflowDslValidator} 的类 javadoc **一份**；
+ * 这里刻意不抄数字 —— 抄一份就会在下一条规则落地时变成假话，而本文件恰恰是钉「号数 ≠ 生效条数」
+ * 这件事本身的那道机制保护（迭代七 §3.5 附带项）。
+ * 故本文件不产这两条的夹具，也不该有人因为「凑不齐那个数」而硬造 —— 硬造出来的夹具会稳定地绿，
  * 绿的原因是那条规则根本不存在。
  */
 
@@ -247,6 +250,9 @@ const MARK = {
   V16: '外部能写的数据 → 写工具入参',
   V18: '从 START 沿 edges 走不到，它永远不会执行',
   V19: '没在 variables[] 里声明：执行器会照这个名字把结果写进 state',
+  // 🔴 V19 与 V23 的文案都以「没在 variables[] 里声明」开头，用那半句区分不出是谁在说话。
+  //    这里各取自己独有的后半句：V19 说「执行器会照这个名字写」，V23 说「这个节点自己就是挂起点」
+  V23: '而这个节点自己就是挂起点',
   STRUCT: '既不在 variables[] 里、'
 } as const
 
@@ -304,12 +310,40 @@ const writeToolNode = (id: string, toolId: string, outputVar: string, args?: Rec
   config: { toolId, args: args ?? {}, outputVar }
 })
 
-const confirmNode = (id: string): DslNode => ({
+/**
+ * 夹具里那个人工确认闸口用的**自定义**确认键名（不是平台缺省名）
+ *
+ * 🔴 刻意不用缺省名：缺省名已被后端 `KeyStrategyFactoryGenerator#generate` 无条件注册，
+ *    于是 V19（出站：写了未声明的键、下游又有挂起点）与 V23（入站：挂起节点自己那一次 resume
+ *    要读的键未声明）**两条都会对它闭嘴**。夹具全用缺省名的话，这两条规则在 e2e 上就一格也量不到，
+ *    而报告照样写着「通过」。留着自定义名，才走的是真作者最常走的那条路。
+ * 🔴 代价是每条用到它的夹具都必须在 `variables[]` 里声明它 —— 漏一条，那条夹具会以 `passed=false`
+ *    红在 e2e 上，红的原因跟它声称要量的规则毫无关系（正是本文件开头骂过的那种「红对了、绿错了」）。
+ *    所以声明这件事收在 {@link declareConfirmVar} 一处做，并由
+ *    「每个非默认输出端口名都声明过」那条离线自检兜底：漏了当场在 `pnpm test:unit` 就红，不用等后端。
+ */
+const CONFIRM_APPROVE_VAR = 'approved'
+
+const confirmNode = (id: string, approveVar: string = CONFIRM_APPROVE_VAR): DslNode => ({
   id,
   type: 'hitl.confirm',
   name: '人工确认',
-  config: { approveVar: 'approved' }
+  config: { approveVar }
 })
+
+/** 把 {@link CONFIRM_APPROVE_VAR} 补进 `variables[]`（`declareVar` 幂等，重复调用不会多写一条） */
+const declareConfirmVar = (dsl: Dsl): Dsl => declareVar(dsl, CONFIRM_APPROVE_VAR, 'boolean')
+
+/**
+ * 插一个人工确认闸口，**并同时**声明它那个自定义确认键
+ *
+ * 🔴 建图与声明绑成一个动作，就是为了不给「插了闸口忘了声明」留缝隙 ——
+ *    这两件事分处两地时，漏掉的那一半不会在离线自检里报错，只会在 e2e 上以一条无关的红出现。
+ *    少数几个夹具的闸口不是这么插的（`chatGatedWrite` / `scheduleWithWrite` 自己接管了连线），
+ *    那两处各自调 {@link declareConfirmVar}，同理由那条离线自检兜底。
+ */
+const insertConfirmGate = (dsl: Dsl, from: string, to: string, id = 'gate_confirm'): Dsl =>
+  declareConfirmVar(insertBetween(dsl, from, to, confirmNode(id)))
 
 const waitNode = (id: string, config: Record<string, any>): DslNode => ({
   id,
@@ -341,7 +375,7 @@ const llmNode = (id: string, outputVar: string): DslNode => ({
 const chatGatedWrite = (write: DslNode, outputVar: string): Dsl => {
   let dsl = declareVar(parse(CLASSIC.chat), outputVar, 'object')
   const gate = confirmNode('gate_confirm')
-  dsl = insertBetween(dsl, 'lookup_forms', 'answer', gate)
+  dsl = declareConfirmVar(insertBetween(dsl, 'lookup_forms', 'answer', gate))
   return insertBetween(dsl, gate.id, 'answer', write)
 }
 
@@ -716,7 +750,12 @@ add({
 
 // ---------- V11：不可逆动作上游必须有人工闸口，且闸口要能被唤醒 ----------
 
-/** 定时案例 + 一个建表节点（可选地在它前面再插一个闸口），返回**未序列化**的 DSL */
+/**
+ * 定时案例 + 一个建表节点（可选地在它前面再插一个闸口），返回**未序列化**的 DSL
+ *
+ * ⚠️ 传进来的 `gate` 是**裸节点**，本函数不认识它的语义 ⟹ 它写进 state 的键得由调用方自己声明
+ *    （`hitl.confirm` 就是 {@link declareConfirmVar}）。本函数只管连线，别指望它顺带补声明。
+ */
 const scheduleWithWrite = (gate?: DslNode): Dsl => {
   let dsl = declareVar(parse(CLASSIC.schedule), 'create_result', 'object')
   const write = createTableNode('create_table', FRESH_TABLE)
@@ -756,7 +795,7 @@ add({
     '定时流程里放了 hitl.confirm 当闸口 → **照样拒**：无头执行没有聊天窗口，那张确认卡永远没人点。' +
     '同时 V13 也会报 —— 两条各说一件事（V11 说「闸口唤不醒」，V13 说「confirm 本身在无头里非法」）',
   base: 'schedule',
-  dsl: stringify(scheduleWithWrite(confirmNode('gate_confirm'))),
+  dsl: stringify(declareConfirmVar(scheduleWithWrite(confirmNode('gate_confirm')))),
   expectErrorsContain: [MARK.V11_IRREVERSIBLE, MARK.V13]
 })
 add({
@@ -800,7 +839,7 @@ add({
   side: 'reject',
   title: '定时流程里放 hitl.confirm 被拒（挂起后 resume_at / event_key 都是 NULL，永远醒不过来）',
   base: 'schedule',
-  dsl: stringify(insertBetween(parse(CLASSIC.schedule), 'probe', 'digest', confirmNode('gate_confirm'))),
+  dsl: stringify(insertConfirmGate(parse(CLASSIC.schedule), 'probe', 'digest')),
   expectErrorsContain: [MARK.V13]
 })
 add({
@@ -809,7 +848,7 @@ add({
   side: 'reject',
   title: 'webhook 流程里放 hitl.confirm 同样被拒（回调进来时也没有人在界面上等着）',
   base: 'webhook',
-  dsl: stringify(insertBetween(parse(CLASSIC.webhook), 'extract_amount', 'route_by_amount', confirmNode('gate_confirm'))),
+  dsl: stringify(insertConfirmGate(parse(CLASSIC.webhook), 'extract_amount', 'route_by_amount')),
   expectErrorsContain: [MARK.V13]
 })
 add({
@@ -818,7 +857,7 @@ add({
   side: 'accept',
   title: '聊天流程里放 hitl.confirm 放行 —— 证明 V13 认的是「有没有人在场」，不是「confirm 这个节点类型」',
   base: 'chat',
-  dsl: stringify(insertBetween(parse(CLASSIC.chat), 'lookup_forms', 'answer', confirmNode('gate_confirm'))),
+  dsl: stringify(insertConfirmGate(parse(CLASSIC.chat), 'lookup_forms', 'answer')),
   expectErrorsNotContain: [MARK.V13]
 })
 add({
@@ -996,7 +1035,12 @@ add({
   side: 'reject',
   title: '没有任何边连到的孤儿节点被拒（编译器照样建图，于是发布不拦、运行期一次也不调度，静默失效）',
   base: 'chat',
-  dsl: stringify(addOrphan(parse(CLASSIC.chat), llmNode('orphan_note', 'orphan_text'))),
+  // 🔴 孤儿写的 orphan_text 也要声明（放行侧那个 wired_note 早就声明了 note_text）。
+  //    两侧原本差**两件事** —— 可达性、以及输出变量声不声明 —— 于是这一对夹具证的不是「V18 判可达性」，
+  //    而是「这两件事的某种组合」：把 V18 关掉、改成去查未声明变量，拒绝侧照样红、放行侧照样绿。
+  //    补齐之后两侧唯一的差别就只剩那条边，正是本文件对每一对夹具的要求（见 chatWithGatedWrite 那段）。
+  //    ⚠️ 对后端行为是**空操作**：孤儿从 START 走不到，V19 那个「下游另有挂起点」的前提在这里不成立。
+  dsl: stringify(declareVar(addOrphan(parse(CLASSIC.chat), llmNode('orphan_note', 'orphan_text')), 'orphan_text', 'string')),
   expectErrorsContain: [MARK.V18, 'orphan_note']
 })
 add({
@@ -1014,7 +1058,11 @@ add({
 // ---------- V19：写了 state 又在下游挂起，那个变量必须声明过 ----------
 
 const v19Base = (declared: boolean): string => {
-  let dsl = insertBetween(parse(CLASSIC.chat), 'answer', 'END' as string, confirmNode('gate_confirm'))
+  // 🔴 闸口自己那个自定义确认键**必须**声明（`insertConfirmGate` 已经带上）：V19 与 V23 是互补的两条规则，
+  //    同一个 `hitl.confirm` 节点两档都能中。不声明的话放行侧会因 V23 而 `passed=false` ——
+  //    红的原因不在 V19 身上，这条夹具声称量的东西就白量了；拒绝侧则一次报两条，作者看不出哪条是哪条。
+  //    V23 那两档由它自己的夹具单独量（见下面 V23 那一节）。
+  let dsl = insertConfirmGate(parse(CLASSIC.chat), 'answer', 'END' as string)
   // 在 confirm 之前再插一个写 ghost 变量的 llm 节点：写完就挂起 ⟹ 恢复时 SAA 只保留注册过合并策略的键
   dsl = insertBetween(dsl, 'answer', 'gate_confirm', llmNode('note_writer', 'ghost_note'))
   if (declared) dsl = declareVar(dsl, 'ghost_note', 'string')
@@ -1037,6 +1085,59 @@ add({
   base: 'chat',
   dsl: v19Base(true),
   expectErrorsNotContain: [MARK.V19]
+})
+
+// ---------- V23：挂起节点**自己**那一次 resume 要读的键，同样必须声明过 ----------
+
+/**
+ * V23 专用闸口用的自定义确认键名，且它**不在** `variables[]` 里（拒绝侧的全部意义就在这）
+ *
+ * 🔴 与 {@link CONFIRM_APPROVE_VAR} 刻意取两个不同的名字：后者在每条用到它的夹具里都声明过，
+ *    若 V23 也用它，就得先把它从 `variables[]` 里挖掉 —— 那会同时改掉六条别的夹具的形状，
+ *    红起来分不清是谁。各用一个名字，两侧互不牵连。
+ */
+const V23_UNDECLARED_APPROVE_VAR = 'user_approved'
+
+/**
+ * 「聊天触发 → 一个自定义确认键的闸口 → 大模型收尾」，且**下游不再有第二个挂起点**
+ *
+ * 🔴 「下游没有挂起点」是本形状的关键：后端 V23 在 `suspendAfterWrite` 已经找到下游挂起点时整段闭嘴，
+ *    那一档归 V19。于是这张图上唯一还能报错的只剩 V23，红绿才有归因；
+ *    反过来它也钉住了两条规则「互补不重叠」——后端若把 V23 的入口条件写错（忘了跳过 V19 已管的那档），
+ *    同一个键会报两条，拒绝侧的 `expectErrorsContain` 照样绿，但放行侧会因 `passed=false` 而红。
+ * ⚠️ 与 {@link v19Base} 共用「聊天 + 闸口」的形状，差别只有两处：闸口在链路里的位置（那里刻意放到
+ *    `answer` 之后，好让 `note_writer` 有一个下游挂起点）、以及确认键声不声明。
+ */
+const v23Base = (declared: boolean): string => {
+  let dsl = insertBetween(parse(CLASSIC.chat), 'lookup_forms', 'answer', confirmNode('gate_confirm', V23_UNDECLARED_APPROVE_VAR))
+  if (declared) dsl = declareVar(dsl, V23_UNDECLARED_APPROVE_VAR, 'boolean')
+  return stringify(dsl)
+}
+add({
+  id: 'V23-reject-own-resume-var-undeclared',
+  rule: 'V23',
+  side: 'reject',
+  title:
+    '挂起节点自己配了个未声明的确认键 → 拒：调用方按那个名字传进来的决定要在进 state 之前先过 ' +
+    'OverAllState.input()，键没注册就地被滤掉，节点读到空值 ⟹「同意」被静默判成「拒绝」而执行照样报成功',
+  base: 'chat',
+  dsl: v23Base(false),
+  expectErrorsContain: [MARK.V23, V23_UNDECLARED_APPROVE_VAR, 'approveVar'],
+  // 🔴 这一格是本对夹具最锋利的地方：它证明报出来的是 V23 而**不是** V19。
+  //    同一个自定义键名两条规则都够得着，谁在说话必须能被区分，否则后端把两条合并成一条、
+  //    或把 V19 那句「下游还有一个挂起点」照抄过来，这里都还是绿的
+  expectErrorsNotContain: [MARK.V19]
+})
+add({
+  id: 'V23-accept-same-var-declared',
+  rule: 'V23',
+  side: 'accept',
+  title:
+    '同一个确认键在 variables[] 里补一条声明就放行 —— 证明 V23 要的是「声明」，' +
+    '不是「不许自定义确认键名」（后端 KeyStrategyResumeRuntimeTest 第 ③ 组已实测：声明了，同意就真活得下来）',
+  base: 'chat',
+  dsl: v23Base(true),
+  expectErrorsNotContain: [MARK.V23, MARK.V19]
 })
 
 // ---------- 结构：{{$.x}} 引用了一个不存在的东西 ----------
@@ -1378,6 +1479,37 @@ describe('发布闸门夹具的自检（不需要后端）', () => {
         .nodes.filter((n) => n.type === 'tool' && CREATORS.includes(String(n.config?.toolId)))
         .map((n) => n.id)
       expect(creators, `${f.id} 里有建表节点，后端会整项跳过 V6`).toEqual([])
+    }
+  })
+
+  it('每个节点写的变量都在 variables[] 里声明过（V19/V23 的夹具除外 —— 那两条规则的断言对象就是这个「没声明」）', () => {
+    // 🔴 这条守的是**红绿归因**，不是后端行为：后端 V19 只在「下游另有挂起点」时报、V23 只报挂起节点自己，
+    //    所以一个未声明的输出变量名在多数形状下是合法的。但夹具不是「多数形状」——
+    //    一条声称量 V11 的夹具若顺带带着一个未声明的确认键，V23 会给它添一条阻断错误，
+    //    放行侧当场 `passed=false` 红在 e2e 上，而红的原因跟 V11 毫无关系；
+    //    拒绝侧更坏：它照样绿（`expectErrorsContain` 只要求「含」），报告上写着 V11 通过，
+    //    量的却是两条错误的并集。
+    // 🔴 故这里刻意比后端**严**：一律要求声明。缺省名不用声明（后端无条件注册过，滤不掉），
+    //    所以只查「配了值、且配的不是缺省名」的那些端口。
+    // ⚠️ 本条不需要后端、也不需要可达性信息，故 `pnpm test:unit` 就能拦住 —— 漏声明这种错
+    //    本该在这一层红，不该拖到 e2e 上以一条不相干的失败出现。
+    const ABOUT_UNDECLARED = new Set(['V19', 'V23'])
+    for (const f of all) {
+      if (!f.dsl || ABOUT_UNDECLARED.has(f.rule)) continue
+      const dsl = parse(f.dsl)
+      const declared = new Set(dsl.variables.map((v) => String(v.key)))
+      for (const n of dsl.nodes) {
+        for (const p of contractOf(n.type)?.outputs ?? []) {
+          const configured = p.configKey ? String(n.config?.[p.configKey] ?? '').trim() : ''
+          // 没配 ⟹ 执行器落缺省名；配的就是缺省名 ⟹ 已被无条件注册。两种都滤不掉，不必声明
+          if (!configured || configured === p.defaultName) continue
+          expect(
+            declared.has(configured),
+            `${f.id} 的节点 ${n.id}(${n.type}) 把「${configured}」写进 state 却没在 variables[] 里声明 —— ` +
+              `下游一有挂起点就是 V19，它自己就是挂起点则是 V23，两种都会让这条夹具红在与 ${f.rule} 无关的地方`
+          ).toBe(true)
+        }
+      }
     }
   })
 })

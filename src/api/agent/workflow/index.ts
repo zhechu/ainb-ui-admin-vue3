@@ -204,6 +204,16 @@ export interface AgentWorkflowExecutionVO {
    * 为空 = 非挂起态，或后端挂起时取不到 checkpoint 快照（那一刻意不回落成错值）。
    */
   suspendNode?: string
+  /**
+   * resume 时会被静默丢弃、**且作者补一条 `variables[]` 声明就能救**的 state 键集
+   * （JSON 数组字符串；迭代七 B3-7）。
+   *
+   * 挂起时算、resume 时重算覆盖。为空/null = 滤网后没有作者能自己修的键，确认框不展示警告
+   * （🔴 不等于「一个键都不丢」：引擎内部键照丢，只是作者改不动、也不该拿它吓人）。
+   * 非空时确认框列出这些键并给出出路：「可先复制为新草稿、补上 variables[] 声明后再发布」。
+   * 🔴 「列里的键都能靠声明救」这条保证在后端过滤那一步（见 `computeDroppedKeys`），前端不复刻判据。
+   */
+  droppedKeys?: string
   failedAtNode?: string
   userId?: number
   errorMsg?: string

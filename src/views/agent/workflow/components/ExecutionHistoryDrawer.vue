@@ -320,6 +320,55 @@ const SUSPEND_NODE_UNKNOWN =
   '后端挂起时没能从 checkpoint 取到挂起节点，说不清会在哪个闸口续跑。仍可恢复，但请先确认这条执行的最后节点符合你的预期。'
 
 /**
+ * 把后端落的 `dropped_keys`（JSON 数组字符串）念成人话；没什么可说时返回空串（迭代七 B3-10 的 `droppedKeys` 半）。
+ *
+ * 🔴 这一格是「恢复会静默丢掉哪些 state 键」的差集，后端算两遍（挂起时落库、给本确认框用；
+ * resume 时再算一遍落日志）。SAA 的 `OverAllState.input()` 只保留注册过 KeyStrategy 的键，
+ * 所以这些键过了 resume 就没了，下游节点读到的是 null。
+ *
+ * 🔴 口径**不是**裸的 `OverAllState.data()` 减 `keyStrategies()`（那样念出来的会全是引擎内部键，
+ * 见后端 `computeDroppedKeys` 的注释）：裸差集恒非空，里面是引擎簿记键与执行器审计键，
+ * 作者既声明不了也改不动。后端还过了一道「作者在 DSL 里真写过没有」的正向白名单，
+ * 再豁免掉 HITL 通道自带的 `hitl_approved`。⟹ **落到这一格的每个键，补一条 `variables[]` 声明就真的能救**，
+ * 下面那句出路才是实话而不是安慰。这条保证由后端 `AgentWorkflowExecutionServiceImplDroppedKeysTest`
+ * 的 V-a / V-a′ 双向钉着；前端不复刻判据（复刻就是第二份口径，会漂）。
+ *
+ * 🔴 三档措辞刻意分开，因为它们不是一回事：
+ *   · `raw` 为空 → 一个字都不提。可能是作者该声明的都声明了（滤网把引擎噪声全滤掉了，
+ *     这是绝大多数健康执行的样子），也可能是这条执行挂在 B3-7 上线之前
+ *     （存量行那一格本来就是 NULL）。两种都不该吓唬人，但**更不要**反过来说成「没有丢键」。
+ *   · 解得出名字 → 逐个列出来，让人能拿着名字去对 DSL 的 `variables[]`。
+ *   · 有值但念不出名字（解析失败 / 空数组）→ 必须照直说「知道丢了、说不清丢了什么」。
+ *     后端只在差集非空时才落这一格，落了就意味着确实丢了；这时静默返回空串，
+ *     等于把 B3-10 又做回一句假话（与 `87ae32d9d` 只交付一半同类，红线第 32 条）。
+ *
+ * ⚠️ 纯文本插值，本确认框不开 `dangerouslyUseHTMLString`，故原始值直接拼进去也不会被当 HTML 解析。
+ * 🔴 同理，**不要**在这段文案里塞 `\n` 当换行：ElMessageBox 的消息体是普通 HTML，
+ * 没有 `white-space: pre-line` 时换行符会被折叠成一个空格 —— 写上去等于在确认框里留一句看不见的排版。
+ * 分句一律沿用本框已有的 ' ⚠️ ' 内联分隔。
+ */
+const droppedKeysNotice = (raw?: string): string => {
+  if (!raw) return ''
+  let names: string[]
+  try {
+    const parsed = JSON.parse(raw)
+    names = Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : []
+  } catch {
+    names = []
+  }
+  const what =
+    names.length === 0
+      ? ` ⚠️ 后端记了「这次恢复会丢掉 state 里的键」，但这份清单前端念不出来（原始值：${raw.slice(0, 200)}）。`
+      : ` ⚠️ 这次恢复会静默丢掉 ${names.length} 个 state 键：${names.join('、')}。` +
+        '丢掉之后下游节点读到的是 null，而流程照样报成功 —— 不报错、不拦住。'
+  return (
+    what +
+    ' 改定义救不回这一条：复制、回滚都会造出新的定义 id，而这条执行仍绑在旧定义上，所以恢复它就是照丢不误。' +
+    '出路是给以后的执行：可先复制为新草稿、补上 `variables[]` 声明后再发布。'
+  )
+}
+
+/**
  * 恢复 / 拒绝一条挂起的执行。
  *
  * <p>⚠️ 这不是「改个状态」的只读操作：确认之后流程会**从断点真跑下去**，
@@ -348,6 +397,7 @@ const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
         (approved
           ? '点「仍要恢复」= 以「同意」从断点续跑，后续节点会真执行（该写的库、该发的审批都会真的发生），不是预览。'
           : '点「仍要拒绝」= 以「不同意」从断点续跑，流程走拒绝分支，该分支上的节点同样会真执行。') +
+        droppedKeysNotice(row.droppedKeys) +
         ' ⚠️ 若它其实停在 wait 等待节点而不是人工确认节点，这一步等于跳过等待直接续跑，' +
         '等待中的事件负载（waitType=event）不会带入。',
       `${verb}挂起的执行`,

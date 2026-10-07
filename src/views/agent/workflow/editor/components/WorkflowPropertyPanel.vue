@@ -370,8 +370,8 @@
                   data-testid="node-recovery-select"
                   @update:model-value="onRecoveryChange"
                 >
-                  <el-option label="跟随全局（默认 forward 断点续跑）" value="" />
-                  <el-option label="forward — 失败后从断点续跑" value="forward" />
+                  <el-option label="跟随全局（默认 forward）" value="" />
+                  <el-option label="forward — 失败即终态，不反做" value="forward" />
                   <el-option label="compensate — 失败时 Saga 逆序补偿" value="compensate" />
                 </el-select>
               </el-form-item>
