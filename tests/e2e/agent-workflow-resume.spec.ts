@@ -23,7 +23,12 @@ import { login, gotoWithAuth } from './helpers/auth'
  *   流程按「驳回」走完，执行状态照样报 SUCCEEDED，界面上全绿。
  *
  * 前置：后端 48080 + 前端 dev :80 在跑。
- * 自 seed 自净：afterAll 停用造的 chatflow（PUBLISHED 不可删；执行行留作惰性历史，不影响功能）。
+ * 自 seed 自净：afterAll 先把本 chatflow 名下**仍挂起**的执行推成终态，再停用造的 chatflow。
+ *   🔴 本 spec 造**两条**执行（拒绝那条在 beforeAll 里起、同意那条在用例体中途起），
+ *   两条都只有被点到底才会变成 SUCCEEDED；用例在任何一处红掉，那条就停在 INTERRUPTED ——
+ *   而它停得住：hitl.confirm 既不写 resume_at 也不写 event_key，两个自动唤醒方都扫不到它，
+ *   定义随后又被停用，人工「恢复」也会被定义状态检查拒掉。
+ *   完整取舍写在 agent-workflow-cancel.spec.ts 文件头「自 seed 自净」那一节，这里不抄第二遍。
  */
 
 const API = 'http://127.0.0.1:48080/admin-api'
@@ -170,6 +175,19 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
     return ((r?.data ?? []) as any[]).map((t) => t.nodeId)
   }
 
+  /**
+   * 本 chatflow 名下所有仍挂起的执行行。
+   * 🔴 按 `workflowDefId` 扫而不是记「我造过哪几个 id」：afterAll 要清的正是用例没跑到那一步时
+   *    留下的行，那种情况下记账用的 `execReject`/`execApprove` 很可能压根没赋上值。
+   *    以 def 为界也保证这条清理只可能碰到本 spec 自己造的行。
+   */
+  const interruptedExecutions = async (): Promise<any[]> => {
+    const page = await (
+      await api('/agent/workflow/execution/page?pageNo=1&pageSize=20&workflowDefId=' + wfId)
+    ).json()
+    return (page?.data?.list ?? []).filter((r: any) => r.status === 'INTERRUPTED')
+  }
+
   test.beforeAll(async ({ playwright }) => {
     req = await playwright.request.newContext()
     const lr = await (
@@ -196,8 +214,28 @@ test.describe('执行历史抽屉的挂起救援按钮（S4a-h）', () => {
   })
 
   test.afterAll(async () => {
-    if (wfId) await api('/agent/workflow-def/disable?id=' + wfId, 'POST').catch(() => {})
-    await req?.dispose()
+    try {
+      if (wfId) {
+        // 🔴 清理必须在 afterAll、不能在用例体末尾：用例一红，末尾那句就被跳过，
+        //    留下一行永远恢复不了的 INTERRUPTED（定义随后被停用）。走产品自己的 cancel 端点推成终态，
+        //    不直接改库。happy path 下两条执行都已 SUCCEEDED，这里扫不到东西、一次请求都不发 ⟹ 幂等。
+        for (const row of await interruptedExecutions()) {
+          await api('/agent/workflow/cancel?executionId=' + row.id, 'POST').catch(() => {})
+        }
+        // 🔴 回读自检：cancel 自己也会失败，而上一行那个 catch 会把原话整个吞掉。
+        //    静默失败的清理比不清理更坏 —— 残渣从「看得见」变成「看不见」。
+        const left = await interruptedExecutions()
+        if (left.length > 0) {
+          throw new Error(
+            'afterAll 清理后本流程名下仍有挂起执行（残渣非空 = 本轮失败）：' +
+              JSON.stringify(left.map((r: any) => ({ id: r.id, status: r.status })))
+          )
+        }
+      }
+    } finally {
+      if (wfId) await api('/agent/workflow-def/disable?id=' + wfId, 'POST').catch(() => {})
+      await req?.dispose()
+    }
   })
 
   test('INTERRUPTED 行出「恢复/拒绝」并真续跑；成功行不出这两个按钮', async ({ page }) => {

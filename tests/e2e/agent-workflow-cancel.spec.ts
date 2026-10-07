@@ -34,9 +34,20 @@ import { login, gotoWithAuth } from './helpers/auth'
  *
  * 前置：后端 48080（且已 install 本轮的 yudao-module-agent）+ 前端 dev :80 在跑；
  *       agent:workflow:cancel 权限已入库（sql/mysql/xpy-2026-10-07-agent-workflow-cancel-perm.sql）且后端已重启。
- * 自 seed 自净：afterAll 停用造的 chatflow（PUBLISHED 不可删；执行行留作惰性历史，不影响功能）。
- *       🔴 残留判据是「**集合不变**」而不是「probe 行 = 0」（红线第 24 条）——
- *       该判据已由 _logs/r04/21-behavior-probe.log 第 11 节实测（system_menu 7→7、无活的 probe 流程）。
+ * 自 seed 自净：afterAll 先把本 chatflow 名下**仍挂起**的执行推成终态，再停用造的 chatflow。
+ *       · def 行留着 —— PUBLISHED 不可删，产品只给「停用」（停止接受新执行）。
+ *       · 执行行也留着，但**必须是终态**。「留作惰性历史」这句只在终态时成立：
+ *         INTERRUPTED 不是历史，是一个没人会去点的待办。seed 的闸口是 hitl.confirm，
+ *         它既不写 resume_at 也不写 event_key ⟹ wait 轮询器与 publishEvent 两个唤醒方都扫不到它；
+ *         定义随后又被停用 ⟹ 人工点「恢复」也会被定义状态检查拒掉。
+ *         于是它永远显示「等待确认」，且谁都推进不了 —— 正是判据 5 骂的那种「摆出来只是让人点了看报错」。
+ *         🔴 实测：本 spec 早先两次失败各漏下一行（执行 153、158），当天晚上仍停在 INTERRUPTED。
+ *       🔴 清理只能在 afterAll、不能在用例体末尾：用例一红，末尾那句就被跳过 —— 153/158 就是这么来的。
+ *         仓内 agent-workflow-resume-disabled-def 与 assistant-chat-error-keeps-execution-id 两条 spec
+ *         早就是这个写法，本 spec 与 resume spec 是漏网的两条。
+ *       残留判据仍是「**集合不变**」而不是「probe 行 = 0」：def 与执行行都会留下，
+ *       留下的是 DISABLED 的 def 与 CANCELLED 的执行，没有活的挂起点。
+ *       （菜单侧那半由 _logs/r04/21-behavior-probe.log 第 11 节实测：system_menu 7→7、无活的 probe 流程。）
  */
 
 const API = 'http://127.0.0.1:48080/admin-api'
@@ -142,6 +153,20 @@ test.describe('执行历史抽屉的主动取消（迭代七 B3-2 / B3-9）', ()
     throw new Error('run-stream 之后没等到 INTERRUPTED 的执行行')
   }
 
+  /**
+   * 本 chatflow 名下所有仍挂起的执行行。
+   *
+   * 🔴 按 `workflowDefId` 查而不是记「我造过哪几个 id」：afterAll 要清的正是**用例没跑到那一步**
+   *    时留下来的行，那种情况下用来记账的变量很可能压根没被赋上值。以 def 为界也保证了
+   *    这条清理**只可能**碰到本 spec 自己造的 def 名下的行，扫不到别人的数据。
+   */
+  const interruptedExecutions = async (): Promise<any[]> => {
+    const page = await (
+      await api('/agent/workflow/execution/page?pageNo=1&pageSize=20&workflowDefId=' + wfId)
+    ).json()
+    return (page?.data?.list ?? []).filter((r: any) => r.status === 'INTERRUPTED')
+  }
+
   test.beforeAll(async ({ playwright }) => {
     req = await playwright.request.newContext()
     const lr = await (
@@ -183,8 +208,33 @@ test.describe('执行历史抽屉的主动取消（迭代七 B3-2 / B3-9）', ()
   })
 
   test.afterAll(async () => {
-    if (wfId) await api('/agent/workflow-def/disable?id=' + wfId, 'POST').catch(() => {})
-    await req?.dispose()
+    try {
+      if (wfId) {
+        // 🔴 走产品自己的 cancel 端点把挂起行推成终态，不直接改库：取消是产品给管理员的**唯一**
+        //    清场手段（后端那句「行保持 INTERRUPTED，管理员要清场请用执行历史抽屉里的取消」就是这个意思），
+        //    夹具没有理由绕过它。happy path 下用例体里那一下「仍要取消」已经把行写成 CANCELLED，
+        //    这里扫不到东西、一次请求都不发 ⟹ 幂等。
+        for (const row of await interruptedExecutions()) {
+          await api('/agent/workflow/cancel?executionId=' + row.id, 'POST').catch(() => {})
+        }
+        // 🔴 清完必须回读自检，不能「请求发出去了就算清过了」：cancel 自己也会失败
+        //    （撞上晚到的 settle、或状态已不在可取消白名单里），而上一行那个 catch 会把原话整个吞掉。
+        //    静默失败的清理比不清理更坏 —— 它把残渣从「看得见」变成「看不见」，
+        //    下一轮再看到 INTERRUPTED 行时，谁也不会怀疑到 afterAll 头上。
+        const left = await interruptedExecutions()
+        if (left.length > 0) {
+          throw new Error(
+            'afterAll 清理后本流程名下仍有挂起执行（残渣非空 = 本轮失败）：' +
+              JSON.stringify(left.map((r: any) => ({ id: r.id, status: r.status })))
+          )
+        }
+      }
+    } finally {
+      // 停用放在清执行之后纯粹是为了读日志顺眼：cancel 只看执行自己的状态、不看定义状态，
+      // 两种顺序都能成。定义本身删不掉（PUBLISHED 不可删），只能停用。
+      if (wfId) await api('/agent/workflow-def/disable?id=' + wfId, 'POST').catch(() => {})
+      await req?.dispose()
+    }
   })
 
   test('INTERRUPTED 行出「取消」并真点到底：落已取消、按钮全收、tag 转灰、不补偿', async ({
