@@ -120,6 +120,10 @@
       <el-table-column label="触发用户" prop="userId" width="90" align="center" />
       <el-table-column label="耗时(ms)" prop="durationMs" width="90" align="right" />
       <el-table-column label="开始时间" prop="beginTime" width="180" :formatter="dateFormatter" />
+      <!-- 🔴 B5-2：failed_at_node 曾是一根死列（库里恒 NULL），本轮起 settle() 落 FAILED 时才写真值。
+           与「失败原因」并列摆：原因说「为什么炸」，这一格说「炸在哪一步」。非失败行为空是诚实的
+           （它只在失败收尾时定格），故不加占位符冒充「有值」。语义与「当前节点」同源，见 VO 字段注释。 -->
+      <el-table-column label="失败节点" prop="failedAtNode" min-width="130" show-overflow-tooltip />
       <el-table-column label="失败原因" prop="errorMsg" min-width="160" show-overflow-tooltip />
       <el-table-column label="操作" width="250" align="center" fixed="right">
         <template #default="{ row }">

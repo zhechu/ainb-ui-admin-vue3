@@ -98,6 +98,19 @@
 
     <!-- 列表 -->
     <ContentWrap>
+      <!--
+        B5-8：AI 规划采纳率 —— 一个只读数字，回答「AI 起草的流程到底被不被采纳、采纳前要不要人改」。
+        🔴 放列表上方而非某一行：它是**跨全部草稿的聚合**，不属于任何单条流程。
+        🔴 拿不到（adoptionStat=undefined）时显示「—」，绝不显示假的 0%；分母为 0 时后端给 null、这里渲染「暂无」。
+        🔴 悬停看口径与复核方式（ADOPTION_HINT）：数字要能被只读 SQL 对齐，否则就是个没法验证的装饰。
+      -->
+      <div class="mb-12px flex items-center text-13px text-[var(--el-text-color-secondary)]">
+        <Icon icon="ep:data-analysis" class="mr-5px" />
+        <span>AI 规划采纳率：</span>
+        <el-tooltip :content="ADOPTION_HINT" placement="top">
+          <span class="ml-4px font-600 text-[var(--el-color-primary)]">{{ adoptionText }}</span>
+        </el-tooltip>
+      </div>
       <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
         <!-- Req 1：序号列（参考模型配置页 views/ai/model/model/index.vue；indexMethod 已配 auto-import） -->
         <el-table-column
@@ -310,7 +323,11 @@
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
-import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
+import {
+  AgentWorkflowApi,
+  type AgentWorkflowDefVO,
+  type AgentPlannerAdoptionStatVO
+} from '@/api/agent/workflow'
 import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
@@ -397,6 +414,33 @@ const getList = async () => {
     total.value = data.total
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * B5-8：AI 规划采纳率（只读数字）。
+ *
+ * 🔴 与列表相互独立：本页的「发布」走 publishDefById（管理页发布），**不在**采纳率埋点范围内
+ *    （埋点只盖「AI 生成 + 聊天确认并运行」，见后端 AgentPlannerAdoptionService 类注释），
+ *    故本页任何操作都不会改这个数字 —— 进页面时拉一次即可，不跟着 getList 刷。
+ * 🔴 拿不到就置 undefined（渲染成占位），**绝不**阻塞列表：这是个附加观测数字，
+ *    它 403/500 不该让整页流程列表打不开（与本页 publish 预检「查不动就当不挡」同一原则）。
+ */
+const adoptionStat = ref<AgentPlannerAdoptionStatVO>()
+const adoptionText = computed(() => {
+  const s = adoptionStat.value
+  if (!s) return '—'
+  // 🔴 rate 为 null = 分母 0（还没有任何 AI 草稿），渲染「暂无」而不是「null%」或刺眼的「0%」
+  const rate = s.adoptionRate == null ? '暂无' : `${s.adoptionRate}%`
+  return `${rate}（生成 ${s.generated} · 采纳 ${s.adopted} · 手改 ${s.handModified}）`
+})
+const ADOPTION_HINT =
+  'AI 起草的流程草稿中，被「确认并运行」的占比。括号内是原始计数，与 agent_planner_adoption 表行数一致，可用只读 SQL 复核。「暂无」表示本租户还没有任何 AI 草稿。管理页手写的流程与其发布不计入。'
+const loadAdoptionStat = async () => {
+  try {
+    adoptionStat.value = await AgentWorkflowApi.getPlannerAdoptionStat()
+  } catch {
+    adoptionStat.value = undefined
   }
 }
 
@@ -599,6 +643,7 @@ const handleDelete = async (row: AgentWorkflowDefVO) => {
 
 onMounted(() => {
   getList()
+  loadAdoptionStat()
 })
 
 // 从整页设计器返回时刷新列表（页面被 keep-alive 缓存时 onMounted 不会重跑）；首次激活跳过，避免与 onMounted 重复请求
@@ -610,6 +655,10 @@ onActivated(() => {
   }
   // 🔴 只在列表态刷新：正停在新增/编辑面板时切回来（例如从设计器返回），
   //    重拉列表会把 viewMode 之外的东西一起扰动，而面板里填了一半的内容更不该被丢掉。
-  if (viewMode.value === 'list') getList()
+  if (viewMode.value === 'list') {
+    getList()
+    // 采纳率数字也跟着刷：用户可能刚在聊天里「确认并运行」了一条草稿，切回管理页该看到最新值
+    loadAdoptionStat()
+  }
 })
 </script>

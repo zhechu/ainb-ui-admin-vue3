@@ -214,6 +214,17 @@ export interface AgentWorkflowExecutionVO {
    * 🔴 「列里的键都能靠声明救」这条保证在后端过滤那一步（见 `computeDroppedKeys`），前端不复刻判据。
    */
   droppedKeys?: string
+  /**
+   * 失败所在节点 id（列 `failed_at_node`，迭代七 B5-2 起才真被写）。
+   *
+   * 🔴 本轮之前这是一根**死列**：DO/VO 上有它，但没有任何一处 `setFailedAtNode`，库里恒为 NULL。
+   *   B5-2 让 `settle()` 在落 FAILED 时把「最后推进到的节点」写进来（语义诚实说明见后端
+   *   `AgentWorkflowExecutionServiceImpl#runGraph` 的 `lastNode.set` 处：节点内抛错时真正炸的是
+   *   它的**下一个**节点，而下一个还没 emit 过 NodeOutput、id 拿不到；对流超时那一档则恰好精确）。
+   * 🔴 与 `currentNode` 同源同口径（都来自「最后一个跑完的节点」），故对 FAILED 行两者常常相等；
+   *   区别在 `currentNode` 每次节点跑完都刷新、`failedAtNode` 只在失败收尾时定格那一格。
+   * 为空 = 非失败态，或失败时取不到节点（告警侧兜底「（未知节点）」）。
+   */
   failedAtNode?: string
   userId?: number
   errorMsg?: string
@@ -629,6 +640,27 @@ export interface NameCatalogVO {
   workflows: { code: string; name: string }[]
 }
 
+/**
+ * 规划采纳率统计（迭代七 B5-8；与后端 {@code AgentPlannerAdoptionStatRespVO} 一一对应）
+ *
+ * 🔴 三个原始计数（generated/adopted/handModified）与两个比率一并下发：比率无法复核
+ *   （50% 可能是 1/2 也可能是 500/1000），验收要拿原始计数与 {@code agent_planner_adoption} 行数对齐。
+ * 🔴 比率为 {@code null} = 分母为 0（一份草稿都没生成过），语义是「暂无」而**不是**「0%」，
+ *   故前端渲染成「暂无」，别直接 `${rate}%`（会显示成 "null%"）。
+ */
+export interface AgentPlannerAdoptionStatVO {
+  /** AI 生成的草稿总数（= agent_planner_adoption 表行数） */
+  generated: number
+  /** 已「确认并运行」（发布）的草稿数 */
+  adopted: number
+  /** 确认时手改过 DSL 的草稿数（adopted 的子集） */
+  handModified: number
+  /** 采纳率（%）= adopted / generated；generated 为 0 时为 null */
+  adoptionRate: number | null
+  /** 手改率（%）= handModified / adopted；adopted 为 0 时为 null */
+  handModifiedRate: number | null
+}
+
 export const AgentWorkflowApi = {
   /**
    * 名称目录（只读；设计器/只读画布/聊天草稿卡/执行历史共用的「机器键 → 中文名」映射）
@@ -638,6 +670,16 @@ export const AgentWorkflowApi = {
    */
   getNameCatalog: (): Promise<NameCatalogVO> =>
     request.get({ url: '/agent/workflow-def/name-catalog' }),
+
+  /**
+   * 规划采纳率统计（B5-8：管理页「出一个数字」）。
+   *
+   * 🔴 挂 {@code /agent/workflow-def} 而非 {@code /agent/planner}：这个数字显示在流程编排管理页上，
+   *   看这页的人持有 {@code agent:workflow:query}，未必有聊天侧的 {@code agent:assistant:use}。
+   *   挂错命名空间会让只有编排权的管理员看到一个 403（正是后端 G7 那个坑的前端翻版）。
+   */
+  getPlannerAdoptionStat: (): Promise<AgentPlannerAdoptionStatVO> =>
+    request.get({ url: '/agent/workflow-def/planner-adoption-stat' }),
 
   /** 定义分页（列表不带 dsl 正文） */
   getDefPage: (params: AgentWorkflowDefPageReqVO) =>
