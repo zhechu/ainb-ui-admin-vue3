@@ -81,16 +81,32 @@ import { CLICK_TIMEOUT_MS, bounded, boundedText, waitTerminal } from './helpers/
  *        · case 59 三轮都真标了 **1 个**，报告却永远印「无」—— 那是**本文件自己的统计口径**造成的：
  *          下面那句 `.filter((x) => x.kind === 'FORM_CREATE')`，而 59 是 `FORM_UPDATE`
  *          ⟹ 它标的那 1 个**永远不计入**。🔴 这条最要紧，因为它意味着 `manifest-search-conditions`
- *          这块**从来没被 FORM_UPDATE 路径验过**（连带缺陷记为 D4-20：加可查询字段时变更预演
- *          不画「查询条件」区块，属产品决定，先报不做）。
+ *          这块**从来没被 FORM_UPDATE 路径验过**（连带缺陷记为 D4-20）。
+ *          🟢 **D4-20 已于迭代七第 08 轮（2026-10-08）按裁定 R-02「让改表也能新增查询条件」修掉**，
+ *          两侧同时改：后端 `FormUpdateChangeExtractor` 现在从 patch 里认字段
+ *          （`formFields[]` / `fields[]` / `listConf.searchItems[]` 三处），
+ *          行构造与 FORM_CREATE 共用 `ManifestFieldRows` 那一份；
+ *          前端 `ChangeManifestCard.vue` 的 `searchConditions` 改走
+ *          `[...formCreates, ...formUpdates]`、`formGroups` 不再把 FORM_UPDATE 的 fields 写死成 []。
+ *          于是下面那个 filter 认两种 kind，并**新加一条双向断言**：
+ *          「表单字段」表里可查询的那些行与「列表查询条件」表的行必须**恰好相等**（不是包含）——
+ *          两张表同源，同源这件事本身就是会被改坏的（D4-20 就是它坏了）。
+ *          ⚠️ 但**别指望 case 59 每轮都能验到这条**：实测同一条示例的 patch 形状每轮都在变 ——
+ *          2026-10-05 的 def #467 是字面量 `patch.fields[0].searchable=true`（认得出），
+ *          2026-10-08 基线轮的 def #566 却是 `"patch": "{{$.patch_payload.patch}}"`
+ *          （内容由前置 script 节点算，`searchable` 写的是 **false**）⟹ 后端**看不见**，
+ *          报告如实印「无」，双向断言在两个空集合上照样成立。
+ *          所以 D4-20 的**行为层**判据在浏览器实证里（手造一份带 searchable 的改表计划），
+ *          不在这一轮真发上；这一轮验的是「不红、且两表不打架」。
  *        · 只有 case 55 真的是「照教执行」（正文确实没有查询要求，三轮都 0 个）。
  *      ⟹ 原结论**只在 1/3 的样本上成立**，却被当成「三条全部」写进了验收清单 ——
  *      与 D4-02「断言文案自带误诊」是同一个毛病：留着会把下一个人派去追一个不存在的遗漏，故就地改掉。
- *      `searchable` 的唯一一处教法在 `FormSaveDraftTool.java` 的 paramsSchema——
- *      「**用户说「列表里要用某字段查询」时**，给该字段传 true」。
- *      教法本身本轮**仍不改**，但理由换了：不是因为「AI 没错」，而是因为改法的时机不对
- *      （规划模型正在 failover 到 flash，这时候改提示词，量到的差异分不清是谁的功劳）。
- *      该放宽的是那句教法的**触发条件写法**，要把「像『主管能按客户查』这种把查询说成用途的隐含表述」也算进去。
+ *      `searchable` 的唯一一处教法在 `FormSaveDraftTool.java` 的 paramsSchema。
+ *      🟢 **A6 已于迭代七第 08 轮落地**：触发条件从「用户说『列表里要用某字段查询』时」
+ *      放宽成「用户提到要按某字段**查询 / 筛选 / 统计**时（**包括像『主管能按客户查』
+ *      这种把查询说成用途的隐含表述**）」—— 正是 case 57 那种写法。
+ *      🔴 因此本文件的 55/57 两条**跨这一轮不可比**：教法改了，遵从度自然可能变。
+ *      可比的是「同一轮之内后端算了什么 ⟺ 界面画出什么」这层关系，以及两轮 model id 逐字相同。
  *      结论与裁量见迭代四方案 §15-6。
  *
  * 🔴 「停在确认之前」本身就是一条从数据里长出来的断言
@@ -583,7 +599,11 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
         expect(changes.length, `${label} 的 manifest 里一条变更都没有 —— 空计划不该出草稿卡`).toBeGreaterThan(0)
 
         const searchable = changes
-          .filter((x) => x.kind === 'FORM_CREATE')
+          // 🔴 认两种 kind，与前端 searchConditions 走的 [...formCreates, ...formUpdates] 逐字对齐。
+          //    原先这里只认 FORM_CREATE，于是 FORM_UPDATE 标了几个 searchable 都不计入（缺陷 D4-20）。
+          //    不干脆去掉 filter：DATA_WRITE 的 detail 里也有一个叫 fields 的数组（装的是被改的字段名，
+          //    是字符串不是对象），拿它去数 searchable 只会靠「碰巧没有这个属性」而恒为 0 —— 恒绿的口径不要
+          .filter((x) => x.kind === 'FORM_CREATE' || x.kind === 'FORM_UPDATE')
           .reduce((n, x) => {
             const d = x.detail ?? {}
             // 🔴 两个来源都要看：前端 searchConditions 只读 detail.fields[].searchable，
@@ -632,6 +652,48 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
           `四块保真：${Object.entries(expectBlocks)
             .map(([k, s]) => `${k.replace('manifest-', '')}=${s ? '有' : '无'}`)
             .join('，')}`
+        )
+
+        // ---------- 🔴 双向：两张表的字段集合必须**恰好相等**（方案 §2.2③） ----------
+        // 「表单字段」表里可查询=是 的那些行，与「列表查询条件」表的行，在前端是**同源**的：
+        // 都吃 detail.fields[]，searchConditions 只是挑出 truthy(searchable) 的那部分。
+        // 🔴 而「同源」这件事本身会被改坏 —— D4-20 就坏在这里：formGroups 认 FORM_UPDATE，
+        // searchConditions 不认，于是同一份清单上改表那一项在一张表里有行、在另一张表里没有。
+        // 只断「包含」抓不住反方向（查询条件表凭空多出一行），所以两边都数、排序后比数组。
+        const FIELD_TABLE_COLUMN_COUNT = 6 // 字段 / 标题 / 控件 / 绑定列类型 / 必填 / 可查询
+        const queryableInFieldsTable: string[] = []
+        const fieldTables = page.locator('[data-testid="manifest-form-fields"] .el-table')
+        for (let t = 0; t < (await fieldTables.count()); t++) {
+          const rows = fieldTables.nth(t).locator('tbody tr.el-table__row')
+          const rowCount = await rows.count()
+          for (let r = 0; r < rowCount; r++) {
+            const cells = rows.nth(r).locator('td')
+            if ((await cells.count()) !== FIELD_TABLE_COLUMN_COUNT) continue
+            if ((await cells.nth(5).innerText()).trim() !== '是') continue
+            const field = (await cells.nth(0).innerText()).trim()
+            const title = (await cells.nth(1).innerText()).trim()
+            // 「条件名」那一列渲染的是 title || field || '—'，这里照同一优先级取名，两边才对得上
+            queryableInFieldsTable.push(title && title !== '—' ? title : field)
+          }
+        }
+        const conditionRows = page.locator(
+          '[data-testid="manifest-search-conditions"] tbody tr.el-table__row'
+        )
+        const conditions: string[] = []
+        const conditionCount = await conditionRows.count()
+        for (let r = 0; r < conditionCount; r++) {
+          conditions.push((await conditionRows.nth(r).locator('td').first().innerText()).trim())
+        }
+        expect(
+          [...queryableInFieldsTable].sort(),
+          `${label} 两张表的字段集合不相等（def #${def.id}）：` +
+            `「表单字段」里可查询的=[${queryableInFieldsTable.join('、')}]，` +
+            `「列表查询条件」=[${conditions.join('、')}]。` +
+            `两张表在前端同源，不相等就是其中一张漏了某种 kind 或某种 searchable 写法（D4-20 的形状）`
+        ).toEqual([...conditions].sort())
+        detail.push(
+          `两表集合相等：可查询字段 ${conditions.length} 个` +
+            (conditions.length ? `（${conditions.join('、')}）` : '')
         )
 
         // 🔴 这条现在才**真的**在说「本条示例挂了 alert」：开跑前已经断言过 alert 清零

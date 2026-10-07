@@ -469,6 +469,7 @@ import type {
   ManifestTableAlterDetailVO,
   ManifestTableDetailVO,
   ManifestFormDetailVO,
+  ManifestFormUpdateDetailVO,
   ManifestUntrustedInputVO,
   ManifestWaitVO
 } from '@/api/agent/workflow'
@@ -657,25 +658,44 @@ const formGroups = computed<FormGroup[]>(() => {
     })
   }
   for (const it of formUpdates.value) {
-    const d = asMap(it.detail)
+    const d = asMap(it.detail) as ManifestFormUpdateDetailVO
     groups.push({
       key: `fu-${it.nodeId}-${it.target?.formId}`,
       title: `修改表单 #${it.target?.formId ?? '（未指定）'}${
         truthy(d.needsRepublish) ? '，改完需要重新发布才生效' : ''
       }`,
       item: it,
-      fields: [],
-      warnings: it.dryRun?.warnings || []
+      // 🔴 不再写死成 []：「列表查询条件」那张表就是从这些行里挑 searchable 的，
+      //    写死空数组等于改表永远加不了查询条件（缺陷 D4-20）
+      fields: fieldsOf(it),
+      warnings: [
+        ...(it.dryRun?.warnings || []),
+        // patch 整个由前置节点算出时后端认不出里面改了哪些字段，
+        // 那句话由后端给（它同时进 summary），前端不另写一份措辞
+        ...(d.patchPendingNote ? [d.patchPendingNote] : [])
+      ]
     })
   }
   return groups
 })
 
-/** 列表查询条件：从所有新建表单里挑出 searchable 的字段 */
+/**
+ * 列表查询条件：从所有「新建表单」与「改表单」里挑出 searchable 的字段
+ *
+ * 🔴 两种 kind 都要走。只认 FORM_CREATE 时，「表单字段」那张表认 FORM_UPDATE、
+ * 这张表不认 ⟹ 同一份清单上改表那一项在一处有行、在另一处什么都没有，
+ * 审批人会以为这次改动不涉及查询区（缺陷 D4-20，裁定 R-02「让改表也能新增查询条件」）。
+ * 两张表的数据同源（都是 detail.fields[]），所以「字段表里可查询的那些」与
+ * 「这张表的行」两个集合必然恰好相等 —— e2e 里有双向断言钉住这件事。
+ */
 const searchConditions = computed(() => {
   const out: { form: string; f: ManifestFormFieldVO }[] = []
-  for (const it of formCreates.value) {
-    const formName = String(it.target?.name || it.target?.code || '')
+  for (const it of [...formCreates.value, ...formUpdates.value]) {
+    const t = it.target || {}
+    // 改表这一项没有 name/code，只有编号；空着会让同一张表里的行看起来「不属于任何表单」
+    const formName = String(
+      t.name || t.code || (t.formId != null && t.formId !== '' ? `#${t.formId}` : '')
+    )
     for (const f of fieldsOf(it)) {
       if (truthy(f.searchable)) out.push({ form: formName, f })
     }

@@ -458,11 +458,27 @@ export interface ManifestFormFieldVO {
   operatorLabel?: string | null
 }
 
-/** FORM_UPDATE 的 detail */
+/** FORM_UPDATE 的 detail（实测 {@code FormUpdateChangeExtractor#extract}） */
 export interface ManifestFormUpdateDetailVO {
   patchKeys?: string[]
   clearFields?: string[]
   needsRepublish?: unknown
+  /**
+   * 🔴 patch 里认出来的字段行。与 FORM_CREATE 的 {@code fields} 是**同一份**行构造
+   * （后端 {@code ManifestFieldRows}，迭代七第 08 轮 D4-20 收的），
+   * 因为「列表查询条件」那张表就是从这两种行里挑 {@code searchable} 的，
+   * 键名漂开一个，e2e 里「两个集合恰好相等」那条断言就会红。
+   */
+  fields?: ManifestFormFieldVO[]
+  fieldCount?: number
+  /** patch 里进查询区的字段标题（后端已挑好，直接展示） */
+  searchableFields?: string[]
+  /**
+   * patch **整个**写成占位符（由前置 script 节点算出来）时后端给的一句诚实话。
+   * 🔴 没有这一格 = 后端看得见 patch；有这一格 = 上面那几个 fields 是不完整的，
+   * 前端原样显示这句话，不要自己再编一句措辞。
+   */
+  patchPendingNote?: string
 }
 
 /**
