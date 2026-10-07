@@ -11,6 +11,19 @@
   那个页不存在，于是运维拿着一条卡死的执行无处可点。
   ⚠️ 批一口径：恢复成功后**不**告知「本次丢弃了哪些未声明变量」（那是 V19 的读取期对偶，
   落 S13 / 批二，见 §7.4-G 推荐的 G1）。这不是漏项，S13 会往 onResume 那个确认框里补。
+
+  🔴 迭代七 B3-9：再加第三个动作「取消」，调新增的 POST /agent/workflow/cancel（权限
+  agent:workflow:cancel，SQL 见 xpy-2026-10-07-agent-workflow-cancel-perm.sql）。
+  加它的理由是 B3-1/B3-2 的后半截：本轮之前「取消」这件事在系统里**根本没有对应动作**，
+  用户想停下唯一办法是关掉 SSE —— 而 .doOnCancel 会把它写成 FAILED 并触发 Saga 反做，
+  等于「按停止键 → 记一次故障 → 再把已经做完的动作反做一遍」，三处全错。
+  三处口径（与后端注释一一对应，改一处要改三处）：
+  · 按钮**看服务端派生的 row.cancellable**，不在前端抄一份状态集合（G14）。集合的唯一出处是
+    WorkflowExecutionStatusEnum.CANCELLABLE，同时喂 Java 准入闸与 casToCancelled 的 SQL IN。
+  · CANCELLED 的 tag 用 info（灰），**不用 danger**：红会把它和 FAILED 在视觉上重新混成一件事，
+    而本轮的全部意义就是把这两件事分开。
+  · 确认框必须讲清「取消不是撤销」：它是记账，不是中断线程（在跑的节点会跑完），
+    已发生的副作用不回收且**刻意不补偿**，且 CANCELLED 不可 resume（A-Ⅰ）。
 -->
 <template>
   <el-drawer
@@ -108,7 +121,7 @@
       <el-table-column label="耗时(ms)" prop="durationMs" width="90" align="right" />
       <el-table-column label="开始时间" prop="beginTime" width="180" :formatter="dateFormatter" />
       <el-table-column label="失败原因" prop="errorMsg" min-width="160" show-overflow-tooltip />
-      <el-table-column label="操作" width="180" align="center" fixed="right">
+      <el-table-column label="操作" width="250" align="center" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="onReplay(row.id)">画布回放</el-button>
           <!-- 🔴 只在 INTERRUPTED 行出现：其余状态调 resume 后端会直接抛 STATE_INVALID
@@ -133,6 +146,29 @@
               @click="onResume(row, false)"
             >
               拒绝
+            </el-button>
+          </template>
+          <!-- 🔴 取消（迭代七 B3-2 / B3-9）。判据用**服务端派生**的 row.cancellable，
+               不要在这里重写 `['CREATED','RUNNING','INTERRUPTED'].includes(row.status)` ——
+               后端那份集合（WorkflowExecutionStatusEnum#isCancellable）同时喂 cancel 的预检与
+               casToCancelled 的 SQL IN；前端再抄一份，等第 05 轮（B3-4）或 A-Ⅰ 复议改动它时
+               就会出现「按钮亮着、点了被拒」。与 AgentWorkflowDefVO.editable 同一条纪律（G14）。
+               ⚠️ INTERRUPTED 行也会出这个按钮，且那是**有意**的：挂起中的执行没有活着的流可断，
+                  POST cancel 是「卡在闸口上没人管」时唯一的收尾手段（否则它永远挂在等待确认）。 -->
+          <template v-if="row.cancellable">
+            <!-- 🔴 v-hasPermi 只挂在这个新按钮上：隔壁 恢复/拒绝 至今**没有**权限指令
+                 （它们要 agent:workflow:run），给它们补属于另一刀的一致性收尾，本轮不夹带。
+                 这里挂上是为了不让「只有 query 权」的管理员看见一个点了就 403 的按钮 ——
+                 那正是本模块头号缺陷「配了、存在了、但不生效且没提示」的形状。 -->
+            <el-button
+              link
+              type="warning"
+              :loading="cancelling[row.id]"
+              :disabled="!!cancelling[row.id]"
+              v-hasPermi="['agent:workflow:cancel']"
+              @click="onCancel(row)"
+            >
+              取消
             </el-button>
           </template>
         </template>
@@ -197,6 +233,9 @@ const EXEC_LABELS: Record<string, string> = {
   INTERRUPTED: '等待确认',
   SUCCEEDED: '成功',
   FAILED: '失败',
+  // 🔴 迭代七 B3-2 新增。漏掉这一格的表现是状态列直接印机器串「CANCELLED」——
+  //    不报错、不难看，只是运维得自己猜它跟「失败」有什么区别（而区别正是本轮的全部意义）
+  CANCELLED: '已取消',
   COMPENSATING: '补偿中',
   COMPENSATED: '已补偿',
   COMPENSATION_FAILED: '补偿失败'
@@ -207,6 +246,11 @@ const execTagType = (status: string): 'primary' | 'success' | 'warning' | 'dange
   if (status === 'FAILED' || status === 'COMPENSATION_FAILED') return 'danger'
   if (status === 'INTERRUPTED') return 'warning'
   if (status === 'RUNNING' || status === 'CREATED') return 'primary'
+  // 🔴 CANCELLED 显式落 'info'（灰），**刻意不给 'danger'**：本轮把「用户按了停」从 FAILED 里拆出来，
+  //    若它在界面上仍旧是一片红，那两件事在运维眼里就还是同一件 —— 数据分开了、视觉没分开，
+  //    等于只修了三层错里的一层。灰 = 「停下来了，但不是故障」。
+  //    写在兜底 return 之前，是为了让这一档在代码里**看得见**，而不是靠「碰巧落到兜底」成立。
+  if (status === 'CANCELLED') return 'info'
   return 'info' // COMPENSATING / COMPENSATED 及未知
 }
 
@@ -402,6 +446,88 @@ const onResume = async (row: AgentWorkflowExecutionVO, approved: boolean) => {
   // 🔴 必须刷新：不刷的话这行还挂着「等待确认」，运维无从判断刚才那一下到底生效没有
   //    （本子系统最典型的缺陷就是「操作成功但不生效且无提示」）
   await getList()
+}
+
+// ========== 主动取消（迭代七 B3-2 / B3-9） ==========
+
+/** 正在取消中的执行：executionId → true。既让按钮转圈，也挡住同一行被连点两次 */
+const cancelling = reactive<Record<number, boolean>>({})
+
+/**
+ * 取消一条执行。
+ *
+ * <p>🔴 确认框里那三句「⚠️」不是免责声明式的凑字，每一句都对着一个<b>会被误判的后果</b>：
+ * <ol>
+ *   <li><b>停不下正在跑的节点</b> —— 后端是记账语义（图跑在 boundedElastic 上、内部 blockLast()，
+ *       那个 Disposable 没被留下）。不说清的话，用户会以为点了取消就立刻不烧 token 了；</li>
+ *   <li><b>已发出的副作用收不回来，且不触发补偿</b> —— 不说的话，用户会拿它当「回滚」用
+ *       （「跑错了我取消一下」），而取消恰恰<b>刻意</b>不反做：反做是「失败后的补救」，
+ *       用户主动中止不是失败，触发补偿等于把他想停的东西再跑一遍；</li>
+ *   <li><b>不可恢复</b> —— 裁定 A-Ⅰ：本轮不做「取消转可恢复」。对一个正挂在闸口上、
+ *       本来点「恢复」就能接着跑的执行，取消是<b>不可逆</b>的，必须让人在点之前知道。</li>
+ * </ol>
+ *
+ * <p>⚠️ 与隔壁 {@link onResume} 不同，这里<b>没有</b> AbortController：cancel 是一次普通 POST，
+ * 不是流。抽屉关掉时没有需要掐的在途连接（那个请求要么已落库、要么已被后端拒，两种都是终局）。
+ */
+const onCancel = async (row: AgentWorkflowExecutionVO) => {
+  // 🔴 「它停在哪」分三档，别混成一档 —— 与隔壁 onResume 同一条纪律（迭代六 B3-10）。
+  //    本轮初版这里只有一句 `它最后跑完的节点是「currentNode」`，对 INTERRUPTED 行是**错的**：
+  //    current_node 只在**节点跑完**时写，真正挂起的那个闸口在它后面（suspend_node）。
+  //    于是运维在取消一个挂起执行时，读到的位置是一个**早就跑完**的节点 —— 正是 B3-10 上一轮
+  //    刚从「恢复」确认框里拆掉的那个缺陷，新加的动作不能把它原样再引入一遍。
+  //    · INTERRUPTED + suspend_node 有值 → 点名闸口（取消掉的就是这道等待）；
+  //    · INTERRUPTED + 为空 → 直说「说不清」，**不许**改口说「停在 currentNode」；
+  //    · 其余档（CREATED/RUNNING）→ 这时没有闸口可言，currentNode 才是对的位置。
+  const where =
+    row.status === 'INTERRUPTED'
+      ? row.suspendNode
+        ? `它正挂在闸口「${row.suspendNode}」上等人工确认（最后跑完的节点是「${
+            row.currentNode || '未知'
+          }」）。`
+        : `它正挂在某道闸口上等人工确认，但${SUSPEND_NODE_UNKNOWN}（最后跑完的节点是「${
+            row.currentNode || '未知'
+          }」）。`
+      : row.currentNode
+        ? `它最后跑完的节点是「${row.currentNode}」。`
+        : ''
+  try {
+    // 🔴 纯文本插值，不开 dangerouslyUseHTMLString：suspendNode / currentNode / status 都是服务端数据
+    await ElMessageBox.confirm(
+      `执行 #${row.id} 当前状态「${execLabel(row.status)}」。${where}` +
+        '取消后它落终态「已取消」。' +
+        ' ⚠️ 这不是「掐断线程」：后端停不下正在执行的那个节点，它会自然跑完，只是收尾不再改写这一行。' +
+        ' ⚠️ 已经发出去的外部副作用收不回来（token 已扣、库已写、审批已发），且不会触发补偿反做 —— ' +
+        '想撤销已生效的写操作，取消做不到，得另走人工处置。' +
+        ' ⚠️ 取消后不可恢复，要重跑得从头再跑一次。' +
+        (row.status === 'INTERRUPTED'
+          ? ' ⚠️ 取消等于放弃这次等待，而它本来点「恢复」就能接着跑。'
+          : ''),
+      '取消这条执行',
+      { confirmButtonText: '仍要取消', cancelButtonText: '返回', type: 'warning' }
+    )
+  } catch {
+    return // 用户返回
+  }
+
+  cancelling[row.id] = true
+  try {
+    await AgentWorkflowApi.cancelExecution(row.id)
+    message.success(`执行 #${row.id} 已取消`)
+  } catch {
+    // 🔴 刻意**不**在这里另编文案：后端 STATE_INVALID 的 msg 里带的是**重读到的真实状态**
+    //    （例如「当前状态（SUCCEEDED）不允许该操作」），axios 拦截器已经把它 toast 出去了。
+    //    前端再补一句「取消失败，请重试」会把那句真话盖掉，而这两档的处置完全不同：
+    //    「它已经跑完了」= 没什么可做；「它正在回滚」= 等它跑完再说。
+  } finally {
+    delete cancelling[row.id]
+    // 那个还在跑的节点可能又落了新的 trace，缓存清掉，下次展开才看得到
+    delete tracesMap[row.id]
+    // 🔴 成功、失败**都要**刷。失败最常见的原因恰恰是「就在你点下去那一刻它自己收尾了」，
+    //    不刷的话这行还显示「运行中」，而库里已经是 SUCCEEDED —— 界面替后端撒了个谎，
+    //    而后端那边为了不说这句谎专门做了「CAS 输掉就重读再报真实状态」。
+    await getList()
+  }
 }
 
 onBeforeUnmount(() => {

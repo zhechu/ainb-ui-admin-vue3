@@ -172,8 +172,27 @@ export interface AgentWorkflowExecutionVO {
   id: number
   workflowDefId: number
   workflowVersion: number
-  /** CREATED/RUNNING/INTERRUPTED/SUCCEEDED/FAILED/COMPENSATING/COMPENSATED/COMPENSATION_FAILED */
+  /**
+   * CREATED/RUNNING/INTERRUPTED/SUCCEEDED/FAILED/CANCELLED/COMPENSATING/COMPENSATED/COMPENSATION_FAILED
+   *
+   * 🔴 `CANCELLED`（迭代七 B3-2 新增）= **用户主动中止**，与 `FAILED` 是两件事：
+   * 它不触发补偿、不进失败告警面、也不可 resume。
+   * ⚠️ 本轮之前库里**没有**这一档 —— 用户中止被写成 `FAILED` + errorMsg「用户中断」。
+   *   故历史数据里仍可能看到「FAILED 但原因是用户中断」的行，那不是新 bug，是存量。
+   */
   status: string
+  /**
+   * 这一行能不能就地「取消」（迭代七 B3-2 起由服务端派生下发）。
+   *
+   * 🔴 **不要在前端重写这条判据**（即不要写 `['CREATED','RUNNING','INTERRUPTED'].includes(row.status)`）。
+   *   后端那份集合只有 `WorkflowExecutionStatusEnum.isCancellable` **一份**，它同时喂 `cancel` 的预检
+   *   与 `casToCancelled` 的 SQL `IN`；前端再抄一份，等第 05 轮（B3-4）或 A-Ⅰ 复议改动它时
+   *   就会出现「按钮亮着、点了被拒」。与 {@link AgentWorkflowDefVO.editable} 同一条纪律（G14）。
+   * 🔴 声明成可选是为了**失败朝安全那一侧倒**：拿不到这一格时 `v-if="row.cancellable"` 自然为假
+   *   ⟹ 按「不可取消」渲染，与后端对 `status` 为空的处理同方向。
+   *   故消费方一律写 `row.cancellable`（真值判断），**不要**写 `row.cancellable !== false`。
+   */
+  cancellable?: boolean
   currentNode?: string
   /**
    * 挂起时正在等待的闸口节点 id（迭代六 D1，列 `suspend_node`）。
@@ -697,6 +716,22 @@ export const AgentWorkflowApi = {
   /** 节点级 trace 列表 */
   getNodeTrace: (executionId: number): Promise<AgentNodeExecutionVO[]> =>
     request.get({ url: '/agent/workflow/node-trace/list', params: { executionId } }),
+
+  /**
+   * 中止一条执行：落终态 `CANCELLED`（迭代七 B3-2）。权限 `agent:workflow:cancel`（单开一档，不并进 run）。
+   *
+   * 🔴 **这不是「停止线程」**：后端停不下正在跑的那个节点（图跑在 boundedElastic 上、内部 blockLast()，
+   *   那个 Disposable 没被留下）。取消是**记账语义** —— 把行判成 CANCELLED，并挡住那条流晚到的收尾
+   *   （SQL 条件 `status<>'CANCELLED'`）。**已经发出去的外部副作用收不回来**（token 已扣、库已写、审批已发）。
+   * 🔴 **不触发补偿**：补偿是「失败后反做」，用户主动中止不是失败；触发补偿等于把用户想停的东西再跑一遍。
+   * 🔴 可取消的只有 CREATED / RUNNING / INTERRUPTED 三档。其余六档后端一律抛
+   *   `WORKFLOW_EXECUTION_STATE_INVALID`，消息里带**当时真实**的状态 —— 故失败时**直接显示后端那句 msg**，
+   *   不要前端另编文案（编出来的那句会与库里真实状态对不上，而这两档的处置完全不同：
+   *   「它已经跑完了」vs「它正在回滚、不许打断」）。
+   * ⚠️ `CANCELLED` **不可恢复**（裁定 A-Ⅰ：本轮刻意不做「取消转可恢复」）。要重跑得从头 run 一次。
+   */
+  cancelExecution: (executionId: number): Promise<boolean> =>
+    request.post({ url: '/agent/workflow/cancel', params: { executionId } }),
 
   /**
    * 版本管理（增量14b）：某 code 的全部版本（version 倒序，不含 dsl 正文）。
