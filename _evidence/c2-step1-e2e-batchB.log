@@ -1,0 +1,32 @@
+
+Running 26 tests using 1 worker
+
+  ok  1 tests\e2e\agent-def-chat-route.spec.ts:56:7 › 聊天入口按 Agent 路由 › 选择器列出已发布 Agent + 默认助手；选中后 send-stream 载荷带 agentDefId (9.0s)
+  ok  2 tests\e2e\agent-def-chat-route.spec.ts:98:7 › 聊天入口按 Agent 路由 › 默认助手选项值为空（不选 Agent 时 send-stream 不带 agentDefId） (8.2s)
+  ok  3 tests\e2e\agent-def-chat-route.spec.ts:119:7 › 聊天入口按 Agent 路由 › 智能体设计器有「模型」与「知识库」下拉（E3：模型/知识库绑定入口） (8.1s)
+  ok  4 tests\e2e\agent-def-manage.spec.ts:68:7 › 智能体管理页 › 菜单非空白 + 新建 → 发布 → 停用 全生命周期 (11.6s)
+  ok  5 tests\e2e\agent-def-manage.spec.ts:149:7 › 智能体管理页 › 草稿可删除（自己造的自己删） (9.0s)
+  ok  6 tests\e2e\agent-def-manage.spec.ts:175:7 › 智能体管理页 › 工具多选绑定 → 保存 → 重新编辑仍选中（toolKeys 往返，0 token） (10.6s)
+  ok  7 tests\e2e\agent-def-manage.spec.ts:248:7 › 智能体管理页 › 需求10：系统内置行可就地编辑，且无删除/停用/派生入口 (8.1s)
+  ok  8 tests\e2e\agent-def-manage.spec.ts:296:7 › 智能体管理页 › 需求11：已发布行编辑派生 v2 草稿 + 复制成新编码草稿 (16.1s)
+  ok  9 tests\e2e\agent-def-manage.spec.ts:446:7 › 智能体设计器 · 工具下拉的只读过滤（D4-22） › 降过险的写工具仍不进「只读」下拉；同下拉里真只读工具照样在 (8.5s)
+  ok 10 tests\e2e\agent-def-manage.spec.ts:579:7 › 智能体设计器 · 停用工具的置灰与就地警告（D4-25） › 先绑定后停用 ⟹ 就地报警 + 标签仍是中文名 + 候选置灰挑不动（对照工具照旧可挑） (11.5s)
+  ok 11 tests\e2e\agent-def-manage.spec.ts:791:7 › 智能体列表页 · 发布确认框里的停用工具警告（D4-25 后端半） › 先绑定后停用 ⟹ 确认框点名停用项、不点名对照项，且点确定照样发布成功 (12.8s)
+  ok 12 tests\e2e\agent-dock.spec.ts:70:7 › AI 助手 · 全局悬浮入口 › 在业务页面上唤起：悬浮球可点、抽屉里是完整可用的对话区 (8.1s)
+  ok 13 tests\e2e\agent-dock.spec.ts:108:7 › AI 助手 · 全局悬浮入口 › 🔴 助手独立页上整块不渲染 —— 否则页面与浮层里各有一个对话组件 (7.2s)
+  ok 14 tests\e2e\agent-dock.spec.ts:120:7 › AI 助手 · 全局悬浮入口 › 抽屉里点「展开」跳到独立页，浮层那份随之消失 (7.8s)
+  ok 15 tests\e2e\agent-dock.spec.ts:136:7 › AI 助手 · 全局悬浮入口 › 二轮需求1：左缘拖拽调宽 + 头部最大化/还原 (8.7s)
+  ok 16 tests\e2e\agent-dock.spec.ts:166:7 › AI 助手 · 全局悬浮入口 › 历史会话：抽屉里就能看到列表，点一条能切回去继续 (9.0s)
+  ok 17 tests\e2e\agent-dock.spec.ts:204:7 › AI 助手 · 全局悬浮入口 › 历史会话：重命名与置顶都当场生效 (9.9s)
+  ok 18 tests\e2e\agent-dock.spec.ts:238:7 › AI 助手 · 全局悬浮入口 › 删掉正在看的会话：回到空态，但人还留在历史列表里 (9.7s)
+  ok 19 tests\e2e\agent-dock.spec.ts:272:7 › AI 助手 · 全局悬浮入口 › AI · 关掉抽屉再刷新页面：接得上刚才那次对话 (43.7s)
+  ok 20 tests\e2e\agent-dock.spec.ts:301:7 › AI 助手 · 全局悬浮入口 › AI · 本地记忆被清掉后：空态给一个「继续上次对话」的显式入口 (27.5s)
+  ok 21 tests\e2e\agent-dock.spec.ts:339:7 › AI 助手 · 全局悬浮入口 › AI · 生成中切去翻历史再切回来：回答还在继续，没有被掐断 (24.8s)
+  ok 22 tests\e2e\agent-dock.spec.ts:371:7 › AI 助手 · 全局悬浮入口 › 手机视口：抽屉铺满屏宽，输入框仍在可视区内 (8.0s)
+  ok 23 tests\e2e\assistant-copy-flush.spec.ts:62:7 › P0-2 · 打字机 flush：动画没吐完就点「复制」，也必须拿到完整答案 › 复制到的文本 === 完整答案（不是前缀），且阳性对照证明动画当时确实没吐完 (8.5s)
+  ok 24 tests\e2e\assistant-input-resize.spec.ts:53:7 › AI 助手 · 输入框上下拖大 › 独立页：8 行提示词默认要滚，往上拖后不用滚，双击恢复 (7.6s)
+  ok 25 tests\e2e\assistant-input-resize.spec.ts:105:7 › AI 助手 · 输入框上下拖大 › 独立页：往上拖有上限，不会把对话区吃光 (7.4s)
+  ok 26 tests\e2e\assistant-input-resize.spec.ts:130:7 › AI 助手 · 输入框上下拖大 › 悬浮球抽屉：compact 形态下同样能拖高，且输入框仍在可视区内 (7.9s)
+
+  26 passed (5.2m)
+EXIT_CODE=0

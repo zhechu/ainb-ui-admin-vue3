@@ -1,0 +1,105 @@
+# T2 · BUILD 类示例真发矩阵
+
+- 生成时间：2026-10-08T12:22:33.112Z
+- 示例总数 45，其中 BUILD **3** 条（方案写的是 10 条，实测对不上）
+- 基线：物理表 253 张、流程 def 32 条、会话 4 条
+- 过滤器 TPL_MATRIX_ONLY：（未设，全跑）
+
+> 🔴 本用例**不点「确认并运行」**，理由见 spec 头注释。绿只代表：分型判成了 BUILD、
+> 草稿卡与变更预演渲染保真、只读体检通过、且没有任何东西被自行发布。
+
+---
+
+## 1/3 · id=55 · 会议室预订登记表
+
+- 耗时：6857ms
+- 终局：outcome=false，sawPlanning=false
+- ❌ 示例 55（会议室预订登记表） 没产出流程草稿卡 —— 被判成了 CHAT，直接答了一段文字：意图分型没走 BUILD 路径
+
+**提问**
+
+我要做一张「会议室预订登记表」，用来让员工自助登记会议室占用、行政能一眼看出哪间会议室什么时候空着，需要这些字段：预订人（默认当前登录人）、所属部门、会议室（从固定的八间里选）、开始时间、结束时间、会议主题、参会人数、是否需要投影。
+
+请按这个顺序来，每步做完先给我看结果：
+1. 查一下有没有能复用的表，别急着建新表；
+2. 给出每个字段的控件选型和理由（控件是白名单，别用不存在的类型）；
+3. 保存成草稿；
+4. 做一次发布体检，把体检出的问题列全；
+5. 等我确认之后再发布，不要自己发布。
+
+**验收标准（expect_hint · 人工评审用）**
+
+必须严格按 1 到 5 的顺序推进、每步给出可见结果再往下；控件选型只能出自控件白名单；「会议室」应是字典或固定选项而不是自由输入；第 4 步要真的调发布体检并逐条列出问题；第 5 步必须停在确认之前，不能自行发布
+
+---
+
+## 2/3 · id=57 · 客户拜访记录表
+
+- 耗时：17494ms
+- 终局：outcome=true，sawPlanning=true
+- 草稿卡：待确认，节点 6 个
+- 轮次徽标：一次过闸门
+- 新造 def：#586 wf_plan_muzic9c7_1「客户拜访记录表创建流程」状态 DRAFT
+- 体检：通过，warnings 2 条（节点(id=save_draft) 的 form_save_draft 主表名要到运行期才确定（{{$.draft_config.mainTable}}），所以它存不存在、以及字段映射的那几个列在不在表里，体检期都无从判定，本次这两项都跳过了 / 本流程有 1 个写操作节点的上游没有人工闸口（最高声明风险「低风险」）：id=save_draft（form_save_draft）。不阻断，但建议在动手改数据之前加一个 hitl.confirm，让人有机会拦一下）
+- manifest：riskLevel=LOW，kinds=[FORM_CREATE]
+- 四块保真：tables=无，form-fields=有，search-conditions=无，permissions=无
+- 两表集合相等：可查询字段 0 个
+
+**提问**
+
+我要做一张「客户拜访记录表」，用来让销售在拜访结束后回填、主管能按客户和按人查拜访情况，需要这些字段：拜访客户（从客户表里选，不许手打）、拜访人（默认当前登录人）、拜访日期、拜访方式（上门 / 电话 / 视频）、参与人、沟通要点、下一步动作、下次跟进日期。
+
+请按这个顺序来，每步做完先给我看结果：
+1. 查一下有没有能复用的表，别急着建新表；
+2. 给出每个字段的控件选型和理由（控件是白名单，别用不存在的类型）；
+3. 保存成草稿；
+4. 做一次发布体检，把体检出的问题列全；
+5. 等我确认之后再发布，不要自己发布。
+
+**验收标准（expect_hint · 人工评审用）**
+
+「拜访客户」必须选关联类控件（关联表单或远程下拉）而不是普通输入框，并说明数据源指向哪张表；要按 1 到 5 顺序推进并停在发布前；控件必须出自白名单
+
+---
+
+## 3/3 · id=59 · 给报价单加竞对报价字段
+
+- 耗时：30881ms
+- error alert 原文：复杂需求拆解为 Workflow DSL 失败（轮次耗尽）：模型连续两轮产出**完全相同**的 DSL 且同样不合法（第 2 轮），回灌自修正对它无效，已提前止损。DSL 不是合法 JSON：Workflow DSL 不合法：JSON 解析失败：Unexpected character ('{' (code 123)): was expecting double-quote to start field name at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 196, column: 30] (through reference chain: cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.WorkflowDefDTO["nodes"]->java.util.ArrayList[9]->cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.NodeDTO["config"])。completionTokens(2791) 未顶到 maxTokens(8000)，所以不是截断；大括号是配平的，属于模型把 JSON 写坏了。这不是轮次不够 —— 调大 as-workflow-max-rounds 只会多烧几轮同样的钱；该做的是钉一个更强的 planner 模型（yudao.agent.plan.planner-model-id），或修掉提示词里教错的那一处
+- 终局：outcome=null，sawPlanning=true，页面挂了 error alert
+- ❌ 示例 59（给报价单加竞对报价字段） 没产出流程草稿卡 —— 页面挂了 error alert，原文：复杂需求拆解为 Workflow DSL 失败（轮次耗尽）：模型连续两轮产出**完全相同**的 DSL 且同样不合法（第 2 轮），回灌自修正对它无效，已提前止损。DSL 不是合法 JSON：Workflow DSL 不合法：JSON 解析失败：Unexpected character ('{' (code 123)): was expecting double-quote to start field name at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 196, column: 30] (through reference chain: cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.WorkflowDefDTO["nodes"]->java.util.ArrayList[9]->cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.NodeDTO["config"])。completionTokens(2791) 未顶到 maxTokens(8000)，所以不是截断；大括号是配平的，属于模型把 JSON 写坏了。这不是轮次不够 —— 调大 as-workflow-max-rounds 只会多烧几轮同样的钱；该做的是钉一个更强的 planner 模型（yudao.agent.plan.planner-model-id），或修掉提示词里教错的那一处
+
+**提问**
+
+表单「销售报价单」要加一个字段 竞对报价，用途是让业务员记下客户同时拿到的别家价格，便于主管判断折扣该给多少，控件我倾向于金额输入（不确定就让你推荐）。
+
+请只改这一处，不要重写整份表单定义。改完告诉我三件事：已有的数据行这个字段是什么值、列表页要不要跟着加这一列、导出要不要同步。
+
+**验收标准（expect_hint · 人工评审用）**
+
+必须只改这一个字段（改动前后其余部分应完全一致），不能顺手重排或重命名别的字段；要逐条回答已有数据行的值、列表页、导出三个问题
+
+---
+
+## 汇总
+
+- 真发：1/3 条
+- 失败：2 条
+  - 示例 55（会议室预订登记表）：示例 55（会议室预订登记表） 没产出流程草稿卡 —— 被判成了 CHAT，直接答了一段文字：意图分型没走 BUILD 路径
+  - 示例 59（给报价单加竞对报价字段）：示例 59（给报价单加竞对报价字段） 没产出流程草稿卡 —— 页面挂了 error alert，原文：复杂需求拆解为 Workflow DSL 失败（轮次耗尽）：模型连续两轮产出**完全相同**的 DSL 且同样不合法（第 2 轮），回灌自修正对它无效，已提前止损。DSL 不是合法 JSON：Workflow DSL 不合法：JSON 解析失败：Unexpected character ('{' (code 123)): was expecting double-quote to start field name at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 196, column: 30] (through reference chain: cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.WorkflowDefDTO["nodes"]->java.util.ArrayList[9]->cn.iocoder.yudao.module.agent.framework.agent.core.engine.dsl.NodeDTO["config"])。completionTokens(2791) 未顶到 maxTokens(8000)，所以不是截断；大括号是配平的，属于模型把 JSON 写坏了。这不是轮次不够 —— 调大 as-workflow-max-rounds 只会多烧几轮同样的钱；该做的是钉一个更强的 planner 模型（yudao.agent.plan.planner-model-id），或修掉提示词里教错的那一处
+
+---
+
+## 残留核账（方案 §6.2）
+
+- 物理表：跑前 253 张 → 跑后 253 张
+- 新增表：无
+- 消失的表：无
+- 流程 def：跑前 32 条 → 本轮新造 1 条（586/DRAFT/AUTO「客户拜访记录表创建流程」） → 删草稿 1 条
+- 其中没人认领的孤儿草稿：无
+- 本轮期间多出的、非本轮所建的 def：无
+- 本轮新造却不是草稿的 def（自行发布）：无
+- 状态被改成 PUBLISHED 的既有 def：无
+- 本轮 def 名下的挂起执行：无
+- 会话：删除本轮自建的 3 条（认领 3 条，基线 4 条原样保留）
+- 本轮期间出现的、非本轮所建的会话：无

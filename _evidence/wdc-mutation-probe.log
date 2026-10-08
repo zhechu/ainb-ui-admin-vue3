@@ -1,0 +1,37 @@
+
+===== P1 恢复「不在基线里的 DRAFT 全删」 =====
+1) tests\e2e\workflow-def-cleanup.spec.ts:122:7 › 流程 def 归属判据（构造样本） › ① 🔴 只删本轮认领的草稿：别人的**手工**草稿必须原样保留 
+  2) tests\e2e\workflow-def-cleanup.spec.ts:195:7 › 流程 def 归属判据（构造样本） › ③ 没人认领的 AUTO 草稿：照样删（兜住「用例红在记下 id 之前」），但措辞要如实 
+  2 failed
+  5 passed (2.4s)
+✅ 探针有效：① 红了
+
+===== P2 恢复「只删 DRAFT、别的不管」 =====
+1) tests\e2e\workflow-def-cleanup.spec.ts:164:7 › 流程 def 归属判据（构造样本） › ② 🔴 本轮新造却不是草稿：不删、判成自行发布、并停用（def #567 那一格） 
+  1 failed
+  6 passed (1.7s)
+✅ 探针有效：② 红了
+
+===== P3 leftover 换回**条数差**口径 =====
+1) tests\e2e\workflow-def-cleanup.spec.ts:122:7 › 流程 def 归属判据（构造样本） › ① 🔴 只删本轮认领的草稿：别人的**手工**草稿必须原样保留 
+  2) tests\e2e\workflow-def-cleanup.spec.ts:282:7 › 流程 def 归属判据（构造样本） › ⑥ 🔴 任何一步失败都**不许 throw**，且必须印出 ⚠️ 
+  3) tests\e2e\workflow-def-cleanup.spec.ts:309:7 › 流程 def 归属判据（构造样本） › ⑦ 🔴 leftover 不许是**条数差**：别人删一条 + 本轮残留一条，条数差是 0 
+  3 failed
+  4 passed (2.4s)
+✅ 探针有效：⑦ 红了
+
+===== P4 让 call 把失败**抛出去**（恢复 expectOk 口径） =====
+1) tests\e2e\workflow-def-cleanup.spec.ts:250:7 › 流程 def 归属判据（构造样本） › ⑤ 🔴 取消挂起执行之后必须回读：取消失败不许被报成清干净了 
+  2) tests\e2e\workflow-def-cleanup.spec.ts:282:7 › 流程 def 归属判据（构造样本） › ⑥ 🔴 任何一步失败都**不许 throw**，且必须印出 ⚠️ 
+  3) tests\e2e\workflow-def-cleanup.spec.ts:309:7 › 流程 def 归属判据（构造样本） › ⑦ 🔴 leftover 不许是**条数差**：别人删一条 + 本轮残留一条，条数差是 0 
+  3 failed
+  4 passed (2.4s)
+✅ 探针有效：⑥ 红了
+
+===== P5 去掉取消之后的那次回读 =====
+1) tests\e2e\workflow-def-cleanup.spec.ts:250:7 › 流程 def 归属判据（构造样本） › ⑤ 🔴 取消挂起执行之后必须回读：取消失败不许被报成清干净了 
+  1 failed
+  6 passed (1.7s)
+✅ 探针有效：⑤ 红了
+
+还原校验：✅ 逐字节还原
