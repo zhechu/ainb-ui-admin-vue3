@@ -15,7 +15,7 @@
 | 本轮提交 | 后端 **1** 条（`0298422a04`）+ 前端 **4** 条（`04c2e931a` docs② / `9af7115ef` chore / `cb5f88561` docs③ / 本文件所在那条） |
 | 仓外归档区①（DB 备份） | `C:/code/yudao_backups/iter8-g1-db/` —— **11 个文件 / 14,720,144 B**（`dumps/` 10 份 `.sql` + `MANIFEST.sha256`） |
 | 仓外归档区②（r10 日志） | `C:/code/yudao_backups/r10/` —— **78 个文件 / 10,847,346 B**（`logs/` 75 + `MANIFEST.sha256` + `MANIFEST.pass1.sha256` + `_pass2.log`）🔴 后两样在清单之外，且 `_pass2.log` 是**活文件**，`du` 会继续长；`MANIFEST.sha256` 只钉 `logs/` 那 75 份 |
-| 本仓副本 | 本文件 + `round01-G1数据库备份-MANIFEST.sha256`（**10** 行，sha256 = `f6aeca851a8be7fd66fb1ac057046fec6e873c8b63d29a498bebd0c69d08dd40`）+ `round01-r10日志归档-MANIFEST.sha256`（**75** 行，sha256 = `110763a4a1e6f10092efeb8351bdab93edb5d0563ea7840d9fe6dd3352587d68`）；两份都是仓外那份的**逐字副本**，`cmp` → **`CMP_EXIT=0`** |
+| 本仓副本 | 本文件 + `round01-G1数据库备份-MANIFEST.sha256`（**10** 行，sha256 = `f6aeca851a8be7fd66fb1ac057046fec6e873c8b63d29a498bebd0c69d08dd40`）+ `round01-r10日志归档-MANIFEST.sha256`（**75** 行，sha256 = `110763a4a1e6f10092efeb8351bdab93edb5d0563ea7840d9fe6dd3352587d68`）；两份都是仓外那份的**逐字副本**，当前工作树 `cmp` → **`CMP_EXIT=0`**。🔴 本仓 `core.autocrlf=true` 且无 `.gitattributes`，**重新 checkout 会把副本 smudge 成 CRLF、`cmp` 随之变红**（行尾差异，非内容差异）；与 checkout 历史无关的判据见 §6③ 的「CRLF 免疫版」（比 blob 的 sha256） |
 | 原始日志（脚本 + 输出，全在仓外归档区②里） | `43-iter8-g1-backup.sh` / `.log` · `44-iter8-r10-archive.sh` / `.log` · `45-iter8-r10-archive-pass2.sh` · `_pass2.log` |
 
 ---
@@ -156,17 +156,26 @@ grep -c -E 'MANIFEST|_pass2|INDEX' MANIFEST.sha256       # 0（清单不自指�
 diff <( cd /c/code/yudao/ruoyi-vue-pro/_logs/r10 && ls -1 | LC_ALL=C sort ) <( cd logs && ls -1 | LC_ALL=C sort ); echo "NAME_DIFF_EXIT=$?"   # 空输出 + 0
 
 # ③ 本仓那两份副本与仓外那两份逐字节相同
-cmp /c/code/yudao_backups/iter8-g1-db/MANIFEST.sha256 "/c/code/yudao/yudao-ui-admin-vue3/docs/iter8/round01-G1数据库备份-MANIFEST.sha256"; echo "CMP_EXIT=$?"   # 0
-cmp /c/code/yudao_backups/r10/MANIFEST.sha256        "/c/code/yudao/yudao-ui-admin-vue3/docs/iter8/round01-r10日志归档-MANIFEST.sha256"; echo "CMP_EXIT=$?"   # 0
+#    🔴 `cmp` 只在【没有被 git 重新 checkout 过的工作树】上成立：本仓 `core.autocrlf=true` 且这两份
+#       没有 `.gitattributes`（`git ls-files --eol` = `i/lf w/lf attr/`），所以**重新 clone / checkout
+#       会把它们 smudge 成 CRLF**，届时 `cmp` 会红 —— 那是行尾差异，不是清单内容变了。
+#       要一条**与 checkout 历史无关**的判据，用下面那两行比 blob 的 sha256（blob 里存的永远是 LF）。
+cmp /c/code/yudao_backups/iter8-g1-db/MANIFEST.sha256 "/c/code/yudao/yudao-ui-admin-vue3/docs/iter8/round01-G1数据库备份-MANIFEST.sha256"; echo "CMP_EXIT=$?"   # 0（当前工作树）
+cmp /c/code/yudao_backups/r10/MANIFEST.sha256        "/c/code/yudao/yudao-ui-admin-vue3/docs/iter8/round01-r10日志归档-MANIFEST.sha256"; echo "CMP_EXIT=$?"   # 0（当前工作树）
+# CRLF 免疫版（两两必须相等）：
+( cd /c/code/yudao/yudao-ui-admin-vue3 && git show "HEAD:docs/iter8/round01-G1数据库备份-MANIFEST.sha256" | sha256sum )   # f6aeca85…
+sha256sum /c/code/yudao_backups/iter8-g1-db/MANIFEST.sha256                                                              # f6aeca85…
+( cd /c/code/yudao/yudao-ui-admin-vue3 && git show "HEAD:docs/iter8/round01-r10日志归档-MANIFEST.sha256" | sha256sum )    # 110763a4…
+sha256sum /c/code/yudao_backups/r10/MANIFEST.sha256                                                                      # 110763a4…
 
-# ④ 本轮四条前端提交 + 一条后端提交
-#    🔴 第四条就是【本摘要自身入仓】那条，它的哈希无法写进自己正文（自指），用最后一行现取
+# ④ 本轮的前端提交 + 一条后端提交
+#    🔴 【本摘要自身入仓】的那几条哈希无法写进自己正文（自指），一律用最后一行现取
 cd /c/code/yudao/ruoyi-vue-pro       && git show --numstat 0298422a04   # 后端：1 文件 +10（含改正后的注释）
 cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 04c2e931a    # 前端 docs②：2 文件 +243/−86
 cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat cb5f88561    # 前端 docs③：1 文件（把那句假话改成实话）
 cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 9af7115ef    # 前端 chore：29 文件（.gitignore + 28 份证据入仓）
 cd /c/code/yudao/yudao-ui-admin-vue3 && git ls-files _evidence | wc -l  # 33（U3 之前是 5）
-cd /c/code/yudao/yudao-ui-admin-vue3 && git log --oneline -1 -- docs/iter8/   # 前端 docs④（3 文件：本摘要 + 两份清单副本）
+cd /c/code/yudao/yudao-ui-admin-vue3 && git log --oneline -- docs/iter8/   # 前端 docs④（3 文件入仓）及其后的每次重钉；最上面那条 = 最近一次
 
 # ⑤ 重跑备份 / 归档本身（🔴 都是只读 + 落盘，不动业务数据；DB 口令在脚本里明写，所以脚本不入 git）
 bash /c/code/yudao/ruoyi-vue-pro/_logs/r10/43-iter8-g1-backup.sh
