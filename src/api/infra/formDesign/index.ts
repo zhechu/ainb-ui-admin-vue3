@@ -59,6 +59,21 @@ export type FormDesignVO = {
   createTime?: Date
   updater?: string
   updateTime?: Date
+  // ========== AI 产物治理（B4-1）==========
+  /**
+   * 乐观锁版本。保存时必须原样回传，缺了后端会直接拒（缺它乐观锁形同没开）。
+   *
+   * ⚠️ 与本文件里另外两个 version <b>不是一回事</b>，三者同名不同义：
+   * · 本字段      —— 这一<b>行记录</b>被改过几次，用于并发覆盖检测；
+   * · publishedVersion —— 线上是第几<b>次发布</b>；
+   * · FormDesignVersionVO.version —— 草稿快照的序号。
+   * 混用的表现是「保存被拒，说版本冲突」，而用户看不出是哪一层在冲突
+   */
+  version?: number
+  /** 来源：MANUAL=人工创建 / AI=Agent 工具创建。只读，服务端按入口盖章 */
+  source?: string
+  /** 人工是否改过这张 AI 建的表单。只读、且只增不减，服务端按入口盖章 */
+  manualEditedFlag?: boolean
 }
 
 /** 保存请求。formFields 是数组，与 DO 里的 JSON 字符串不同 */
@@ -93,6 +108,11 @@ export type FormDesignSaveReqVO = {
   tableBinding?: string
   sort?: number
   remark?: string
+  /**
+   * 乐观锁版本（B4-4），修改时必传。取自 getFormDesign 的返回值，原样带回。
+   * 🔴 不是 schemaVersion、也不是 publishedVersion —— 见 FormDesignVO.version 上那段辨析
+   */
+  version?: number
 }
 
 /** 精简信息，供其它功能引用表单时使用 */

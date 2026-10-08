@@ -9,6 +9,13 @@ export type DataModelVO = {
   modelName: string
   remark?: string
   createTime?: Date
+  // ========== AI 产物治理（B4-1）==========
+  /** 乐观锁版本。改表时必须原样回传，缺了后端会直接拒（缺它乐观锁形同没开） */
+  version?: number
+  /** 来源：MANUAL=人工创建 / AI=Agent 工具创建 / IMPORT=导入已有表登记。只读，服务端按入口盖章 */
+  source?: string
+  /** 人工是否改过这条 AI 建的模型。只读、且只增不减，服务端按入口盖章 */
+  manualEditedFlag?: boolean
 }
 
 /** 数据模型字段 */
@@ -57,6 +64,18 @@ export type DataModelIndexVO = {
 export type DataModelStructureVO = {
   columns: DataModelColumnVO[]
   indexes: DataModelIndexVO[]
+  /**
+   * 物理表结构的指纹（sha256），由后端按【实时读到的结构】算出。
+   *
+   * 🔴 改表时必须原样回传：后端在执行任何 DDL 之前会拿它与库里的实际结构再比一次，
+   *    对不上就中止 —— 挡的是「有人绕过数据建模直接改了库（DBA 手工 SQL、迁移脚本、别的工具）」。
+   *    那类改动不经过登记行，压根不会推高 version，光靠乐观锁看不见。
+   * ⚠️ 它是【实时值】而不是库里存的基线，所以不能拿旧的一份凑数：
+   *    自己跟自己比恒等，那道闸就成了空操作
+   */
+  schemaFingerprint?: string
+  /** 登记行的乐观锁版本，与 schemaFingerprint 成对取回、成对回传 */
+  version?: number
 }
 
 /** 数据模型保存请求 */
@@ -76,6 +95,22 @@ export type DataModelSaveReqVO = {
    * 不传按 TENANT 处理。不落库 —— 物理表有没有 tenant_id 列本身就是唯一事实来源
    */
   systemColumnProfile?: string
+  // ========== AI 产物治理（B4-2 / B4-3 / B4-4）==========
+  /**
+   * 乐观锁版本，改表时必传。取自 getDataModelStructure 的返回值，原样带回。
+   * 🔴 不传后端会直接拒（不是「跳过加锁」）：缺了它 MyBatis-Plus 会静默不加版本条件，
+   *    并发覆盖照旧发生且不报错
+   */
+  version?: number
+  /** 结构指纹，改表时必传。见 DataModelStructureVO.schemaFingerprint */
+  schemaFingerprint?: string
+  /**
+   * 确认要删列（B4-3）。与 riskConfirmed 不是一回事、也不能互相替代：
+   * riskConfirmed 管【数据】（这些列里的行可以丢，只在表里有数据时用得上），
+   * 本项管【结构】（我确实要删这几列，与表里有没有数据无关 —— 空表上它才是唯一那道闸）。
+   * 🔴 只能由人在界面上点二次确认弹窗后置真，AI 路径恒不传
+   */
+  confirmDropColumns?: boolean
 }
 
 /** 字段类型选项 */

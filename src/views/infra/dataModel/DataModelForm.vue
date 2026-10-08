@@ -9,6 +9,14 @@
         <span class="dm-form-title ml-8px">{{ formTitle }}</span>
       </div>
       <div class="flex items-center">
+        <!--
+          把「已确认要删哪些字段」一直显示在保存按钮旁边（B4-7）。
+          🔴 必须常驻：二次确认弹窗只在那一刻出现，用户点完「确定」就再也看不到自己同意了什么，
+             而保存可能是十分钟之后。删列不可回滚，这个状态不该是一次性的
+        -->
+        <el-tag v-if="formType === 'update' && confirmedDropColumns.length > 0" type="danger" class="mr-15px">
+          将删除字段：{{ confirmedDropColumns.join('、') }}
+        </el-tag>
         <el-checkbox v-if="formType === 'update'" v-model="formData.riskConfirmed" class="mr-15px">
           我已知晓风险（删除字段等有损操作需勾选）
         </el-checkbox>
@@ -459,7 +467,26 @@ const formData = ref<{
   riskConfirmed: boolean
   /** 系统列策略，仅新建时有意义 */
   systemColumnProfile: string
+  /**
+   * 乐观锁版本（B4-4）。改表时原样回传，取自 getDataModelStructure
+   * 🔴 只由 open() 写入，界面上没有输入框 —— 让人填版本号没有意义，
+   *    填错的表现是「保存被拒」，而用户看不懂为什么
+   */
+  version?: number
+  /** 结构指纹（B4-2）。同上，只由 open() 写入、原样回传 */
+  schemaFingerprint?: string
 }>(emptyForm())
+
+/**
+ * 用户在二次确认弹窗里明确同意删除的业务字段名（B4-3）
+ *
+ * 🔴 这份名单是 `confirmDropColumns` 的唯一来源：非空 ⟹ 提交时置真。
+ * 之所以不让用户去勾一个「我确认删列」的复选框（像 riskConfirmed 那样），
+ * 是因为那个复选框与「具体删哪几列」在时间上是分开的 ——
+ * 先勾上、再删三个字段，用户早就忘了自己勾过什么。
+ * 确认必须发生在<b>删这个动作的当下</b>，弹窗里就写着这一列的名字。
+ */
+const confirmedDropColumns = ref<string[]>([])
 const columnTypeList = ref<DataModelApi.DataModelColumnTypeVO[]>([])
 /** 系统内置字段模板（拉取一次，用于只读判定与新建时展示）：首项是主键 id */
 const systemColumns = ref<ColumnRow[]>([])
@@ -594,9 +621,18 @@ const open = async (type: string, id?: number) => {
         })),
         indexes: (structure.indexes || []).map((item) => ({ ...item, nameTouched: true })),
         riskConfirmed: false,
+        // 🔴 两条基线都取 structure 的返回值，不取 model 的（B4-2 / B4-4）。
+        //    version 两边都有且同值，但指纹只有 structure 有，而它必须是
+        //    「与这份列清单同一次读出来的那一份」—— 分两次取的话，
+        //    中间若有人改了库，提交上去的就是一个自相矛盾的基线，
+        //    后端要么误判漂移、要么放过真漂移
+        version: structure.version,
+        schemaFingerprint: structure.schemaFingerprint,
         // 改表时 profile 无意义（后端也会忽略），占位即可
         systemColumnProfile: 'TENANT'
       }
+      // 换了一张表，上一次的删列确认一律作废
+      confirmedDropColumns.value = []
     } finally {
       formLoading.value = false
     }
@@ -610,6 +646,7 @@ const emit = defineEmits(['success', 'cancel'])
 
 const resetForm = () => {
   formData.value = emptyForm()
+  confirmedDropColumns.value = []
   formRef.value?.resetFields()
 }
 
@@ -804,13 +841,47 @@ const handleQuickAdd = (command: string) => {
   }
 }
 
-/** 删除业务字段：按行引用删除，并清理引用了该字段的索引 */
-const handleRemoveColumn = (row: ColumnRow) => {
+/**
+ * 删除业务字段：先二次确认，再按行引用删除，并清理引用了该字段的索引
+ *
+ * <h3>🔴 为什么必须弹窗（B4-3 / B4-7）</h3>
+ * 改表是【全量同步】语义：这一行从数组里消失，保存时后端就会生成
+ * {@code ALTER TABLE … DROP COLUMN}。而 MySQL 的 DDL <b>没有事务</b> ——
+ * 点一下垃圾桶图标就把一个字段连同它的数据永久删掉，这个代价与那一下点击太不成比例。
+ * 修改前这里<b>一次确认都没有</b>：点一下行就没了，保存时也不再有第二次机会，
+ * 空表上后端还会放行（「有数据才拦」），于是整条路上没有任何一处会让人停下来。
+ *
+ * <p>确认之后把字段名记进 {@link confirmedDropColumns}，它就是提交时
+ * {@code confirmDropColumns=true} 的唯一来源 —— 后端那道闸要的正是「人确实同意删这几列」，
+ * 而这份同意只能在删的当下取得。
+ *
+ * <p>⚠️ 只对本次<b>真的会 DROP</b> 的字段弹窗：{@code oldColumnName} 有值说明这列
+ * 物理表里已经存在（它是 open() 从真实结构读回来时记下的）。刚在这个页面上新加、
+ * 还没保存过的行没有它 —— 删掉只是撤销一次误点，吓用户一跳没有任何好处。
+ */
+const handleRemoveColumn = async (row: ColumnRow) => {
+  const name = row.columnName || ''
+  if (formType.value === 'update' && row.oldColumnName) {
+    try {
+      await message.confirm(
+        `确定要删除字段「${name}」吗？保存后数据库会执行 DROP COLUMN，` +
+          `该字段与其中的数据将永久丢失，且无法回滚。`,
+        '删除字段确认'
+      )
+    } catch {
+      return // 用户取消：什么都不做，包括不动 confirmedDropColumns
+    }
+    if (name && !confirmedDropColumns.value.includes(name)) {
+      confirmedDropColumns.value.push(name)
+    }
+  }
   formData.value.columns = formData.value.columns.filter((item) => item !== row)
   const removed = (row.columnName || '').toLowerCase()
   if (removed) {
     formData.value.indexes.forEach((index) => {
-      index.columnNames = index.columnNames.filter((name) => name.toLowerCase() !== removed)
+      index.columnNames = index.columnNames.filter(
+        (columnName) => columnName.toLowerCase() !== removed
+      )
     })
     // 列被删空的索引已无意义，直接移除
     formData.value.indexes = formData.value.indexes.filter((index) => index.columnNames.length > 0)
@@ -963,6 +1034,7 @@ const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
     indexType: row.indexType,
     columnNames: row.columnNames
   }))
+  const isUpdate = formType.value === 'update'
   return {
     id: formData.value.id,
     dataSourceConfigId: formData.value.dataSourceConfigId,
@@ -974,8 +1046,15 @@ const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
     indexes,
     riskConfirmed: formData.value.riskConfirmed,
     // 只在新建时提交：改表传了后端也会忽略，但传了容易让人误以为能改
-    systemColumnProfile:
-      formType.value === 'create' ? formData.value.systemColumnProfile : undefined
+    systemColumnProfile: isUpdate ? undefined : formData.value.systemColumnProfile,
+    // 🔴 下面三项只在改表时提交。新建时一律不带：
+    //    建表没有「原来那一版」可比，带上只会让后端以为要加锁
+    version: isUpdate ? formData.value.version : undefined,
+    schemaFingerprint: isUpdate ? formData.value.schemaFingerprint : undefined,
+    // 真删了列才置真（B4-3）。名单来自删字段时那个二次确认弹窗，
+    // 所以它为真 ⟺ 有人在那一刻看着字段名点了「确定」
+    confirmDropColumns:
+      isUpdate && confirmedDropColumns.value.length > 0 ? true : undefined
   }
 }
 
@@ -1069,9 +1148,24 @@ const submitForm = async () => {
     }
     emit('success')
   } catch (error: any) {
-    // 后端要求确认风险时，提示用户勾选而不是直接报错了事
-    const msg = error?.msg || ''
-    if (msg.includes('我已知晓风险')) {
+    // 🔴 取 message 而不是 msg：axios 那层业务错误 reject 的是 new Error(msg)（见 config/axios/service.ts），
+    //    它身上只有 message。原来这里读 error?.msg，恒为 undefined，
+    //    于是「后端要求勾选我已知晓风险」那句提示**从来没弹出来过** ——
+    //    用户只看到右上角那条 4.5 秒就消失的通知，读完之前它就没了
+    const msg: string = error?.message ?? error?.msg ?? ''
+    if (msg.includes('已被他人修改') || msg.includes('未执行任何 DDL')) {
+      // 版本冲突 / 结构漂移（B4-4 / B4-2）：这两条的补救都是「重新打开本页」，
+      // 而它们的消息很长、且必须留得住 —— 用 alert 而不是会自动消失的通知。
+      // 🔴 文案里不塞 \n 当换行：ElMessageBox 的消息体是普通 HTML，没有 white-space: pre-line
+      //    时换行符会被折叠成一个空格（与 ExecutionHistoryDrawer 的 droppedKeysNotice 同一口径），
+      //    分句一律用内联 ' ⚠️ ' 分隔。
+      // 🔴 刻意**不**自动重新拉取结构：那等于用别人的最新数据顶掉用户手里这份，
+      //    用户会以为自己的修改还在，其实已经被覆盖 —— 乐观锁要防的正是这件事
+      message.alertError(
+        `${msg} ⚠️ 本页仍持有旧的基线，继续点保存只会重复失败。` +
+          `请点「返回」重新进入本页取回最新结构，在其上重做本次修改。`
+      )
+    } else if (msg.includes('我已知晓风险')) {
       message.warning(msg)
     }
   } finally {

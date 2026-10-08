@@ -477,13 +477,20 @@ const goToStep = (index: number) => {
   currentStep.value = index
 }
 
-const handleSave = async () => {
+/**
+ * 保存
+ *
+ * @return 是否保存成功。失败时**不抛出**，由本函数自己提示 —— 三个调用方
+ *         （工具栏「保存」、保存并关闭、保存并发布）都需要知道成没成，
+ *         但不该各自再写一遍 catch
+ */
+const handleSave = async (): Promise<boolean> => {
   try {
     await validateCurrentStep()
     // 逻辑与扩展不再是一步，validateCurrentStep 不会覆盖它，这里单独过一次
     await validateLogicBeforeSave()
   } catch {
-    return
+    return false
   }
   // 保存前统一收集所有步骤的产物。
   // 只收集当前步骤是不够的：用户可能在第四步配好列表后切回第三步再点保存，
@@ -502,24 +509,57 @@ const handleSave = async () => {
     }
     // 重新拉一次，让 status 等由后端维护的字段保持最新
     await loadData(formData.value.id)
+    return true
+  } catch (error: any) {
+    handleSaveError(error)
+    return false
   } finally {
     saveLoading.value = false
   }
 }
 
+/**
+ * 保存失败的提示
+ *
+ * ⚠️ axios 层已经弹过一条 `ElNotification`，但那条 4.5 秒就自己没了 ——
+ * 对「随手打错一个字段」够用，对乐观锁冲突不够：冲突的处置动作
+ * （返回重进本页、在最新结构上重做本次修改）不是一个 4.5 秒的浮层
+ * 能承载的，用户读完通知再去找按钮，通知已经没了，只剩下「保存失败」。
+ * 所以这里换成**不自动消失**的 alertError，把处置步骤写在里面。
+ *
+ * 🔴 文案里不塞 `\n` 当换行：ElMessageBox 的消息体是普通 HTML，没有 `white-space: pre-line`
+ * 时换行符会被折叠成一个空格（与 `ExecutionHistoryDrawer` 的 `droppedKeysNotice` 同一口径），
+ * 分句一律用内联 ' ⚠️ ' 分隔。
+ *
+ * 🔴 刻意**不**自动重新拉取。自动 re-baseline 会让用户手里这份旧内容
+ * 盖掉对方刚写进去的改动 —— 那正是这把锁要防的事，只是把「保存被拒」
+ * 换成了「静默覆盖」，更难查。
+ */
+const handleSaveError = (error: any) => {
+  // 🔴 读 `.message` 不是 `.msg`：axios 拦截器 reject 的是 `new Error(msg)`
+  const msg: string = error?.message ?? error?.msg ?? ''
+  if (msg.includes('已被他人修改')) {
+    message.alertError(
+      `${msg} ⚠️ 本页仍持有旧的版本号，继续点保存只会重复失败。` +
+        `请点「返回」重新进入本页取回最新内容，在其上重做本次修改。`
+    )
+  }
+}
+
 /** 保存并关闭：保存成功后关闭当前 tab 返回列表页 */
 const handleSaveAndClose = async () => {
-  await handleSave()
-  // handleSave 内部失败会设 saveLoading=false 但不会抛出，用 id 是否存在来判断是否成功
-  if (formData.value.id) {
+  // 保存失败就不关：关了 tab 用户刚配的东西跟着一起没了，
+  // 而且连「为什么没关」都问不出来
+  if (await handleSave()) {
     handleBack()
   }
 }
 
 /** 保存并发布：保存成功后打开发布对话框 */
 const handleSaveAndPublish = async () => {
-  await handleSave()
-  if (formData.value.id) {
+  // 保存失败就不弹发布框：发布校验读的是**库里那一份**，
+  // 弹出来的对话框会拿旧版本去校验，报的问题跟画布上看到的对不上
+  if (await handleSave()) {
     publishDialogRef.value?.open(formData.value)
   }
 }
@@ -535,6 +575,13 @@ const inspectProblems = ref<string[]>([])
  *
  * ⚠️ 先保存再体检。体检读的是**库里那一份**，不是画布上这一刻的状态 ——
  * 不保存的话，用户刚改完的东西没被检到，而报告看起来却像是最新的。
+ *
+ * <p>🔴 保存之后必须 {@link loadData}（B4-4）。这次 update 会把 version 推高一格，
+ * 而 {@code formData} 上留着的还是旧的那份 —— 不重新拉一次的话，用户下一次点保存
+ * 必然撞上「这张表单在你编辑期间已被他人修改」，可「他人」正是他刚才点的那次体检。
+ * 那句话在这个场景下完全说不通，而用户唯一能做的补救（刷新）恰好也是这里要做的。
+ * 刻意<b>不</b>只补 {@code formData.value.version}：那会让内存里这一份与库里那一份
+ * 在别的字段上继续分叉，而分叉是不报错的。
  */
 const handleInspect = async () => {
   if (!formData.value.id) return
@@ -542,8 +589,12 @@ const handleInspect = async () => {
   try {
     collectAll()
     await FormDesignApi.updateFormDesign({ ...formData.value } as FormDesignApi.FormDesignSaveReqVO)
+    await loadData(formData.value.id)
     inspectProblems.value = await FormDesignApi.inspectFormDesign(formData.value.id)
     inspectVisible.value = true
+  } catch (error: any) {
+    // 提示与保存走同一套：这里也是一次 update，同样会撞上乐观锁
+    handleSaveError(error)
   } finally {
     inspectLoading.value = false
   }
