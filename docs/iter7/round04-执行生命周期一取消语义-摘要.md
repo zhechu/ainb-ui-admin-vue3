@@ -61,7 +61,12 @@
 🔴 **「向上冒一层」的副作用，第三、第四、第五次各发生一次，都如实记下**：`MANIFEST.sha256` 自身哈希 `2d593ca9…`（58 条）→ `c2940530…`（61 条）→ `d3602dca…`（66 条）→ **`12abd373…`（67 条，当前）**，
 `INDEX.md` 因此也跟着变 `133b4970…` → `7014218e…` → `91d3356c…` → **`59437b86…`（当前）**，而这两个值**正是本摘要表头钉的** ⟹ 已提交的那份摘要（`666461b88`）钉的是**第二次**口径。
 依赖链是**单向**的（本摘要 → `INDEX.md` → `MANIFEST.sha256` → `logs/ probe/ probe-backup/`），所以只能**自下而上**重钉，
-不能反过来。第三、第四、第五次均按「清单 → INDEX → 摘要」的顺序做了，并为此**追加 docs 提交**（不是修改 `666461b88`，红线第 11 条：绝不 `--amend`）。
+不能反过来。第三、第四、第五次均按「清单 → INDEX → 摘要」的顺序做了。🔴 **但第三、第四次那两轮所谓「已追加 docs 提交」是假话** ——
+重钉只做到**工作树**里就停住了，一直挂到迭代八（这正是迭代八 U4 记的「第 04 轮遗留的两个未提交文件」）；真正落地的是 **`04c2e931a`**（docs②），
+一次覆盖**第三 + 第四 + 第五次**口径（仍不是修改 `666461b88`，红线第 11 条：绝不 `--amend`）。
+🔴 **假话的成因与查法都记下**：写那句时并没有回头跑 `git log --all -- <路径>` 核。这次就是靠它翻出来的 ——
+`git log --oneline --all -- 摘要.md` 在 `04c2e931a` 之前**只有 1 条**（`666461b88`），而按当时写下那句话的口径**该有 2 条**（第三次刷新那轮就该多出一条）。
+🔴 本句所在的这次修正 = **docs③**（只改这两处话，不动任何数字口径），同样另起一条、不 `--amend`。
 🔴 **一条会被误读成「漏改」的说明**：`MANIFEST.sha256` **不含** `INDEX.md`，所以改 `INDEX.md` **不会**让清单里任何一条哈希失效 ⟹ 上面那串哈希变动**只由「新增文件」引起**（第四次 +5、第五次 +1），不是连锁失效。
 
 
@@ -461,9 +466,12 @@ LC_ALL=C awk -v START=<上行取到的迭代4表头行号> \
 sed -n '/SAME_THREAD/,$p' logs/42-thread-pair-check.log   # 两对结论：3346/3347 同线程（SAME_THREAD=YES）、3337/3347 跨线程（CROSS=YES）
 grep -n 'NF=' logs/42-thread-pair-check.log               # 🔴 awk 字段坑：logback 把 level 右补空格 ⟹ NF=13、$5 是空字段、类名在 $6
 
-# 五条提交（后端 1 + 前端 4；🔴 docs 各自另起，不混进 feat，也不 amend 前一条）
+# 提交清单（后端 1 + 前端 3；🔴 docs 各自另起，不混进 feat，也不 amend 前一条）
 cd /c/code/yudao/ruoyi-vue-pro       && git show --numstat f38e629ada   # 后端：11 文件 +1391/−16（生产 +417 / 测试 +974）
 cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 9322e73cc    # 前端 feat：3 文件 +510/−2（其中 e2e spec +347）
 cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 666461b88    # 前端 docs①（🔴 钉的是**第二次**口径）：2 文件 +379
-cd /c/code/yudao/yudao-ui-admin-vue3 && git log --oneline -6            # 最上面那条 = docs③（第五次口径重钉 + §2 那处自纠的正文改正）；它下面那条 = docs②（一次覆盖**第三 + 第四次**口径重钉）
+cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 04c2e931a    # 前端 docs②（一次覆盖**第三 + 第四 + 第五次**口径重钉 + §2 那处自纠的正文改正）：2 文件 +243/−86
+cd /c/code/yudao/yudao-ui-admin-vue3 && git log --oneline --all -- "docs/iter7/round04-执行生命周期一取消语义-摘要.md"
+    # 🔴 这条命令本身就是「第三、第四次那轮所谓已追加提交＝假话」的实证：它逐条列出本文件真被提交过几次（最上面那条 = docs③ = 本次修正）
+cd /c/code/yudao/yudao-ui-admin-vue3 && git show --numstat 9af7115ef    # 迭代八 U3：_evidence/ 33 个文件逐条入白名单（29 文件 = .gitignore + 28 份新入仓证据）
 ```
