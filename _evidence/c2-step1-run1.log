@@ -1,7 +1,0 @@
-
-Running 1 test using 1 worker
-
-  ok 1 tests\e2e\agent-workflow-display-name.spec.ts:485:7 › 名称目录层（L1）：画布摘要 / 工具下拉 / 聊天草稿卡三处都出中文 › G7：目录拉不到时失败要可见——顶栏告警 + 空下拉给出手打工具键的出路 + 摘要回落机器键 (14.8s)
-
-  1 passed (18.6s)
-EXIT_CODE=0
