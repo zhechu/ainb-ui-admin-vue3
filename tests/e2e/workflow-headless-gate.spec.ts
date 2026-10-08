@@ -10,6 +10,12 @@ import {
   type ConversationCleanupReport,
   type ConversationOwnership
 } from './helpers/conversation-ownership'
+import {
+  cleanupOwnedDefs,
+  listWorkflowDefs,
+  type DefCleanupReport,
+  type DefRowLite
+} from './helpers/workflow-def-cleanup'
 
 /**
  * A4-d · 无头流程的人工闸口：真发一轮，验「规划器 + 体检 + 自修正回路」三件事合起来能不能收敛
@@ -125,9 +131,7 @@ const REPORT_STAMPED = path.join(
 const PLAN_TIMEOUT = 600_000
 
 const H = () => apiHeaders(token)
-const defPageApi = `${API_BASE_URL}/agent/workflow-def/page`
 const defGetApi = `${API_BASE_URL}/agent/workflow-def/get`
-const defDeleteApi = `${API_BASE_URL}/agent/workflow-def/delete`
 const validateApi = `${API_BASE_URL}/agent/workflow-def/validate`
 
 /**
@@ -174,7 +178,8 @@ type ValidateResp = {
   warnings?: string[]
   manifest?: { riskLevel?: string; headline?: string; changes?: { kind?: string }[] } | null
 }
-type DefRow = { id: number; name: string; status: string; triggerType?: string | null }
+/** 取自共用 helper：取清单的口径必须与拆台子的判据同源，两边各写一份迟早漂移 */
+type DefRow = DefRowLite
 type DslNode = { id?: string; type?: string; name?: string; config?: Recordable }
 type DslEdge = { from?: string; to?: string }
 type Dsl = { trigger?: { type?: string } | null; nodes?: DslNode[]; edges?: DslEdge[] }
@@ -190,7 +195,20 @@ let baselineConversationIds = new Set<number>()
  * <p>⚠️ 可能仍是 undefined：beforeAll 就红了、真发用例压根没起跑，此时没有页面可挂钩子。
  */
 let ownership: ConversationOwnership | undefined
-let baselineDefIds = new Set<number>()
+/**
+ * 跑前的流程 def 快照，`id → status`
+ *
+ * <p>🔴 存 status 而不只是 id：收尾要判「既有 def 被自行发布成 PUBLISHED」，光有 id 集合判不出来。
+ */
+let baselineDefs = new Map<number, string>()
+/**
+ * 本轮真发认领到的 def id（②~⑦ 那条用例在草稿卡出来后当场记下）
+ *
+ * <p>🔴 认领是拆台子的**首选凭据**。没认领到的新草稿只在 `source=AUTO` 时才敢删 ——
+ *    手工来源（`wf_shallow_*` / `e2e_r08u_*` 这类别的用例 seed 出来的）原样保留。
+ *    少删只会脏，多删不可逆。判据与实现在 `helpers/workflow-def-cleanup.ts`。
+ */
+const runCreatedDefs: number[] = []
 const rows: string[] = []
 
 function flushReport(): void {
@@ -214,16 +232,7 @@ function expectOk(body: any, what: string): void {
 }
 
 async function listDefs(request: APIRequestContext): Promise<DefRow[]> {
-  const out: DefRow[] = []
-  for (let pageNo = 1; pageNo <= 50; pageNo++) {
-    const resp = await request.get(defPageApi, { headers: H(), params: { pageNo, pageSize: 100 } })
-    const body = await resp.json()
-    expectOk(body, `取流程 def 清单第 ${pageNo} 页`)
-    const list = (body.data?.list ?? []) as DefRow[]
-    out.push(...list)
-    if (list.length < 100) break
-  }
-  return out
+  return listWorkflowDefs(request, H)
 }
 
 /** `/get?id` 才带完整 dsl；`/page` 刻意把它置 null（一份 DSL 几十 KB） */
@@ -369,11 +378,11 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
   test.beforeAll(async ({ request }) => {
     token = await apiLogin(request)
     baselineConversationIds = await listConversationIdSet(request, H)
-    baselineDefIds = new Set((await listDefs(request)).map((d) => d.id))
+    baselineDefs = new Map((await listDefs(request)).map((d) => [d.id, d.status]))
     rows.push(
       `# A4-d · 无头流程的人工闸口\n\n` +
         `- 生成时间：${new Date().toISOString()}\n` +
-        `- 基线：会话 ${baselineConversationIds.size} 条、流程 def ${baselineDefIds.size} 条\n\n` +
+        `- 基线：会话 ${baselineConversationIds.size} 条、流程 def ${baselineDefs.size} 条\n\n` +
         `> 🔴 本用例**只出草稿**，不点「确认并运行」、不调 /publish。建表 IRREVERSIBLE，只允许在开发库跑。\n\n---\n\n`
     )
   })
@@ -387,43 +396,89 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
         rows.push(`\n---\n\n⚠️ 收尾重新登录失败，本轮残留**没有清理**，需人工核\n`)
       }
     }
-    let deletedDef = 0
     if (token) {
+      // 🔴 这一段里的**每一步都不许 throw**，且报告必须落在断言之前。
+      //    原先删除循环里的 `expectOk` 会直接把 afterAll 打断：撞上别人在跑动期间新建/发布的 def，
+      //    一次「不许删」的返回码就把残留核账整段掐掉，报告不落盘 ——
+      //    而下一轮 beforeAll 会把这轮的残渣吃进基线，从此永久隐形。
       // 🔴 会话只删**本轮自己认领的**（产品写进 localStorage 的那个「最近一次会话」id）。
       //    原先按「跑后 − 跑前」求差集：差集回答的是「库里多了什么」，不是「多的这条是谁建的」，
       //    于是同一时间窗里别人新建的会话会被当成残留删掉 —— 2026-10-07 真删过一条。
       //    末尾那条 leftover 断言同时换了口径：用别人的数据判自己的成败，
       //    和用别人的数据决定删谁，是同一个错误的两面
+      // 🔴 会话侧的意外单独记一份：def 侧的失败由 helper 自己印进 lines，
+      //    两边混在一个数组里会让同一句话在报告里印两遍
+      const extraFailures: string[] = []
       let conversationCleanup: ConversationCleanupReport | undefined
       if (ownership) {
-        conversationCleanup = await cleanupOwnedConversations({
-          request,
-          headers: H,
-          ownership,
-          baseline: baselineConversationIds
-        })
+        try {
+          conversationCleanup = await cleanupOwnedConversations({
+            request,
+            headers: H,
+            ownership,
+            baseline: baselineConversationIds
+          })
+        } catch (e: any) {
+          extraFailures.push(`会话收尾抛异常：${e?.message ?? String(e)}`)
+        }
       }
-      for (const d of await listDefs(request)) {
-        if (baselineDefIds.has(d.id)) continue
-        const r = await request.delete(defDeleteApi, { headers: H(), params: { id: d.id } })
-        expectOk(await r.json(), `删除流程 def ${d.id}`)
-        deletedDef++
-      }
-      const leftoverDef = (await listDefs(request)).filter((d) => !baselineDefIds.has(d.id)).length
+      // 🔴 拆台子的判据搬进了 `helpers/workflow-def-cleanup.ts`（T1 / T2 共用同一份）。
+      //    原先这里是「不在基线里的**全删**」：① 会去删别人的 def；
+      //    ② PUBLISHED 删不掉时直接抛，整段收尾断在半路；
+      //    ③ 残留判据是「跑后不在基线里的条数」，同样拿别人的数据判自己的成败。
+      const defCleanup: DefCleanupReport = await cleanupOwnedDefs({
+        request,
+        headers: H,
+        baseline: baselineDefs,
+        claimed: runCreatedDefs
+      })
       rows.push(
         `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
           (conversationCleanup
             ? conversationCleanup.lines.join('')
             : `- 会话：本轮没跑到真发（未挂监听），一条都不删；基线 ${baselineConversationIds.size} 条原样保留\n`) +
-          `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n` +
-          `- 物理表：**本用例不建表**（只出草稿 + 只读体检），故不核表数\n`
+          defCleanup.lines.join('') +
+          `- 物理表：**本用例不建表**（只出草稿 + 只读体检），故不核表数\n` +
+          (extraFailures.length
+            ? `- ⚠️ 会话侧收尾另有 ${extraFailures.length} 处失败（**别**把上面读成清干净了）：\n` +
+              extraFailures.map((f) => `  - ${f}\n`).join('')
+            : '')
       )
+      // 🔴 落盘**必须排在断言之前**：断言一抛，后面的代码就都不跑了，
+      //    而「残留核账」这一段是唯一能让人看出本轮到底清没清干净的东西
+      flushReport()
       expect(
         conversationCleanup?.leftoverOwned ?? [],
         `本轮自建的会话没清干净：${(conversationCleanup?.leftoverOwned ?? []).join(', ')}` +
           `（§6.2：残留非空即视为该轮失败）。别人的会话不算在这里 —— 见上面那几行 ⚠️`
       ).toHaveLength(0)
-      expect(leftoverDef, `流程 def 没清干净（§6.2：残留非空即视为该轮失败）`).toBe(0)
+      expect(
+        defCleanup.leftoverOwned,
+        `本轮自建的流程 def 没清干净：${defCleanup.leftoverOwned.join(', ')}` +
+          `（§6.2：残留非空即视为该轮失败）。别人的 def 不算在这里 —— 见上面那几行 ⚠️`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.selfPublished,
+        `有 ${defCleanup.selfPublished.length} 条**本轮新造**的流程不是草稿态` +
+          `（${defCleanup.selfPublished.map((d) => `#${d.id}/${d.status}「${d.name}」`).join(', ')}）—— ` +
+          `提问末尾明写「先出草稿给我看，不要自己发布」，自行发布就是缺陷。已停用，需人工核 DSL`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.promoted,
+        `有 ${defCleanup.promoted.length} 条既有流程被发布成 PUBLISHED（id=${defCleanup.promoted.map((d) => d.id).join(', ')}）—— ` +
+          `本用例全程不点任何确认按钮，自行发布就是缺陷`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.leftoverExecutions,
+        `本轮 def 名下仍有挂起执行（取消请求发了但没成）：` +
+          defCleanup.leftoverExecutions.map((r) => `def#${r.defId}/exec#${r.execId}/${r.status}`).join(', ')
+      ).toHaveLength(0)
+      const allCleanupFailures = [...extraFailures, ...defCleanup.failures]
+      expect(
+        allCleanupFailures,
+        `收尾过程有 ${allCleanupFailures.length} 处失败（详见报告 ⚠️ 那一段）：` +
+          allCleanupFailures.join(' | ')
+      ).toHaveLength(0)
     }
     flushReport()
   })
@@ -572,12 +627,15 @@ test.describe('A4-d · 无头流程的人工闸口（真发 + 变异探针）', 
     //    （不断言那个按钮不存在 —— 它本来就该在草稿卡上，T2 也只是不点它而已。）
 
     // ---------- 找到本轮新造的 def ----------
-    const created = (await listDefs(request)).filter((d) => !baselineDefIds.has(d.id))
+    const created = (await listDefs(request)).filter((d) => !baselineDefs.has(d.id))
     expect(
       created.length,
       `草稿卡出来了，但库里没有新增的流程 def（新增 ${created.length} 条）—— 草稿没落库，取不到 DSL`
     ).toBeGreaterThan(0)
     const def = created[0]
+    // 🔴 当场认领：afterAll 只删账本里的东西。用例在这之后任何一处红掉，
+    //    这条草稿都还是**本轮的**，认领了才删得掉；没认领就只能靠 source=AUTO 那张兜网
+    runCreatedDefs.push(def.id)
     const dsl = await fetchDsl(request, def.id)
     rows.push(`- 新造 def：#${def.id}「${def.name}」状态 ${def.status}\n`)
 

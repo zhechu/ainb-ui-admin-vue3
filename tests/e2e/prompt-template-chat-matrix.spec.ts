@@ -10,6 +10,12 @@ import {
   type ConversationCleanupReport,
   type ConversationOwnership
 } from './helpers/conversation-ownership'
+import {
+  cleanupOwnedDefs,
+  listWorkflowDefs,
+  type DefCleanupReport,
+  type DefRowLite
+} from './helpers/workflow-def-cleanup'
 
 /**
  * T1：CHAT 类示例逐条真发（迭代二方案 §6.1）
@@ -587,7 +593,13 @@ let baselineConversationIds = new Set<number>()
  * <p>⚠️ 可能仍是 undefined：beforeAll 就红了、真发用例压根没起跑，此时没有页面可挂钩子。
  */
 let ownership: ConversationOwnership | undefined
-let baselineDefIds = new Set<number>()
+/**
+ * 跑前的流程 def 快照，`id → status`
+ *
+ * <p>🔴 存 status 而不只是 id：拆台子要判「既有 def 被自行发布成 PUBLISHED」，
+ *    光有 id 集合判不出来。判据与实现在 `helpers/workflow-def-cleanup.ts`。
+ */
+let baselineDefs = new Map<number, string>()
 let allCases: CaseRow[] = []
 const failures: string[] = []
 /**
@@ -608,8 +620,6 @@ const rows: string[] = []
 
 const H = () => apiHeaders(token)
 const caseApi = `${API_BASE_URL}/agent/prompt-template-case/simple-list`
-const defPageApi = `${API_BASE_URL}/agent/workflow-def/page`
-const defDeleteApi = `${API_BASE_URL}/agent/workflow-def/delete`
 
 /**
  * 🔴 清单类接口必须先验 code，再信 data
@@ -641,18 +651,13 @@ async function fetchCases(request: APIRequestContext): Promise<CaseRow[]> {
  * 一条 expect_intent=CHAT 的示例被判成了 BUILD；#427「预览xpy_contract改表DDL」来自 id=13，
  * expect_intent 为空、两种意图都合法，这轮走了 BUILD）。
  * 只删会话不删 def，等于每跑一轮往库里留几条草稿。
+ *
+ * <p>实现搬进了 `helpers/workflow-def-cleanup.ts`（T2 / headless-gate 共用同一份）：
+ * 取清单的口径与拆台子的判据必须同源，否则「用哪把尺子量」和「用哪把尺子删」会各自漂移。
+ * 返回 `id → status` 而不是光 id：判「既有 def 被自行发布成 PUBLISHED」要用到跑前的状态。
  */
-async function listDefIds(request: APIRequestContext): Promise<Set<number>> {
-  const ids = new Set<number>()
-  for (let pageNo = 1; pageNo <= 50; pageNo++) {
-    const resp = await request.get(defPageApi, { headers: H(), params: { pageNo, pageSize: 100 } })
-    const body = await resp.json()
-    expectOk(body, `取流程 def 分页 pageNo=${pageNo}`)
-    const list = body?.data?.list ?? []
-    for (const item of list) ids.add(item.id as number)
-    if (list.length < 100) break
-  }
-  return ids
+async function listDefSnapshot(request: APIRequestContext): Promise<Map<number, string>> {
+  return new Map((await listWorkflowDefs(request, H)).map((d) => [d.id, d.status]))
 }
 
 /**
@@ -688,7 +693,7 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
   test.beforeAll(async ({ request }) => {
     token = await apiLogin(request)
     baselineConversationIds = await listConversationIdSet(request, H)
-    baselineDefIds = await listDefIds(request)
+    baselineDefs = await listDefSnapshot(request)
     allCases = await fetchCases(request)
   })
 
@@ -705,7 +710,6 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
         rows.push(`\n---\n\n⚠️ 收尾重新登录失败，本轮残留**没有清理**，需人工核\n`)
       }
     }
-    let deletedDef = 0
     if (token) {
       // 🔴 会话只删**本轮自己认领的**：凭据是产品写进 localStorage 的「最近一次会话」id。
       //    原先按「跑后 − 跑前」求差集，而差集回答的是「库里多了什么」、不是「多的这条是**谁**建的」——
@@ -714,50 +718,106 @@ test.describe('T1 · CHAT 类示例逐条真发', () => {
       //    报告还印一句「删除本轮新建 1 条（基线原样保留）」，读起来像干得漂亮。
       //    🔴 末尾那条 leftover 断言也换了口径：用别人的数据判自己的成败，
       //       和用别人的数据决定删谁，是同一个错误的两面
+      // 🔴 两步都**不许 throw**：throw 会把 afterAll 打断在 flushReport() 之前，
+      //    残留核账一行都落不了盘，而下一轮 beforeAll 会把这轮的残渣吃进基线 —— 从此永久隐形。
+      //    所以 helper 把失败收进 failures，这里先落报告、最后才断言。
       let conversationCleanup: ConversationCleanupReport | undefined
+      // 🔴 会话侧的意外单独记一份：def 侧的失败由 helper 自己印进 lines，
+      //    两边混在一个数组里会让同一句话在报告里印两遍
+      const extraFailures: string[] = []
       if (ownership) {
-        conversationCleanup = await cleanupOwnedConversations({
-          request,
-          headers: H,
-          ownership,
-          baseline: baselineConversationIds
-        })
+        try {
+          conversationCleanup = await cleanupOwnedConversations({
+            request,
+            headers: H,
+            ownership,
+            baseline: baselineConversationIds
+          })
+        } catch (e: any) {
+          extraFailures.push(`会话收尾抛异常：${e?.message ?? String(e)}`)
+        }
       }
-      const nowDef = await listDefIds(request)
-      for (const id of nowDef) {
-        if (baselineDefIds.has(id)) continue
-        const r = await request.delete(defDeleteApi, { headers: H(), params: { id } })
-        expectOk(await r.json(), `删除流程 def ${id}`)
-        deletedDef++
-      }
+      // 🔴 拆台子的判据搬进了 `helpers/workflow-def-cleanup.ts`（T2 / headless-gate 共用同一份）。
+      //    原先这里是「不在基线里的**全删**」，两个毛病：
+      //    ① 撞上别人在跑动期间新建/发布的 def 就会去删它 —— 删掉是越界，
+      //       而 PUBLISHED 删不掉时 `expectOk` 直接抛，afterAll 断在半路、报告不落盘；
+      //    ② 收尾判据是 `跑后条数 − 跑前条数`，拿**别人的数据**判自己的成败，
+      //       而且条数差会被「别人删一条 + 本轮残留一条」抵成 0 ⟹ 恒绿。
+      //    T1 不逐条记 def id（CHAT 矩阵本来就不该造 def），故 claimsTracked=false，
+      //    认下来的都是按 source=AUTO 判的 —— 报告必须这么说，不能印成「孤儿草稿」误导人。
+      const defCleanup: DefCleanupReport = await cleanupOwnedDefs({
+        request,
+        headers: H,
+        baseline: baselineDefs,
+        claimed: [],
+        claimsTracked: false
+      })
       // 🔴 绝对值必须一起印，不能只印差集。
       //    差集口径对**历史残留天生免疫**：上一轮被人手杀掉时 afterAll 没跑、留下的孤儿会话，
       //    这一轮 beforeAll 会把它当基线吃进去，于是差集永远是 0、核账永远绿 ——
       //    而库里的垃圾一轮一轮往上叠，没人看得出来。2026-10-04 就真叠过一次
       //    （11:47 那轮卡死被杀，留下会话 446 与消息 880/881，是人工用 SQL 查出来才清掉的）。
       //    印上绝对值，读报告的人一眼就能发现「跑后会话 2 条」和「基线本来就该 1 条」对不上。
-      const afterConv = await listConversationIdSet(request, H)
-      const afterDef = await listDefIds(request)
-      const leftoverDef = afterDef.size - baselineDefIds.size
+      const afterConv = await listConversationIdSet(request, H).catch((e: any) => {
+        extraFailures.push(`回读会话清单失败：${e?.message ?? String(e)}`)
+        return new Set<number>()
+      })
+      const afterDefs = await listWorkflowDefs(request, H).catch((e: any) => {
+        extraFailures.push(`回读流程 def 清单失败：${e?.message ?? String(e)}`)
+        return [] as DefRowLite[]
+      })
       rows.push(
         `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
           (conversationCleanup
             ? conversationCleanup.lines.join('')
             : `- 会话：本轮没跑到真发（未挂监听），一条都不删；基线 ${baselineConversationIds.size} 条原样保留\n`) +
-          `- 流程 def：跑前 ${baselineDefIds.size} 条 → 删除本轮新建 ${deletedDef} 条 → 跑后多出 ${leftoverDef} 条\n` +
+          defCleanup.lines.join('') +
           `- 绝对值（供人工核对历史残留）：跑后会话共 ${afterConv.size} 条 [${[...afterConv].join(',')}]，` +
-          `流程 def 共 ${afterDef.size} 条 [${[...afterDef].join(',')}]\n`
+          `流程 def 共 ${afterDefs.length} 条 [${afterDefs.map((d) => d.id).join(',')}]\n` +
+          (extraFailures.length
+            ? `- ⚠️ 会话侧收尾另有 ${extraFailures.length} 处失败（**别**把上面读成清干净了）：\n` +
+              extraFailures.map((f) => `  - ${f}\n`).join('')
+            : '')
       )
+      // 🔴 全量重写而不是 append：rows 是**全量**累积的，用例体里每跑完一条就已经整份重写过一次，
+      //    这里再 append 一遍等于把整份报告抄两份进文件。全量重写还有个好处：
+      //    用例中途崩了、汇总那段没跑到，这里照样能落一份到目前为止的完整报告。
+      // 🔴 落盘**必须排在断言之前**：断言一抛，后面的代码就都不跑了
+      flushReport()
       expect(
         conversationCleanup?.leftoverOwned ?? [],
         `本轮自建的会话没清干净，库里还留着 ${(conversationCleanup?.leftoverOwned ?? []).join(', ')}` +
           `（§6.2：残留非空即视为该轮失败）。别人的会话不算在这里 —— 见上面那几行 ⚠️`
       ).toHaveLength(0)
-      expect(leftoverDef, `流程 def 没清干净，库里多出 ${leftoverDef} 条本轮草稿（§6.2：残留非空即视为该轮失败）`).toBe(0)
+      expect(
+        defCleanup.leftoverOwned,
+        `本轮自建的流程 def 没清干净，库里还留着 ${defCleanup.leftoverOwned.join(', ')}` +
+          `（§6.2：残留非空即视为该轮失败）。别人的 def 不算在这里 —— 见上面那几行 ⚠️`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.selfPublished,
+        `有 ${defCleanup.selfPublished.length} 条**本轮新造**的流程不是草稿态` +
+          `（${defCleanup.selfPublished.map((d) => `#${d.id}/${d.status}「${d.name}」`).join(', ')}）—— ` +
+          `T1 跑的全是 CHAT 示例，压根不该造出流程来，更不该有东西把它发布掉。已停用，需人工核 DSL`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.promoted,
+        `有 ${defCleanup.promoted.length} 条既有流程被发布成 PUBLISHED（id=${defCleanup.promoted.map((d) => d.id).join(', ')}）—— ` +
+          `T1 全程不点任何确认按钮，自行发布就是缺陷`
+      ).toHaveLength(0)
+      expect(
+        defCleanup.leftoverExecutions,
+        `本轮 def 名下仍有挂起执行（取消请求发了但没成）：` +
+          defCleanup.leftoverExecutions.map((r) => `def#${r.defId}/exec#${r.execId}/${r.status}`).join(', ')
+      ).toHaveLength(0)
+      const allCleanupFailures = [...extraFailures, ...defCleanup.failures]
+      expect(
+        allCleanupFailures,
+        `收尾过程有 ${allCleanupFailures.length} 处失败（详见报告 ⚠️ 那一段）：` +
+          allCleanupFailures.join(' | ')
+      ).toHaveLength(0)
     }
-    // 🔴 全量重写而不是 append：rows 是**全量**累积的，用例体里每跑完一条就已经整份重写过一次，
-    //    这里再 append 一遍等于把整份报告抄两份进文件。全量重写还有个好处：
-    //    用例中途崩了、汇总那段没跑到，这里照样能落一份到目前为止的完整报告。
+    // 🔴 没 token 那一支也要落盘：beforeAll 就红了的时候，报告里至少得有一句「没收尾」
     flushReport()
   })
 

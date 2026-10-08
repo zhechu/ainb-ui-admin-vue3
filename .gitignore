@@ -16,13 +16,17 @@ test-results/
 playwright-report/
 # T1/T2 真发矩阵的人工评审证据（每轮重新生成，见 prompt-template-chat-matrix.spec.ts）
 # 🔴 这里必须写 `_evidence/*` 而不是 `_evidence/`：git 不会重新包含**父目录已被排除**的文件，
-#    写成 `_evidence/` 的话下面那四条 `!` 一行都不生效（gitignore(5)「It is not possible to
+#    写成 `_evidence/` 的话下面那五条 `!` 一行都不生效（gitignore(5)「It is not possible to
 #    re-include a file if a parent directory of that file is excluded」）。
 _evidence/*
-# 但下面四个不是「证据」，是**源**：两个是每轮都要重跑的分析工具（§9-7 要求一致率「可复算」），
+# 但下面五个不是「证据」，是**源**：三个是每轮都要重跑的分析工具（§9-7 要求一致率「可复算」），
 # 两个是它们的夹具——其中 coverage-gap-cases.json 是 P3-1 的人工裁定结果，库里查不回来。
 # 报告 .md 与 a4d-*.txt 这类跑一次就作废的产物仍按上面那条忽略。
 !_evidence/intent-agreement.mjs
 !_evidence/hint-satisfaction.mjs
 !_evidence/coverage-gap-cases.json
 !_evidence/expect-intent.tsv
+# 变异探针跑手：改了 tests/e2e/helpers/workflow-def-cleanup.ts 之后要重跑，
+# 用来证明那七条断言**真的会红**（判据恒绿比没有判据更坏）。是工具，不是产物。
+# 它自己的 .log 是跑一次就作废的证据，仍忽略——原始日志留在 C:/code/yudao_backups/ 下。
+!_evidence/wdc-mutation-probe.cjs

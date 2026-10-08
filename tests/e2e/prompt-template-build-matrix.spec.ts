@@ -10,6 +10,12 @@ import {
   type ConversationCleanupReport,
   type ConversationOwnership
 } from './helpers/conversation-ownership'
+import {
+  cleanupOwnedDefs,
+  listWorkflowDefs,
+  type DefCleanupReport,
+  type DefRowLite
+} from './helpers/workflow-def-cleanup'
 
 /**
  * T2：BUILD 类示例逐条真发（迭代二方案 §6.1）
@@ -157,14 +163,6 @@ interface ValidateVO {
   manifest?: { riskLevel?: string; headline?: string; changes?: ManifestChange[] } | null
 }
 
-interface DefRow {
-  id: number
-  code: string
-  name: string
-  status: string
-  dsl?: string | null
-}
-
 /** AssistantChat.vue 的 INPUT_MAX_LENGTH */
 const INPUT_MAX_LENGTH = 2000
 
@@ -181,6 +179,53 @@ const ONLY = (process.env.TPL_MATRIX_ONLY ?? '')
   .map(Number)
   .filter((n) => Number.isFinite(n))
 
+/**
+ * 同一份报告的**带时间戳副本**，以及「canonical 什么时候才准覆盖」
+ *
+ * <p>🔴 T1 与 headless-gate 早就有这道保险，本文件一直缺 —— 缺的代价在 2026-10-08 当天就付了：
+ *    02:04~02:08 那轮（Run A）真发了 4 条 BUILD 示例，其中第 4 条「配置【演示角色】角色AI助手」
+ *    越过闸口自行发布，留下 def #567（PUBLISHED）与一条挂在闸口上的执行 #174。
+ *    02:38 又跑了一轮（Run B），固定文件名把 Run A 的报告**覆盖得干干净净**。
+ *    于是「#567 是谁造的、当时页面上到底出了什么」唯一的直接证据没了，
+ *    成因只能靠只读 SQL 逐行反推（create_time 02:07:21 / 自行发布 02:07:59 / 执行 02:08:00）。
+ *    而那轮报告本该是**一眼就能看出**这件事的东西。
+ *
+ * <p>🔴 光有副本还不够，canonical 自己也得挑时候写。两种跑法都会把它换成废纸（T1 踩过同样的坑）：
+ *    <ul>
+ *      <li>`-g "数据层前置审计"` 这类过滤跑：beforeAll / afterAll 照跑，rows 里只有一个空头，
+ *          一写就把上一轮的逐条正文换成十几行；</li>
+ *      <li>`TPL_MATRIX_ONLY=55` 子集跑：内容是真的，但只有 1 条 ——
+ *          打开 canonical 的人会以为「BUILD 矩阵就这 1 条」。</li>
+ *    </ul>
+ *    ⟹ canonical 只在**主用例真跑过且是全量**时覆盖；其余情况只落副本，
+ *      且子集跑的副本文件名里带 `subset`，一眼分得清。
+ */
+const RUN_STAMP = new Date().toISOString().replace(/[:.]/g, '-')
+const REPORT_STAMPED = path.join(
+  REPORT_DIR,
+  `prompt-template-build-matrix.${ONLY.length ? 'subset.' : ''}${RUN_STAMP}.md`
+)
+
+/** 本轮证据真正落在哪个文件上 —— 断言消息里指路用，指错了等于让人去翻一份旧报告 */
+const REPORT_THIS_RUN = ONLY.length === 0 ? REPORT : REPORT_STAMPED
+
+/** 主用例到底跑没跑。`-g` 过滤掉它时，beforeAll/afterAll 仍然会跑 —— 靠这个标记区分 */
+let mainTestRan = false
+
+/**
+ * 落盘。任何一个路径写失败都不该把用例带红 —— 报告是产物，不是被测对象
+ */
+function flushReport(): void {
+  const text = rows.join('')
+  try {
+    mkdirSync(REPORT_DIR, { recursive: true })
+    if (mainTestRan && ONLY.length === 0) writeFileSync(REPORT, text, 'utf8')
+    if (mainTestRan) writeFileSync(REPORT_STAMPED, text, 'utf8')
+  } catch {
+    /* 证据写不出去不影响断言结论 */
+  }
+}
+
 let token = ''
 let allCases: CaseRow[] = []
 let baselineTables = new Set<string>()
@@ -196,8 +241,10 @@ const runCreatedDefs: number[] = []
  *    （或另一个 e2e、或用户自己开的浏览器）新建的会话一样落进差集，于是被当成残留删掉。
  *    2026-10-07 真删过一条不属于本轮的会话：不可逆、无报错，
  *    报告还印一句「删除本轮新建 1 条」，读起来像干得漂亮。
- *    （那条会话的 id 不写在这里：InnoDB 后来把这个号发给了另一条**活的**会话，
- *      写下号只会把下一个读报告的人支去查一行不相干的数据。）
+ *    （那条会话的 id 不写在这里：它早已被软删（`deleted=1`），而 InnoDB 的自增号会**接着往下发**，
+ *      同一个数字过一阵子就会指向另一行不相干的数据 —— 写下号只会把下一个读报告的人支去查错地方。
+ *      ⚠️ 更正：`7a73ae6fc` 的提交信息里把这条写成了「号被发给另一条**活的**会话」，
+ *      实测那行至今是软删态、并没有被复用；结论不变（别写 id），但当时的理由是错的。）
  *    判据与实现见 `helpers/conversation-ownership.ts`（T1 / headless-gate 共用同一份）。
  *
  * <p>⚠️ 可能仍是 undefined：beforeAll 就红了、真发用例压根没起跑，此时没有页面可挂钩子。
@@ -210,9 +257,7 @@ const rows: string[] = []
 const H = () => apiHeaders(token)
 const caseApi = `${API_BASE_URL}/agent/prompt-template-case/simple-list`
 const tableApi = `${API_BASE_URL}/infra/data-model/list-database-table`
-const defPageApi = `${API_BASE_URL}/agent/workflow-def/page`
 const defGetApi = `${API_BASE_URL}/agent/workflow-def/get`
-const defDeleteApi = `${API_BASE_URL}/agent/workflow-def/delete`
 const validateApi = `${API_BASE_URL}/agent/workflow-def/validate`
 
 /**
@@ -244,18 +289,14 @@ async function listPhysicalTables(request: APIRequestContext): Promise<Set<strin
   return new Set((body.data ?? []).map((t: any) => String(t.TABLE_NAME ?? t.tableName ?? t.name)))
 }
 
-async function listDefs(request: APIRequestContext): Promise<DefRow[]> {
-  const out: DefRow[] = []
-  for (let pageNo = 1; pageNo <= 50; pageNo++) {
-    const resp = await request.get(defPageApi, { headers: H(), params: { pageNo, pageSize: 100 } })
-    const body = await resp.json()
-    expectOk(body, `取流程 def 分页 pageNo=${pageNo}`)
-    const list = (body?.data?.list ?? []) as DefRow[]
-    out.push(...list)
-    if (list.length < 100) break
-  }
-  return out
-}
+/**
+ * 流程 def 全集
+ *
+ * <p>实现搬进了 `helpers/workflow-def-cleanup.ts`（T1 / headless-gate 共用同一份）：
+ * 取清单的口径与拆台子的判据必须同源，否则「用哪把尺子量」和「用哪把尺子删」会各自漂移。
+ */
+const listDefs = (request: APIRequestContext): Promise<DefRowLite[]> =>
+  listWorkflowDefs(request, H)
 
 test.describe('T2 · BUILD 类示例逐条真发', () => {
   test.beforeAll(async ({ request }) => {
@@ -272,8 +313,9 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
   test.afterAll(async ({ request }) => {
     if (!token) return
     // 🔴 收尾前重新登录（方案 §2.8）。token TTL 是 1800 秒，而本轮实测跑了 16.0 分钟 ——
-    //    余量不到 2 倍。拿旧 token 收尾时，下面那些 expectOk 确实会把 401 抓成红，
-    //    但那时残留已经躺在库里了：T1 就是这么攒下 42 条没删掉的会话的。别赌，直接换新 token。
+    //    余量不到 2 倍。拿旧 token 收尾时清单接口一律 401，而 helper 把失败收进 failures
+    //    （**不 throw**，否则报告落不了盘）—— 结局是「什么都没删、报告里几行 ⚠️」，
+    //    残留照样躺在库里：T1 就是这么攒下 42 条没删掉的会话的。别赌，直接换新 token。
     // 🔴 登录失败**只记一行、不 throw**：throw 会把整个 afterAll 打断，残留核账一条都不做，
     //    比拿旧 token 试一次更糟（T1 的 afterAll 就是这个形状，两边对齐）
     try {
@@ -283,73 +325,87 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
     }
 
     // ---------- 残留核账（方案 §6.2：残留非空即视为该轮失败） ----------
-    const tablesNow = await listPhysicalTables(request)
-    const newTables = [...tablesNow].filter((t) => !baselineTables.has(t))
-    const goneTables = [...baselineTables].filter((t) => !tablesNow.has(t))
-
-    const defsNow = await listDefs(request)
-    // 「本轮之后库里多出来的」全集，而不是只看 runCreatedDefs 记下的那些：
-    // 用例中途红掉时可能还没来得及记，那条草稿就成了没人认领的孤儿。差集口径才兜得住
-    const created = defsNow.filter((d) => !baselineDefs.has(d.id))
-    const orphans = created.filter((d) => !runCreatedDefs.includes(d.id))
-    const promoted = defsNow.filter(
-      (d) => baselineDefs.get(d.id) && baselineDefs.get(d.id) !== d.status && d.status === 'PUBLISHED'
-    )
-
-    // 🔴 拆台子：本轮新造的**草稿**删掉。只删 DRAFT —— PUBLISHED 的删不掉也不该删，
-    //    它已经在下面被记成失败项了，静默删除等于把证据一起销毁
-    let deletedDefs = 0
-    for (const d of created) {
-      if (d.status !== 'DRAFT') continue
-      // 🔴 每个删除请求都过 expectOk（方案 §4.7）：不验返回码时，token 过期或状态不许删
-      //    都会静默失败，而计数器照样 ++、报告照样印「已删 N 条」—— 清理失败被记成清理成功
-      const delResp = await request.delete(defDeleteApi, { headers: H(), params: { id: d.id } })
-      expectOk(await delResp.json(), `删本轮新造的草稿 def #${d.id}`)
-      deletedDefs++
+    // 🔴 这一段里的**每一步都不许 throw**：throw 会把 afterAll 打断，
+    //    残留核账一行都写不出、报告落不了盘，而下一轮 beforeAll 会把这轮的残渣吃进基线 ——
+    //    从此永久隐形（T1 原先那句 `leftoverDef = 跑后条数 − 跑前条数` 就是这么攒下 42 条会话的）。
+    //    所以：先收集，再落盘，最后才断言。
+    let tablesNow = new Set<string>()
+    let tableListingFailed = ''
+    try {
+      tablesNow = await listPhysicalTables(request)
+    } catch (e: any) {
+      tableListingFailed = `取物理表清单失败：${e?.message ?? String(e)}（下面「新增表/消失的表」两行**无效**，需人工核）`
     }
+    const newTables = tableListingFailed ? [] : [...tablesNow].filter((t) => !baselineTables.has(t))
+    const goneTables = tableListingFailed ? [] : [...baselineTables].filter((t) => !tablesNow.has(t))
+
+    // 🔴 拆台子的判据搬进了 `helpers/workflow-def-cleanup.ts`（T1 / headless-gate 共用同一份）。
+    //    两处口径变化，都是实测撞出来的，详见那个文件的头注释：
+    //    ① 不再「新造的全删」—— 只删 DRAFT，且要么本轮认领过、要么 source=AUTO；
+    //       手工来源（MANUAL）的新草稿原样保留，那可能是别的用例或人正在用的东西。
+    //    ② 「本轮新造、却不是 DRAFT」单独判成 ❌。原先这一格**没有任何断言覆盖**
+    //       （`promoted` 只看基线里的 def），2026-10-08 02:07 那轮就这么漏掉了 def #567：
+    //       它被自行发布成 PUBLISHED 还跑出一条挂在闸口上的执行，而 T2 全绿。
+    const defCleanup: DefCleanupReport = await cleanupOwnedDefs({
+      request,
+      headers: H,
+      baseline: baselineDefs,
+      claimed: runCreatedDefs
+    })
+
     // 🔴 只删**本轮自己认领的**会话：账本来自产品写进 localStorage 的「最近一次会话」，
     //    判据与实现见 helpers/conversation-ownership.ts。原先按「跑后 − 跑前」求差集，
     //    把同一时间窗里别人新建的会话也当成残留删了（2026-10-07 真删过一条）
     let conversationCleanup: ConversationCleanupReport | undefined
+    // 🔴 会话侧的意外单独记一份：def 侧的失败由 helper 自己印进 lines，
+    //    往 `defCleanup.failures` 里塞会**印不出来**（lines 那时已经拼好了），
+    //    结局是「断言红了但报告里查不到原因」—— 那正是本段注释开头要避免的那种误诊
+    const extraFailures: string[] = []
     if (ownership) {
-      conversationCleanup = await cleanupOwnedConversations({
-        request,
-        headers: H,
-        ownership,
-        baseline: baselineConversationIds
-      })
+      try {
+        conversationCleanup = await cleanupOwnedConversations({
+          request,
+          headers: H,
+          ownership,
+          baseline: baselineConversationIds
+        })
+      } catch (e: any) {
+        // helper 内部已经验过返回码，能抛到这里的是网络/解析级别的意外。
+        // 一样只记不抛：会话残渣可逆（脏但不动别人的东西），报告落不了盘不可逆
+        extraFailures.push(`会话收尾抛异常：${e?.message ?? String(e)}`)
+      }
     }
 
     rows.push(
       `\n---\n\n## 残留核账（方案 §6.2）\n\n` +
-        `- 物理表：跑前 ${baselineTables.size} 张 → 跑后 ${tablesNow.size} 张\n` +
+        (tableListingFailed
+          ? `- 物理表：⚠️ ${tableListingFailed}\n`
+          : `- 物理表：跑前 ${baselineTables.size} 张 → 跑后 ${tablesNow.size} 张\n`) +
         `- 新增表：${newTables.length ? `❌ ${newTables.join(', ')}` : '无'}\n` +
-        `- 消失的表：${goneTables.length ? `❌ ${goneTables.join(', ')}` : '无'}\n` +
-        `- 本轮新造的流程 def：${created.length} 条（${created.map((d) => `${d.id}/${d.status}`).join(', ') || '无'}），` +
-        `已删草稿 ${deletedDefs} 条\n` +
-        `- 其中没人认领的孤儿草稿：${
-          orphans.length
-            ? `⚠️ ${orphans.map((d) => d.id).join(', ')}（说明有用例在记下 def 之前就红掉了）`
-            : '无'
-        }\n` +
-        `- 状态被改成 PUBLISHED 的既有 def：${promoted.length ? `❌ ${promoted.map((d) => d.id).join(', ')}` : '无'}\n`
+        `- 消失的表：${goneTables.length ? `❌ ${goneTables.join(', ')}` : '无'}\n`
     )
-    // 会话那几行由 helper 生成（三份矩阵 spec 共用同一份措辞）：认领了几条、删了几条、
-    // 哪些是**别人**建的（原样保留），以及「一条都没认领到」这类抓取失效的 ⚠️。
-    // 🔴 抓取失效必须印出来：少认领只会脏（自己的会话留在库里），
+    // def 与会话那几行都由 helper 生成（三份矩阵 spec 共用同一份措辞）：
+    // 认领了几条、删了几条、哪些是**别人**建的（原样保留）、哪些自行发布了（❌）、
+    // 以及「清理请求失败了」这类抓取失效的 ⚠️。
+    // 🔴 清理失效必须印出来：少清只会脏（自己的残渣留在库里），
     //    而**报成清干净了**才是本文件头注释说的那种更坏的东西（一个恒绿的残留检查）
+    rows.push(defCleanup.lines.join(''))
     rows.push(
       conversationCleanup
         ? conversationCleanup.lines.join('')
         : `- 会话：本轮没跑到真发（未挂监听），一条都不删；基线 ${baselineConversationIds.size} 条原样保留\n`
     )
-    try {
-      mkdirSync(REPORT_DIR, { recursive: true })
-      writeFileSync(REPORT, rows.join(''), 'utf8')
-    } catch {}
-
+    if (extraFailures.length) {
+      rows.push(
+        `- ⚠️ 会话收尾另有 ${extraFailures.length} 处失败（**别**把上面读成清干净了）：\n` +
+          extraFailures.map((f) => `  - ${f}\n`).join('')
+      )
+    }
+    // ==================== 报告落盘之后才开始断言 ====================
+    flushReport()
     // 🔴 建表是不可逆的：一旦这里红了，删 def 也救不回来，必须人工去库里处理。
     //    所以失败信息里直接写清「哪张表、谁造的」，不要让下一个人重新推一遍
+    expect(tableListingFailed, tableListingFailed).toBe('')
     expect(
       newTables,
       `本轮真发新建了物理表（不可逆，删 def 救不回来，需人工核）：${newTables.join(', ')}。` +
@@ -357,9 +413,38 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
     ).toHaveLength(0)
     expect(goneTables, `本轮有物理表消失了：${goneTables.join(', ')}`).toHaveLength(0)
     expect(
-      promoted,
-      `有 ${promoted.length} 条既有流程被发布成 PUBLISHED（id=${promoted.map((d) => d.id).join(', ')}）—— ` +
-        `三条 BUILD 示例都明写「等我确认之后再发布」，自行发布就是缺陷`
+      defCleanup.selfPublished,
+      `有 ${defCleanup.selfPublished.length} 条**本轮新造**的流程不是草稿态` +
+        `（${defCleanup.selfPublished.map((d) => `#${d.id}/${d.status}「${d.name}」`).join(', ')}）—— ` +
+        `BUILD 示例都明写「等我确认之后再发布」，自行发布就是缺陷。` +
+        `已按产品的停用端点止住活的风险（DISABLED 保留整行与执行历史，证据没销毁），需人工核 DSL。` +
+        `🔴 别把这条断言删了：2026-10-08 02:07 那轮就是因为没人看这一格，def #567 才留在库里`
+    ).toHaveLength(0)
+    expect(
+      defCleanup.promoted,
+      `有 ${defCleanup.promoted.length} 条既有流程被发布成 PUBLISHED（id=${defCleanup.promoted.map((d) => d.id).join(', ')}）—— ` +
+        `BUILD 示例都明写「等我确认之后再发布」，自行发布就是缺陷`
+    ).toHaveLength(0)
+    expect(
+      defCleanup.leftoverOwned,
+      `本轮自建的流程 def 没清干净，库里还留着 ${defCleanup.leftoverOwned.join(', ')}` +
+        `（§6.2：残留非空即视为该轮失败）。别人的 def 不算在这里 —— 见上面那几行 ⚠️`
+    ).toHaveLength(0)
+    expect(
+      defCleanup.leftoverExecutions,
+      `本轮 def 名下仍有挂起执行（取消请求发了但没成）：` +
+        defCleanup.leftoverExecutions.map((r) => `def#${r.defId}/exec#${r.execId}/${r.status}`).join(', ')
+    ).toHaveLength(0)
+    const allCleanupFailures = [...extraFailures, ...defCleanup.failures]
+    expect(
+      allCleanupFailures,
+      `收尾过程有 ${allCleanupFailures.length} 处失败（详见报告 ⚠️ 那一段）：` +
+        allCleanupFailures.join(' | ')
+    ).toHaveLength(0)
+    expect(
+      conversationCleanup?.leftoverOwned ?? [],
+      `本轮自建的会话没清干净，库里还留着 ${(conversationCleanup?.leftoverOwned ?? []).join(', ')}` +
+        `（§6.2：残留非空即视为该轮失败）。别人的会话不算在这里 —— 见上面那几行 ⚠️`
     ).toHaveLength(0)
   })
 
@@ -407,8 +492,10 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
       .filter((c) => ONLY.length === 0 || ONLY.includes(c.id))
     expect(targets.length, '过滤之后一条都不剩').toBeGreaterThan(0)
 
-    mkdirSync(REPORT_DIR, { recursive: true })
-    writeFileSync(REPORT, rows.join(''), 'utf8')
+    // 🔴 标记必须在第一次落盘**之前**置上：flushReport 靠它区分「主用例真跑过」与
+    //    「只跑了 beforeAll / afterAll 的空壳」—— 后者一写就把上一轮的逐条正文换成一个空头
+    mainTestRan = true
+    flushReport()
 
     await login(page)
     await gotoWithAuth(page, '/ai/agent/assistant')
@@ -768,9 +855,9 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
           `**提问**\n\n${c.content}\n\n` +
           `**验收标准（expect_hint · 人工评审用）**\n\n${c.expectHint ?? ''}\n`
       )
-      try {
-        writeFileSync(REPORT, rows.join(''), 'utf8')
-      } catch {}
+      // 🔴 每条跑完就整份重写一次（而不是 append）：中途被掐断时，
+      //    已跑完那几条的逐条正文仍在盘上，不会跟着最后几条一起丢
+      flushReport()
     }
 
     rows.push(
@@ -780,7 +867,7 @@ test.describe('T2 · BUILD 类示例逐条真发', () => {
 
     expect(
       failures,
-      `${failures.length} 条 BUILD 示例没过（详见 ${path.relative(process.cwd(), REPORT)}）`
+      `${failures.length} 条 BUILD 示例没过（详见 ${path.relative(process.cwd(), REPORT_THIS_RUN)}）`
     ).toHaveLength(0)
   })
 })
