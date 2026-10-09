@@ -12,10 +12,18 @@
      来源由服务端按入口写死，前端只读展示。见 WorkflowSourceEnum 与
      sql/mysql/xpy-2026-09-29-agent-workflow-def-source.sql。
 
+  🔴 删除（2026-10-09）：可删判据从「只有草稿」放宽到「草稿 + 已停用」，并新增勾选列与批量删除。
+     判据由服务端派生成 row.deletable 下发（与 editable 同一套 G14 收敛手法），前端**不**自己判 status。
+     已停用的行曾发布过、名下可能有执行史，后端删除时连带软删执行行与节点 trace、并释放 checkpoint。
+     ⚠️ 后端另有一档 force-delete（能删**已发布**的行、仅 super_admin 持有），本页**不暴露**它 ——
+        它不是常规删除的复数形式，爆炸半径差一个数量级，没有 UI 是现状而非遗漏。
+
   权限（增量14a 拆分，与后端 AgentWorkflowDefController @PreAuthorize 逐字一致）：
-     读（查看画布/执行历史）= agent:workflow:query；新增 = :create；编辑 = :update；删除 = :delete；
+     读（查看画布/执行历史）= agent:workflow:query；新增 = :create；编辑 = :update；
+     删除（单删与批量删**共用**同一个点）= :delete；
      发布/停用 = :publish；发起执行（run/resume/event，在 ExecutionHistoryDrawer）= :run。
      按钮权限行 + 角色授权见 sql/mysql/xpy-2026-09-27-agent-fine-grained-perms.sql（super_admin 绕过一切权限点）。
+     🔴 批量删除**不需要**新的授权脚本：沿用 :delete，理由同后端（批量只是单删的复数形式）。
   状态与来源均无数据字典，用本地 map 渲染 tag（同 views/agent/usage 的做法）。
 -->
 <template>
@@ -92,6 +100,32 @@
           <el-button plain @click="openCases" data-testid="trigger-case-btn">
             <Icon icon="ep:reading" class="mr-5px" /> 触发案例
           </el-button>
+          <!--
+            批量删除（2026-10-09）。🔴 只有 row.deletable（草稿 / 已停用）的行勾得上，与单行删除同口径；
+               已发布行须先停用再删 —— 否则一整页勾选能把线上正被触发入口选用的流程连带清掉。
+            🔴 规则藏在灰掉的复选框里没人能猜到，故用 tooltip 说明（同 views/agent/def 的做法）。
+               包一层 span 是因为禁用的 el-button 不派发鼠标事件，tooltip 挂不上去。
+            🔴 这里用 checkPermi 而不是 v-hasPermi：整枚按钮（含 tooltip 外壳）要一起消失。
+               只把内层按钮 v-hasPermi 掉的话，没权限的人会看到一枚永远灰着、悬停还有说明的空壳。
+          -->
+          <el-tooltip
+            v-if="checkPermi(['agent:workflow:delete'])"
+            content="仅「草稿 / 已停用」的流程可勾选；已停用的行名下若有执行历史，会一并清掉"
+            placement="top"
+          >
+            <span class="ml-12px align-middle">
+              <el-button
+                type="danger"
+                plain
+                :disabled="checkedIds.length === 0"
+                @click="handleDeleteBatch"
+                data-testid="wf-batch-delete-btn"
+              >
+                <Icon icon="ep:delete" class="mr-5px" />
+                批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
+              </el-button>
+            </span>
+          </el-tooltip>
         </el-form-item>
       </el-form>
     </ContentWrap>
@@ -111,7 +145,23 @@
           <span class="ml-4px font-600 text-[var(--el-color-primary)]">{{ adoptionText }}</span>
         </el-tooltip>
       </div>
-      <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table
+        class="xpy-list-table"
+        stripe
+        v-loading="loading"
+        :data="list"
+        @selection-change="handleRowCheckboxChange"
+      >
+        <!--
+          批量删除的勾选列（2026-10-09）。🔴 selectable 把不该删的行直接灰掉，
+             而不是让用户勾上之后再换来一次「整批被拒」。
+          🔴 判据读服务端下发的 row.deletable，**不**在这里写
+             `status === 'DRAFT' || status === 'DISABLED'` —— 智能体页（views/agent/def）那份
+             isRowSelectable 是自己判 status 的，本页有 deletable 这一格，别照抄过来（G14 的那份重复）。
+          ⚠️ 前端挡这一道只是 UX，真判据在后端：还有 pin 与在途执行两道闸门要扫**别的行**，
+             deletable 预测不了它们。绕过前端直调接口照样整批被拒。
+        -->
+        <el-table-column type="selection" width="44" :selectable="isRowSelectable" />
         <!-- Req 1：序号列（参考模型配置页 views/ai/model/model/index.vue；indexMethod 已配 auto-import） -->
         <el-table-column
           label="序号"
@@ -158,9 +208,13 @@
         />
         <!--
           🔴 min-width 不能按「刚好放下」给：这一列的按钮折行**不报错**，只是悄悄折成两行。
-             e2e（tests/e2e/agent-workflow-copy.spec.ts 的「操作列不换行」）实测：
-             草稿行 8 钮需宽 436px、已发布行 6 钮需宽 434px ⟹ 原来的 440 只剩 4px 余量，
-             任何一个按钮文案变长就折行。取 520（余量 ~84px）。改这一列的按钮请同步改这个数。
+             历史实测：草稿行 8 钮需宽 436px、已发布行 6 钮需宽 434px ⟹ 原来的 440 只剩 4px 余量，
+             任何一个按钮文案变长就折行，故取 520。
+             ⚠️ 那两个数字出自 tests/e2e/agent-workflow-copy.spec.ts 的「操作列不换行」，
+                而该 spec 已随 tests/ 一并从 HEAD 删除 ⟹ 今天**无法再跑出来复核**，只作量级参考留着。
+          ⚠️ 2026-10-09 给不可删的行加了一枚禁用的「删除」后：已发布行 6 钮→7 钮、
+             已停用行 5 钮→6 钮；最宽的仍是草稿行的 8 钮（数量未变）。按「一枚两字 link 钮约 52px」
+             粗算已发布行约 486px，仍在 520 之内 —— 但这是**推算、不是实测**，改这一列的按钮请重新量。
         -->
         <el-table-column label="操作" align="center" min-width="520" fixed="right">
           <template #default="scope">
@@ -199,9 +253,11 @@
                  故 update 持有者 ⊆ query 持有者，只会让更多人看见）。
                  ⚠️ 但台账 #109：hasPermi 对 *:*:* 短路、e2e 恒以 admin 登录 ⟹ 这次放宽在 e2e 里
                  **结构性地证明不了**，别拿「e2e 绿」当它的验收判据。
-              🔴 「编辑」「删除」也改判 row.editable 而不是 status === 'DRAFT'：判据的唯一出处是
+              🔴 「编辑」改判 row.editable 而不是 status === 'DRAFT'：判据的唯一出处是
                  后端 WorkflowDefStatusEnum#isDraft，服务端派生成 editable 下发。
                  前端再抄一份 'DRAFT' 字面量，等状态机加一档就是「按钮亮着、点了被后端拒」。
+                 ⚠️ 2026-10-09 起「删除」**不再**跟着 editable 走，改判 row.deletable
+                    （判据是 WorkflowDefStatusEnum#isDeletable，草稿 + 已停用）—— 见下面那枚按钮。
             -->
             <el-button
               link
@@ -272,8 +328,31 @@
             >
               复制为新草稿
             </el-button>
+            <!--
+              🔴 删除按 row.deletable（服务端派生），不再按 row.editable：两档判据从 2026-10-09 起分家 ——
+                 可编辑只有草稿，可删是草稿 + 已停用。继续用 editable 会让「停用过的流程」永远删不掉
+                 （只剩管理员的 force-delete 一条裸接口，而本页不暴露它）。
+              🔴 不可删的行给一枚**禁用**的删除按钮 + 后端下发的 deleteDeniedReason 作 tooltip，
+                 而不是整枚隐藏：只看到「这行没有删除」的用户得不到任何理由，只能去猜或者提工单
+                 （editDeniedReason 在设计器的只读横幅里就是这么用的）。包一层 span 同样是因为
+                 禁用的 el-button 不派发鼠标事件，tooltip 挂不上去；
+                 而 span 一插进两枚按钮之间，`.el-button + .el-button` 的 12px 间距就失效了，
+                 故 span 自己带 ml-12px（否则这枚「删除」会紧贴着「复制为新草稿」）。
+              ⚠️ 下面两枚是同一个 v-if/v-else 链，中间**不要插注释**（会打断分支配对）。
+            -->
+            <el-tooltip
+              v-if="!scope.row.deletable"
+              :content="scope.row.deleteDeniedReason || DELETE_DENIED_FALLBACK"
+              placement="top"
+            >
+              <span class="ml-12px align-middle">
+                <el-button link type="danger" disabled v-hasPermi="['agent:workflow:delete']">
+                  删除
+                </el-button>
+              </span>
+            </el-tooltip>
             <el-button
-              v-if="scope.row.editable"
+              v-else
               link
               type="danger"
               @click="handleDelete(scope.row)"
@@ -323,6 +402,7 @@
 
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
+import { checkPermi } from '@/utils/permission'
 import {
   AgentWorkflowApi,
   type AgentWorkflowDefVO,
@@ -412,6 +492,11 @@ const getList = async () => {
     const data = await AgentWorkflowApi.getDefPage(queryParams)
     list.value = data.list
     total.value = data.total
+    // 翻页/搜索/删除后清空勾选：checkedIds 存的是编号，而列表已经换了一茬。留着旧编号不只是
+    // 「批量删除（N）」的 N 与页面上看得见的勾选数对不上 —— 那批编号可能已经指向别的行，
+    // 于是用户看着勾了 3 条、点下去删掉的是另外 3 条（同 views/agent/def 的做法）。
+    // el-table 换数据时本身会重算选中态并触发 selection-change，这里显式清一次是不依赖那个时序。
+    checkedIds.value = []
   } finally {
     loading.value = false
   }
@@ -629,14 +714,84 @@ const handleDisable = async (row: AgentWorkflowDefVO) => {
   } catch {}
 }
 
-/** 删除：仅 DRAFT 可删（草稿从未被执行入口选中，删了不留孤儿；后端 deleteDef 对非草稿抛 WORKFLOW_DEF_NOT_DRAFT） */
+/**
+ * 🔴 这**不是**后端那句 deleteDeniedReason 的第二份副本：只有 `deletable` / `deleteDeniedReason`
+ *   两格都拿不到（对接的是还没有这两个派生属性的旧后端）时才会用到它 —— 那种情况下 tooltip
+ *   会是空的，用户只看到一枚灰掉的「删除」而得不到任何理由。
+ *   措辞刻意不点名任何具体状态，与后端文案同一条纪律（点名会让另一档配上错话）。
+ */
+const DELETE_DENIED_FALLBACK = '当前状态不可删除'
+
+/**
+ * 单行删除：草稿与已停用可删（已发布须先停用）
+ *
+ * 🔴 确认框文案**不点名状态**：判据放宽到「草稿 + 已停用」之后，原来那句「确认删除草稿流程…」
+ *    对已停用的行就是假话 —— 状态徽标写着「已停用」、弹窗却说「草稿」，用户会怀疑自己点错了行。
+ * 🔴 必须说出**连带清执行史**：已停用意味着曾发布过，名下可能有执行史与节点 trace，后端会一并软删。
+ *    只说「删除后不可恢复」不足以让人知道连带清掉的是哪些东西。
+ *    ⚠️ 用「若…会一并清掉」而不是断言有：草稿名下确实一条都没有，断言就成了另一句假话。
+ * ⚠️ 后端还有两道闸门（被 pin / 有在途执行）会拒删，那句 msg 由 axios 拦截器弹通知，
+ *    这里**不要**另编一份文案（编出来的会与后端点名的那一行对不上）。
+ */
 const handleDelete = async (row: AgentWorkflowDefVO) => {
   try {
     await message.delConfirm(
-      `确认删除草稿流程「${row.name || row.code}」(v${row.version})？删除后不可恢复。`
+      `确认删除流程「${row.name || row.code}」(v${row.version})？删除后不可恢复；` +
+        '若它名下有执行历史与节点明细，会一并清掉。'
     )
     await AgentWorkflowApi.deleteDef(row.id)
     message.success('删除成功')
+    await getList()
+  } catch {}
+}
+
+// ==================== 批量删除（2026-10-09）====================
+
+const checkedIds = ref<number[]>([])
+
+/**
+ * 哪些行勾得上：读服务端下发的 {@code row.deletable}
+ *
+ * 🔴 **不在这里重写判据**（不写 `status === 'DRAFT' || status === 'DISABLED'`）。
+ *   同产品线的智能体页（views/agent/def）那份 isRowSelectable 是自己判 status 的，
+ *   本页有 deletable 这一格，抄那份就是把后端 `WorkflowDefStatusEnum#isDeletable`
+ *   在前端复写一遍 —— G14 要收敛的正是这种重复。
+ * 🔴 真值判断而不是 `!== false`：拿不到这一格时按「勾不上」处理，与后端对 status 为空的处理同方向。
+ * ⚠️ 这一道只是 UX。deletable 只覆盖状态闸门；被 pin / 有在途执行那两道要扫**别的行**，
+ *   列表接口不会为每行预算，故「勾上了却整批被拒」是预期内的，权威理由是后端返回的那句 msg。
+ */
+const isRowSelectable = (row: AgentWorkflowDefVO) => !!row.deletable
+
+const handleRowCheckboxChange = (rows: AgentWorkflowDefVO[]) => {
+  checkedIds.value = rows.map((row) => row.id)
+}
+
+/**
+ * 批量删除。后端是「全成或全不成」：所有行的三道闸门全跑完才开始动任何数据，
+ * 有一条不合规就整批拒绝、一条都不少。这么设计不是因为整洁 ——
+ * 释放 checkpoint 发的是真实 UPDATE，`@Transactional` 回滚不了它。
+ *
+ * 🔴 确认框把要删的名字列出来（最多 5 个 +「等 N 个」）：批量删不可恢复，
+ *   只显示数量不足以让人发现「勾错了」。
+ * 🔴 文案点名**连带清执行史**，且**不点名状态** —— 勾中的可能既有草稿也有已停用的行，
+ *   写死「草稿」对后者是假话（与上面单行删除同一条纪律）。
+ */
+const handleDeleteBatch = async () => {
+  if (checkedIds.value.length === 0) {
+    return
+  }
+  const rows = list.value.filter((row) => checkedIds.value.includes(row.id))
+  const names = rows.map((row) => `「${row.name || row.code}」v${row.version}`)
+  const preview =
+    names.length <= 5 ? names.join('、') : `${names.slice(0, 5).join('、')} 等 ${names.length} 个`
+  try {
+    await message.delConfirm(
+      `确认删除选中的 ${names.length} 条流程：${preview}？删除后不可恢复；` +
+        '若它们名下有执行历史与节点明细，会一并清掉。'
+    )
+    await AgentWorkflowApi.deleteDefList(checkedIds.value)
+    message.success('删除成功')
+    // getList 内部会清空勾选
     await getList()
   } catch {}
 }

@@ -45,12 +45,14 @@ export interface AgentWorkflowDefVO {
    * 这一行能不能就地编辑（S5-c 起由服务端派生下发，修 G14）
    *
    * 🔴 **不要在前端重写这条判据**（即不要写 `status === 'DRAFT'`）。后端强制点
-   *   （`updateDef` / `deleteDef` 抛 `WORKFLOW_DEF_NOT_DRAFT`）与本字段共用
+   *   （`updateDef` 抛 `WORKFLOW_DEF_NOT_DRAFT`）与本字段共用
    *   `WorkflowDefStatusEnum.isDraft` 同一个方法；前端再抄一份 `'DRAFT'` 字面量，
    *   等状态机加一档（如 ARCHIVED）就会出现「按钮亮着、点了被拒」——正是 G14 要收敛的那份重复。
    * 🔴 声明成可选是为了**失败朝安全那一侧倒**：拿不到这一格时 `v-if="row.editable"` 自然为假
    *   ⟹ 按「不可编辑」渲染，与后端对 status 为空的处理同方向。
    *   故消费方一律写 `row.editable`（真值判断），**不要**写 `row.editable !== false`。
+   * ⚠️ **本字段不再是「能不能删」的判据**（迭代八起两者分家）：可编辑只有草稿，
+   *   可删是草稿 + 已停用。删除按钮与勾选框一律读 {@link AgentWorkflowDefVO.deletable}。
    */
   editable?: boolean
   /**
@@ -58,6 +60,28 @@ export interface AgentWorkflowDefVO {
    * 🔴 直接渲染这一句，不要前端另编文案：状态机加一档时后端会跟着改，前端抄的那句会留在旧状态上。
    */
   editDeniedReason?: string | null
+  /**
+   * 这一行在**状态上**能不能删（迭代八起由服务端派生下发，判据 `WorkflowDefStatusEnum.isDeletable`）
+   *
+   * 🔴 **不要在前端重写这条判据**（即不要写 `['DRAFT','DISABLED'].includes(status)`）——
+   *   与 {@link AgentWorkflowDefVO.editable} 同一条纪律（G14）：后端删除闸门与本字段共用同一个方法。
+   *   ⚠️ 同产品线的智能体页（`views/agent/def/index.vue`）那份 `isRowSelectable` 是**自己判 status** 的，
+   *   别照抄过来；本页有服务端下发的这一格，用它。
+   * 🔴 声明成可选同样是为了失败朝安全那一侧倒 ⟹ 消费方写 `row.deletable`，**不要**写 `!== false`。
+   *
+   * 🔴 **它只是状态闸门，不是「这行一定删得掉」的承诺**。后端还有两道闸门要扫**别的行**
+   *   （仍被活定义的 `sub_workflow` pin 住 / 名下有未终态执行），而列表接口不会为每一行
+   *   付一次「捞全表定义连 DSL 正文回来解析」的代价。故「勾上了却删不掉」是**预期内**的：
+   *   权威的拒绝理由是删除接口返回的那句 msg（会点名是哪一行、被谁 pin 住），
+   *   前端**不要**另编一份、也不要拿本字段去预测那两道闸门。
+   */
+  deletable?: boolean
+  /**
+   * `deletable=false` 时后端给的现成说明；`deletable=true` 时为 null。
+   * 🔴 与 {@link AgentWorkflowDefVO.editDeniedReason} 同一条纪律：直接渲染，不要前端另编文案。
+   *   它只解释**状态**这一档（文案不点名具体状态），pin / 在途执行两道的理由在删除接口的错误里。
+   */
+  deleteDeniedReason?: string | null
 }
 
 export interface AgentWorkflowDefPageReqVO extends PageParam {
@@ -724,9 +748,33 @@ export const AgentWorkflowApi = {
   updateDef: (data: AgentWorkflowDefSaveVO): Promise<boolean> =>
     request.put({ url: '/agent/workflow-def/update', data }),
 
-  /** 删除定义（仅 DRAFT 可删） */
+  /**
+   * 删除定义（迭代八起：**草稿与已停用**可删，已发布须先停用）
+   *
+   * 🔴 已停用的行名下可能有执行史与节点 trace，后端会**连带软删**（含释放 checkpoint），
+   *   否则留下一堆指向已删定义的孤儿行。确认框文案要说清这件事，别只说「删除后不可恢复」。
+   * 🔴 状态之外还有两道闸门（被活定义的 sub_workflow pin 住 / 名下有未终态执行），
+   *   两者都要扫别的行，故 `AgentWorkflowDefVO.deletable` **预测不了**它们。
+   *   被拒时后端 msg 会点名是哪一行、被谁 pin 住 —— 直接显示它，不要前端另编文案。
+   */
   deleteDef: (id: number): Promise<boolean> =>
     request.delete({ url: '/agent/workflow-def/delete', params: { id } }),
+
+  /**
+   * 批量删除定义（迭代八）
+   *
+   * 🔴 数组参数必须**逗号拼接**：axios 的 paramsSerializer 用 qs allowDots，直接传数组会发成
+   *   `ids[]=1&ids[]=2`，绑不上后端 `@RequestParam("ids") List<Long>`
+   *   （与 `api/system/post` 的 deletePostList 同款写法）。
+   * 🔴 后端是**全成或全不成**：所有行的三道闸门全跑完才开始动任何数据，故一条不合规就整批拒绝、
+   *   一条都不会少。这么设计不是因为整洁 —— 释放 checkpoint 发的是真实的
+   *   `UPDATE GRAPH_THREAD SET is_released = TRUE`，`@Transactional` **回滚不了它**；
+   *   边删边校验会留下「执行行还在、快照已 released」的中间态，且没有任何接口能解释它。
+   * 🔴 权限沿用 `agent:workflow:delete`（与单删同一个点，故不需要新的授权 SQL）：
+   *   批量只是单删的复数形式，不是另一种能力。
+   */
+  deleteDefList: (ids: number[]): Promise<boolean> =>
+    request.delete({ url: '/agent/workflow-def/delete-list', params: { ids: ids.join(',') } }),
 
   /**
    * 校验 DSL（保存/发布前预检，只读不落库）。
