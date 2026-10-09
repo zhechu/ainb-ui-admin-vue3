@@ -225,19 +225,26 @@
         <!-- 需求7：提示词模板。放在最左边——它是「往输入框里放字」的动作，与右侧的「发出去」相对。
              🔴 用 popover 而不是 el-select：模板项要显示名称+说明两行，select 的选项行装不下，
              而只显示名称的话用户分不清两条相似的模板该选哪条。 -->
+        <!-- 🔴 必须是 v-model:visible 而不是 :visible。只给 :visible（没有 update 处理器）时，
+             ElTooltip 内部把 controlled 判成 true，于是 content 里那个 onClickOutside 回调
+             第一行就 return —— 点面板外面永远不会关，面板只能靠「点中一条模板」消失。
+             挂上 update 处理器后 controlled 变 false，外部点击才真的走到 onClose。 -->
         <el-popover
-          :visible="templatePopoverVisible"
+          v-model:visible="templatePopoverVisible"
           placement="top-start"
           :width="compact ? 300 : 420"
           trigger="click"
           popper-class="agent-tpl-popover"
         >
           <template #reference>
+            <!-- 🔴 这里刻意不挂 @click：trigger="click" 下 ElTooltipTrigger 自己会 onToggle，
+                 再挂一个「点了就置 true」的处理器，点第二次就变成「我们置 true → 它 toggle 成 false」，
+                 按钮从此关不掉。展开时要做的重置与重取放在 templatePopoverVisible 的 watch 里，
+                 这样不论从哪条路径展开都一致。 -->
             <el-button
               data-testid="template-picker"
               :size="compact ? 'small' : 'default'"
               :disabled="streaming"
-              @click="openTemplatePopover"
             >
               <Icon icon="ep:collection" class="mr-4px" /> 模板
             </el-button>
@@ -250,9 +257,14 @@
                  页签把「我想问点什么」（模板）和「别人是怎么问的」（示例）分成两个动作，
                  各自都能一屏扫完。分组标题仍用模板名，两者的对应关系没丢。
             -->
-            <el-radio-group v-model="tplTab" size="small" class="mb-8px w-full" @change="onTplTabChange">
-              <el-radio-button value="template" class="flex-1">模板</el-radio-button>
-              <el-radio-button value="case" class="flex-1" data-testid="tpl-tab-case">示例</el-radio-button>
+            <el-radio-group
+              v-model="tplTab"
+              size="small"
+              class="agent-tpl-tabs"
+              @change="onTplTabChange"
+            >
+              <el-radio-button value="template">模板</el-radio-button>
+              <el-radio-button value="case" data-testid="tpl-tab-case">示例</el-radio-button>
             </el-radio-group>
             <el-input
               v-model="templateKeyword"
@@ -291,24 +303,31 @@
                 </div>
               </template>
               <!-- ==================== 示例页签 ==================== -->
+              <!-- 🔴 与模板页签同构：一样按分类分组、分类顺序也一样，组内再按模板名分小节。
+                 原来这里只按模板名平铺，组的先后沿用后端 ORDER BY category（MySQL 中文按 Unicode
+                 码点排）的结果，于是「数据建模」排到了「表单搭建」前面，而模板页签是按组内最小 sort
+                 重排过的 —— 同一份数据在两个页签里顺序不同，切过去就像东西被重新洗了一遍。 -->
               <template v-else>
                 <div v-if="!groupedCases.length" class="agent-tpl-empty">
                   {{ caseList.length ? '没有匹配的示例' : '还没有可用的示例，管理员可在「提示词模板」页展开某条模板维护' }}
                 </div>
-                <div v-for="g in groupedCases" :key="g.templateId" class="agent-tpl-group">
-                  <div class="agent-tpl-group-title">{{ g.templateName }}</div>
-                  <div
-                    v-for="c in g.items"
-                    :key="c.id"
-                    class="agent-tpl-item"
-                    data-testid="case-item"
-                    :data-case-id="c.id"
-                    @click="applyCase(c)"
-                  >
-                    <div class="agent-tpl-item-name">{{ c.title }}</div>
-                    <!-- 🔴 摘要只显示第一行：完整正文点进去就在输入框里了，
-                         这里全展开会把 40 条示例变成一篇没法扫读的文章 -->
-                    <div class="agent-tpl-item-desc">{{ firstLineOf(c.content) }}</div>
+                <div v-for="g in groupedCases" :key="g.category" class="agent-tpl-group">
+                  <div class="agent-tpl-group-title">{{ g.category }}</div>
+                  <div v-for="t in g.templates" :key="t.templateId" class="agent-tpl-subgroup">
+                    <div class="agent-tpl-subgroup-title">{{ t.templateName }}</div>
+                    <div
+                      v-for="c in t.items"
+                      :key="c.id"
+                      class="agent-tpl-item"
+                      data-testid="case-item"
+                      :data-case-id="c.id"
+                      @click="applyCase(c)"
+                    >
+                      <div class="agent-tpl-item-name">{{ c.title }}</div>
+                      <!-- 🔴 摘要只显示第一行：完整正文点进去就在输入框里了，
+                           这里全展开会把 40 条示例变成一篇没法扫读的文章 -->
+                      <div class="agent-tpl-item-desc">{{ firstLineOf(c.content) }}</div>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -657,41 +676,38 @@ const onTplTabChange = () => {
  * <p>🔴 不能只在 onMounted 拉：管理员常在另一个标签页存完模板就切回来点按钮，
  * 缓存着旧列表的表现是「刚存的模板在这里找不到」——他不知道要刷新整页，只会以为没存上。
  * 这张表就几十行，重取的代价可以忽略；加载期间旧列表仍在，不会闪成空白。
+ *
+ * <p>🔴 挂在 visible 的 watch 上而不是按钮的 @click 上：弹层的开合由 el-popover 自己
+ * （trigger="click" + v-model:visible）负责，按钮上再挂一个处理器会和它的 toggle 打架。
+ * 放在 watch 上的额外好处是「不论从哪条路径展开都一致」，且收起时不会白跑一次请求。
  */
-const openTemplatePopover = () => {
-  templatePopoverVisible.value = true
+watch(templatePopoverVisible, (open) => {
+  if (!open) return
   templateKeyword.value = ''
   // 🔴 回到「模板」页签并作废示例缓存：按钮上写的就是「模板」，点开却停在上次看的示例会像跳错了地方；
   //    作废缓存则与上面重取模板同一个理由 —— 管理员可能刚在另一页存完示例
   tplTab.value = 'template'
   caseLoaded.value = false
   loadTemplates()
-}
+})
 
 /**
- * 按分类分组（组内沿用后端 category + sort + id 的升序）
- * 🔴 分类为空归入「未分类」并排在最后：不这么做的话空分类会插在最前面，
+ * 按分类分组，**两个页签共用这一份口径**
+ *
+ * <p>🔴 分类为空归入「未分类」并排在最后：不这么做的话空分类会插在最前面，
  * 而它其实是「管理员没填」而不是一个真的类别。
- * 🔴 分类之间的先后按「组内最小 sort」重排，不再沿用后端返回的顺序：后端是
+ * <p>🔴 分类之间的先后按「组内最小 sort」重排，不沿用传入顺序：后端是
  * ORDER BY category,sort，于是分类的先后落在 MySQL 中文排序规则上（按 Unicode 码点，不是拼音），
  * 结果是「表单搭建」这种一眼该排前面的分类会被排到倒数第二，而管理员在「提示词模板」页改「排序」
  * 怎么改都挪不动分类——正是本平台头号缺陷「配了但不生效」的形状。取组内最小值做组序后，
  * 排序号才真的管用：数字小的分类整体靠前，组内仍按 sort 升序。
+ * <p>🔴 抽成一个函数就是为了「模板」「示例」两个页签的分类顺序**必然一致**：
+ * 各写一份的话，改了一处忘了另一处，表现就是切个页签东西被重新洗过一遍。
  */
-const groupedTemplates = computed(() => {
-  const kw = templateKeyword.value.trim().toLowerCase()
-  const filtered = kw
-    ? templateList.value.filter(
-        (t) =>
-          (t.name ?? '').toLowerCase().includes(kw) ||
-          (t.content ?? '').toLowerCase().includes(kw) ||
-          (t.description ?? '').toLowerCase().includes(kw) ||
-          (t.category ?? '').toLowerCase().includes(kw)
-      )
-    : templateList.value
+const groupByCategory = (list: AgentPromptTemplateVO[]) => {
   const named = new Map<string, AgentPromptTemplateVO[]>()
-  let uncategorized: AgentPromptTemplateVO[] = []
-  for (const t of filtered) {
+  const uncategorized: AgentPromptTemplateVO[] = []
+  for (const t of list) {
     const key = t.category?.trim()
     if (!key) {
       uncategorized.push(t)
@@ -710,13 +726,31 @@ const groupedTemplates = computed(() => {
     .map(({ category, items }) => ({ category, items }))
   if (uncategorized.length) groups.push({ category: UNCATEGORIZED, items: uncategorized })
   return groups
+}
+
+const groupedTemplates = computed(() => {
+  const kw = templateKeyword.value.trim().toLowerCase()
+  const filtered = kw
+    ? templateList.value.filter(
+        (t) =>
+          (t.name ?? '').toLowerCase().includes(kw) ||
+          (t.content ?? '').toLowerCase().includes(kw) ||
+          (t.description ?? '').toLowerCase().includes(kw) ||
+          (t.category ?? '').toLowerCase().includes(kw)
+      )
+    : templateList.value
+  return groupByCategory(filtered)
 })
 
 /**
- * 「示例」页签：按所属模板分组（组内沿用后端 templateId + sort + id 的升序）
+ * 「示例」页签：分类 → 模板 → 用例，三级
  *
- * <p>🔴 组的先后按 {@link templateList} 的顺序出，不自己再排一遍：模板列表已经是
- * 「分类 + 排序」的口径，两个页签的分组顺序一致，用户切过来才不会觉得东西被重新洗过。
+ * <p>🔴 分类顺序走 {@link groupByCategory}，与模板页签同一份口径。**不能**沿用
+ * templateList 的原始顺序：那是后端 ORDER BY category,sort 的结果，分类先后落在 MySQL
+ * 的中文排序规则上（Unicode 码点，不是拼音），而模板页签已经按组内最小 sort 重排过了。
+ * 两边各排一次的结果就是同一份数据在两个页签里顺序不同——「数据建模」在示例页签跑到
+ * 「表单搭建」前面，用户切过去只会以为东西被洗过。
+ * <p>🔴 用例的先后沿用后端 templateId + sort + id 的升序，这里不重排。
  * <p>🔴 在 templateList 里找不到 templateId 的用例整组丢掉。后端 /simple-list 本就只返回
  * 「用例开启**且它的模板也开启**」的行，出现落单只可能是两次请求之间那条模板被下架了 ——
  * 此时显示成「未知模板」比不显示更让人困惑，而且点进去插入的正文对应的是一条已经不再引导的路。
@@ -738,9 +772,17 @@ const groupedCases = computed(() => {
     if (!byTemplate.has(c.templateId)) byTemplate.set(c.templateId, [])
     byTemplate.get(c.templateId)!.push(c)
   }
-  return templateList.value
-    .filter((t) => byTemplate.has(t.id))
-    .map((t) => ({ templateId: t.id, templateName: t.name, items: byTemplate.get(t.id)! }))
+  // 只留下真有用例的模板，再按分类口径排；没用例的分类自然整组不出现
+  return groupByCategory(templateList.value.filter((t) => byTemplate.has(t.id))).map(
+    ({ category, items }) => ({
+      category,
+      templates: items.map((t) => ({
+        templateId: t.id,
+        templateName: t.name,
+        items: byTemplate.get(t.id)!
+      }))
+    })
+  )
 })
 
 /**
@@ -1899,6 +1941,26 @@ defineExpose({
   min-height: 60px;
 }
 
+/* 「模板 / 示例」两个页签：铺满整行、各占一半，于是「示例」落在右半边。
+   🔴 flex:1 加在 .el-radio-button（那个 <label>）上只能把 label 撑开，label 里面真正看得见的
+      .el-radio-button__inner 仍是 display:inline-block 的内容宽度、贴在 label 左边——
+      两个 50% 的 label 一拼，「示例」就停在面板正中间，看着像布局坏了。故 inner 也要 width:100%。
+   🔴 不用 justify-content:space-between 把它们推到两端：radio-button 是靠首尾圆角 + 相邻边框
+      拼成一整条的，中间留出空隙会看起来像两段断掉的胶囊。 */
+.agent-tpl-tabs {
+  display: flex;
+  width: 100%;
+  margin-bottom: 8px;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+}
+
 .agent-tpl-group + .agent-tpl-group {
   margin-top: 10px;
 }
@@ -1908,6 +1970,18 @@ defineExpose({
   font-size: 12px;
   font-weight: 600;
   color: var(--el-text-color-secondary);
+}
+
+/* 示例页签的二级小节（分类下的模板名）。比分类标题再轻一档并缩进，
+   否则两级标题字号字重一样，扫读时分不出谁是分类谁是模板。 */
+.agent-tpl-subgroup + .agent-tpl-subgroup {
+  margin-top: 6px;
+}
+
+.agent-tpl-subgroup-title {
+  padding: 2px 0 2px 8px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
 }
 
 .agent-tpl-item {
