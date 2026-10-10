@@ -6,10 +6,10 @@
       <el-descriptions-item label="权限标识">
         <el-tag size="small" type="info">{{ resource?.permission || '（目录）' }}</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item label="类型">{{ resource?.type }}</el-descriptions-item>
+      <el-descriptions-item label="类型">{{ formatResourceType(resource?.type) }}</el-descriptions-item>
       <el-descriptions-item label="默认效果">
-        <el-tag size="small" :type="resource?.defaultEffect === 'ALLOW' ? 'success' : 'danger'">
-          {{ resource?.defaultEffect }}
+        <el-tag size="small" :type="defaultEffectTagType(resource?.defaultEffect)">
+          {{ formatDefaultEffect(resource?.defaultEffect) }}
         </el-tag>
       </el-descriptions-item>
     </el-descriptions>
@@ -120,11 +120,13 @@
               <span class="ml-8px text-11px text-gray-400">{{ row.permission }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="类型" width="80" prop="type" />
+          <el-table-column label="类型" width="80">
+            <template #default="{ row }">{{ formatResourceType(row.type) }}</template>
+          </el-table-column>
           <el-table-column label="默认效果" width="90" align="center">
             <template #default="{ row }">
-              <el-tag size="small" :type="row.defaultEffect === 'ALLOW' ? 'success' : 'danger'">
-                {{ row.defaultEffect }}
+              <el-tag size="small" :type="defaultEffectTagType(row.defaultEffect)">
+                {{ formatDefaultEffect(row.defaultEffect) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -147,11 +149,13 @@
               <span v-if="row.permission" class="ml-8px text-11px text-gray-400">{{ row.permission }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="类型" width="90" prop="type" />
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">{{ formatResourceType(row.type) }}</template>
+          </el-table-column>
           <el-table-column label="默认效果" width="90" align="center">
             <template #default="{ row }">
-              <el-tag size="small" :type="row.defaultEffect === 'ALLOW' ? 'success' : 'danger'">
-                {{ row.defaultEffect }}
+              <el-tag size="small" :type="defaultEffectTagType(row.defaultEffect)">
+                {{ formatDefaultEffect(row.defaultEffect) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -259,6 +263,7 @@
 import * as GrantApi from '@/api/system/grant'
 import type { ResourceVO, GrantVO, SlotMappingVO } from '@/api/system/grant'
 import { formatDate } from '@/utils/formatTime'
+import { formatResourceType, formatDefaultEffect, defaultEffectTagType } from './constants'
 
 defineOptions({ name: 'SystemResourceDetailPanel' })
 

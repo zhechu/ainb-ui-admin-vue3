@@ -318,6 +318,11 @@ export const deleteResource = async (id: number): Promise<boolean> => {
   return await request.delete({ url: '/system/resource/delete', params: { id } })
 }
 
+/** 批量删除资源。全有或全无：其中只要有菜单派生的、被授权引用的、或有子资源没一起勾选的，整批都不删 */
+export const deleteResourceList = async (ids: number[]): Promise<boolean> => {
+  return await request.delete({ url: '/system/resource/delete-list', params: { ids: ids.join(',') } })
+}
+
 /** 按父节点查子资源（树表懒加载）。根节点传 0 */
 export const getResourceChildren = async (
   parentId: number,

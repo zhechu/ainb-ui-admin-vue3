@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="类型" prop="type">
         <el-select v-model="queryParams.type" class="!w-150px" clearable placeholder="全部类型">
-          <el-option v-for="t in TYPES" :key="t.value" :label="t.label" :value="t.value" />
+          <el-option v-for="t in RESOURCE_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -34,6 +34,15 @@
           @click="openForm('create')"
         >
           <Icon class="mr-5px" icon="ep:plus" />新增
+        </el-button>
+        <el-button
+          v-hasPermi="['system:resource:update']"
+          plain
+          type="danger"
+          :disabled="selectedRows.length === 0"
+          @click="handleBatchDelete"
+        >
+          <Icon class="mr-5px" icon="ep:delete" />批量删除{{ selectedRows.length > 0 ? `（${selectedRows.length}）` : '' }}
         </el-button>
       </el-form-item>
     </el-form>
@@ -91,7 +100,9 @@
       :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
       :height="tableHeight"
       highlight-current-row
+      @selection-change="handleSelectionChange"
     >
+      <el-table-column type="selection" width="46" />
       <el-table-column label="资源名称" min-width="230">
         <template #default="{ row }">
           <span class="text-13px">{{ row.name }}</span>
@@ -101,13 +112,13 @@
       <el-table-column label="权限标识" prop="permission" min-width="250" show-overflow-tooltip />
       <el-table-column label="类型" width="100" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="(typeTagType(row.type) as any)">{{ row.type }}</el-tag>
+          <el-tag size="small" :type="(resourceTypeTagType(row.type) as any)">{{ formatResourceType(row.type) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="默认效果" width="90" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.defaultEffect === 'ALLOW' ? 'success' : 'info'">
-            {{ row.defaultEffect }}
+          <el-tag size="small" :type="defaultEffectTagType(row.defaultEffect)">
+            {{ formatDefaultEffect(row.defaultEffect) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -148,7 +159,9 @@
       :tree-props="{ children: 'children' }"
       :height="tableHeight"
       highlight-current-row
+      @selection-change="handleSelectionChange"
     >
+      <el-table-column type="selection" width="46" />
       <el-table-column label="资源名称" min-width="230">
         <template #default="{ row }">
           <span class="text-13px">{{ row.name }}</span>
@@ -158,13 +171,13 @@
       <el-table-column label="权限标识" prop="permission" min-width="250" show-overflow-tooltip />
       <el-table-column label="类型" width="100" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="(typeTagType(row.type) as any)">{{ row.type }}</el-tag>
+          <el-tag size="small" :type="(resourceTypeTagType(row.type) as any)">{{ formatResourceType(row.type) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="默认效果" width="90" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.defaultEffect === 'ALLOW' ? 'success' : 'info'">
-            {{ row.defaultEffect }}
+          <el-tag size="small" :type="defaultEffectTagType(row.defaultEffect)">
+            {{ formatDefaultEffect(row.defaultEffect) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -210,7 +223,7 @@
       </el-form-item>
       <el-form-item label="资源类型" prop="type">
         <el-select v-model="formData.type" class="w-full" :disabled="formDerived" placeholder="请选择类型">
-          <el-option v-for="t in TYPES" :key="t.value" :label="t.label" :value="t.value" />
+          <el-option v-for="t in RESOURCE_TYPE_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="父资源" prop="parentId">
@@ -253,20 +266,17 @@
 import * as GrantApi from '@/api/system/grant'
 import { handleTree } from '@/utils/tree'
 import ResourceDetailPanel from './ResourceDetailPanel.vue'
+import {
+  RESOURCE_TYPE_OPTIONS,
+  formatResourceType,
+  resourceTypeTagType,
+  formatDefaultEffect,
+  defaultEffectTagType
+} from './constants'
 
 defineOptions({ name: 'SystemResource' })
 
 const message = useMessage()
-
-const TYPES = [
-  { label: 'MENU 菜单', value: 'MENU' },
-  { label: 'ACTION 操作', value: 'ACTION' },
-  { label: 'DATASET 数据集', value: 'DATASET' },
-  { label: 'COLUMN 列', value: 'COLUMN' },
-  { label: 'FIELD 字段', value: 'FIELD' },
-  { label: 'PROCESS 流程', value: 'PROCESS' },
-  { label: 'CATEGORY 分类', value: 'CATEGORY' }
-]
 
 const loading = ref(false)
 const rawList = shallowRef<any[]>([])
@@ -319,8 +329,22 @@ const recalcHeight = () => {
   tableHeight.value = Math.max(260, Math.floor(window.innerHeight - top - 24))
 }
 
+// -------- 批量删除 --------
+
+/**
+ * 勾选的行。⚠️ 两个互斥的 el-table（lazy / search）共用它，同一时刻只有一个在 DOM 里。
+ * 不用 reserve-selection：本页每次 getList 都重建表格，跨重建保留勾选会攒出用户已看不见的 id
+ */
+const selectedRows = ref<any[]>([])
+const handleSelectionChange = (rows: any[]) => {
+  selectedRows.value = rows
+}
+
 const getList = async () => {
   loading.value = true
+  // 表格每次重载都会重建（tableKey++），行对象全换一批；不手动清空的话，
+  // selectedRows 会攥着上一批已经不在视图里的 id，被批量删除误删
+  selectedRows.value = []
   try {
     const searching = !!(queryParams.permission.trim() || queryParams.name.trim() || queryParams.type)
     let rows: any[]
@@ -459,9 +483,6 @@ const resetQuery = async () => {
   recalcHeight()
 }
 
-const typeTagType = (t: string) =>
-  ({ ACTION: 'primary', DATASET: 'warning', MENU: 'info', COLUMN: 'success', FIELD: 'success' })[t] ?? ''
-
 // -------- 新增 / 编辑 --------
 
 const formVisible = ref(false)
@@ -518,6 +539,28 @@ const handleDelete = async (row: any) => {
     return
   }
   await GrantApi.deleteResource(row.id)
+  message.success('删除成功')
+  await getList()
+}
+
+/**
+ * 批量删除。全有或全无：勾选里混了菜单派生 / 被授权引用 / 有子资源没一起勾的，后端整批拒绝，
+ * 所以确认文案要把这条规则说清楚
+ */
+const handleBatchDelete = async () => {
+  const rows = selectedRows.value
+  if (rows.length === 0) {
+    return
+  }
+  try {
+    await message.delConfirm(
+      `确认删除勾选的 ${rows.length} 个资源？其中只要有菜单派生、被授权引用、` +
+        `或有子资源没一起勾选的，后端会整批拒绝`
+    )
+  } catch {
+    return
+  }
+  await GrantApi.deleteResourceList(rows.map((row) => row.id))
   message.success('删除成功')
   await getList()
 }

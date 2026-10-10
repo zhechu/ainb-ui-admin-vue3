@@ -78,11 +78,13 @@
               <span class="text-12px text-gray-600">{{ row.permission || '（目录层，无权限标识）' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="类型" prop="type" width="90" />
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">{{ formatResourceType(row.type) }}</template>
+          </el-table-column>
           <el-table-column label="默认效果" width="90" align="center">
             <template #default="{ row }">
-              <el-tag size="small" :type="row.defaultEffect === 'ALLOW' ? 'success' : 'danger'">
-                {{ row.defaultEffect }}
+              <el-tag size="small" :type="defaultEffectTagType(row.defaultEffect)">
+                {{ formatDefaultEffect(row.defaultEffect) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -161,6 +163,7 @@ import * as GrantApi from '@/api/system/grant'
 import * as UserApi from '@/api/system/user'
 import type { PermissionDiagVO } from '@/api/system/grant'
 import { formatDate } from '@/utils/formatTime'
+import { formatResourceType, formatDefaultEffect, defaultEffectTagType } from '@/views/system/resource/constants'
 
 defineOptions({ name: 'SystemPermissionDiag' })
 
