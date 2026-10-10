@@ -15,6 +15,23 @@ export interface ModelVO {
   maxContexts?: number // 上下文的最大 Message 数量
 }
 
+// AI 模型可用性测试 VO
+export interface ModelTestVO {
+  success: boolean // 是否调通
+  timedOut: boolean // 是否因超时结束（与「厂商报错」区分开）
+  durationMs?: number // 耗时，单位：毫秒
+  platform?: string // 实际发给厂商的平台
+  model?: string // 实际发给厂商的模型标识
+  multiModel?: boolean | null // 路由到多模态还是文本端点；非通义平台为 null
+  modelStatus?: number // 模型当前启用状态（事实回显，测已禁用模型时尤其重要）
+  keyStatus?: number // 密钥当前启用状态（事实回显）
+  reply?: string // 成功时的回复片段
+  promptTokens?: number // 输入 token 用量
+  completionTokens?: number // 输出 token 用量
+  errorMsg?: string // 失败时的厂商原文，逐字带回
+  failureReason?: string // 失败分型：QUOTA / TRANSIENT
+}
+
 // AI 模型 API
 export const ModelApi = {
   // 查询模型分页
@@ -50,5 +67,18 @@ export const ModelApi = {
   // 删除模型
   deleteModel: async (id: number) => {
     return await request.delete({ url: `/ai/model/delete?id=` + id })
+  },
+
+  // 测试模型是否可用
+  // ⚠️ 会真实消耗厂商 token；只测这一个模型，绝不切换到别的候选
+  testModel: async (id: number, timeoutSeconds = 30) => {
+    return await request.post<ModelTestVO>({
+      url: `/ai/model/test`,
+      params: { id, timeoutSeconds },
+      // 必须按请求放宽：全局 request_timeout 是 30000，与后端默认 30 秒硬超时正好撞车，
+      // 那样前端会先超时、拿不到后端的结构化结论（success/errorMsg/multiModel 一个都看不到）。
+      // axios 封装把 timeout 透传进 config，所以按请求覆盖是可行的。这里给 10 秒余量
+      timeout: timeoutSeconds * 1000 + 10000
+    })
   }
 }

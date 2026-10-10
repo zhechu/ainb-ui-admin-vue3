@@ -106,8 +106,17 @@
       <el-table-column label="温度参数" align="center" prop="temperature" min-width="80" />
       <el-table-column label="回复数 Token 数" align="center" prop="maxTokens" min-width="140" />
       <el-table-column label="上下文数量" align="center" prop="maxContexts" min-width="100" />
-      <el-table-column label="操作" align="center" width="180" fixed="right">
+      <el-table-column label="操作" align="center" width="240" fixed="right">
         <template #default="scope">
+          <el-button
+            link
+            type="primary"
+            :loading="testingId === scope.row.id"
+            @click="handleTest(scope.row)"
+            v-hasPermi="['ai:model:query']"
+          >
+            测试
+          </el-button>
           <el-button
             link
             type="primary"
@@ -138,11 +147,15 @@
 
   <!-- 表单弹窗：添加/修改 -->
   <ModelForm ref="formRef" @success="getList" />
+
+  <!-- 测试弹窗：单模型真实探活 -->
+  <ModelTestDialog ref="testDialogRef" @testing="handleTestingChange" />
 </template>
 
 <script setup lang="ts">
 import { ModelApi, ModelVO } from '@/api/ai/model/model'
 import ModelForm from './ModelForm.vue'
+import ModelTestDialog from './ModelTestDialog.vue'
 import { DICT_TYPE, getIntDictOptions, getStrDictOptions } from '@/utils/dict'
 import { ApiKeyApi, ApiKeyVO } from '@/api/ai/model/apiKey'
 
@@ -194,6 +207,21 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 测试操作 */
+// 请求由弹窗发起（这样能在弹窗里显示「已耗时 N 秒」），这里只记住是哪一行在测，
+// 让行按钮转起来；弹窗结束或被关闭时通过 testing 事件解开
+const testDialogRef = ref()
+const testingId = ref<number>()
+const handleTest = (row: ModelVO) => {
+  testingId.value = row.id
+  testDialogRef.value.open(row)
+}
+const handleTestingChange = (testing: boolean) => {
+  if (!testing) {
+    testingId.value = undefined
+  }
 }
 
 /** 删除按钮操作 */
