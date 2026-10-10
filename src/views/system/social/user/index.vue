@@ -69,7 +69,22 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" :show-overflow-tooltip="true" :stripe="true">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      :show-overflow-tooltip="true"
+      :stripe="true"
+      class="xpy-list-table"
+    >
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column align="center" label="社交平台" prop="type">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.SYSTEM_SOCIAL_TYPE" :value="scope.row.type" />
@@ -96,16 +111,9 @@
         prop="updateTime"
         width="180px"
       />
-      <el-table-column align="center" fixed="right" label="操作">
+      <el-table-column label="操作" align="center" width="80" fixed="right">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:social-user:query']"
-            link
-            type="primary"
-            @click="openDetail(scope.row.id)"
-          >
-            详情
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -128,6 +136,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import * as SocialUserApi from '@/api/system/social/user'
 import SocialUserDetail from './SocialUserDetail.vue'
 import { createImageViewer } from '@/components/ImageViewer'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SocialUser' })
 
@@ -179,6 +188,15 @@ const detailRef = ref()
 const openDetail = (id: number) => {
   detailRef.value.open(id)
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['system:social-user:query'],
+    onClick: (row) => openDetail(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

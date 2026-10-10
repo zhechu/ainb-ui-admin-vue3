@@ -114,7 +114,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" />
       <el-table-column
         label="创建时间"
@@ -159,16 +168,9 @@
           <dict-tag :type="DICT_TYPE.SYSTEM_SMS_TEMPLATE_TYPE" :value="scope.row.templateType" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" fixed="right" class-name="fixed-width">
+      <el-table-column label="操作" align="center" width="80" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openDetail(scope.row)"
-            v-hasPermi="['system:sms-log:query']"
-          >
-            详情
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -191,6 +193,7 @@ import download from '@/utils/download'
 import * as SmsChannelApi from '@/api/system/sms/smsChannel'
 import * as SmsLogApi from '@/api/system/sms/smsLog'
 import SmsLogDetail from './SmsLogDetail.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemSmsLog' })
 
@@ -258,6 +261,15 @@ const detailRef = ref()
 const openDetail = (data: SmsLogApi.SmsLogVO) => {
   detailRef.value.open(data)
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['system:sms-log:query'],
+    onClick: (row) => openDetail(row)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

@@ -110,7 +110,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" />
       <el-table-column
         label="发送时间"
@@ -164,16 +173,9 @@
         </template>
       </el-table-column>
       <el-table-column label="模板编号" align="center" prop="templateId" />
-      <el-table-column label="操作" align="center" fixed="right" class-name="fixed-width">
+      <el-table-column label="操作" align="center" width="80" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openDetail(scope.row)"
-            v-hasPermi="['system:mail-log:query']"
-          >
-            详情
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -196,6 +198,7 @@ import download from '@/utils/download'
 import * as MailAccountApi from '@/api/system/mail/account'
 import * as MailLogApi from '@/api/system/mail/log'
 import MailLogDetail from './MailLogDetail.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemMailLog' })
 
@@ -269,6 +272,15 @@ const getAccountMail = (accountId: number) => {
   const account = accountList.value.find((account) => account.id === accountId)
   return account?.mail || ''
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['system:mail-log:query'],
+    onClick: (row) => openDetail(row)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

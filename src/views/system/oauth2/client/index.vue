@@ -55,8 +55,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="客户端编号" align="center" prop="clientId" />
       <el-table-column label="客户端密钥" align="center" prop="secret" />
       <el-table-column label="应用名" align="center" prop="name" />
@@ -96,24 +111,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="120">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:oauth2-client:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:oauth2-client:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -134,6 +134,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as ClientApi from '@/api/system/oauth2/client'
 import ClientForm from './ClientForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemOAuth2Client' })
 
@@ -212,6 +213,23 @@ const handleDeleteBatch = async () => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:oauth2-client:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:oauth2-client:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

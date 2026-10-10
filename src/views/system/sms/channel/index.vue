@@ -70,8 +70,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" />
       <el-table-column label="短信签名" align="center" prop="signature" />
       <el-table-column label="渠道编码" align="center" prop="code">
@@ -113,24 +128,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="120">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:sms-channel:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:sms-channel:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -151,6 +151,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as SmsChannelApi from '@/api/system/sms/smsChannel'
 import SmsChannelForm from './SmsChannelForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemSmsChannel' })
 
@@ -230,6 +231,23 @@ const handleDeleteBatch = async () => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:sms-channel:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:sms-channel:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

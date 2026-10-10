@@ -58,8 +58,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="公告编号" align="center" prop="id" />
       <el-table-column label="公告标题" align="center" prop="title" />
       <el-table-column label="公告类型" align="center" prop="type">
@@ -79,27 +94,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="160">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:notice:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:notice:delete']"
-          >
-            删除
-          </el-button>
-          <el-button link @click="handlePush(scope.row.id)" v-hasPermi="['system:notice:update']">
-            推送
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -120,6 +117,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as NoticeApi from '@/api/system/notice'
 import NoticeForm from './NoticeForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemNotice' })
 
@@ -211,6 +209,29 @@ const handlePush = async (id: number) => {
     message.success(t('推送成功'))
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:notice:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:notice:delete'],
+    onClick: (row) => handleDelete(row.id)
+  },
+  {
+    key: 'push',
+    label: '推送',
+    permission: ['system:notice:update'],
+    onClick: (row) => handlePush(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

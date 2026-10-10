@@ -80,8 +80,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column
         label="模板编码"
         align="center"
@@ -122,32 +137,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="210" fixed="right">
+      <el-table-column label="操作" align="center" width="160" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:notify-template:update']"
-          >
-            修改
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openSendForm(scope.row)"
-            v-hasPermi="['system:notify-template:send-notify']"
-          >
-            测试
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:notify-template:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -171,6 +163,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import * as NotifyTemplateApi from '@/api/system/notify/template'
 import NotifyTemplateForm from './NotifyTemplateForm.vue'
 import NotifyTemplateSendForm from './NotifyTemplateSendForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'NotifySmsTemplate' })
 
@@ -257,6 +250,29 @@ const sendFormRef = ref() // 表单 Ref
 const openSendForm = (row: NotifyTemplateApi.NotifyTemplateVO) => {
   sendFormRef.value.open(row.id)
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:notify-template:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'send',
+    label: '测试',
+    permission: ['system:notify-template:send-notify'],
+    onClick: (row) => openSendForm(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:notify-template:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {
