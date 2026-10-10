@@ -18,7 +18,8 @@
       show-icon
     >
       <template #title>
-        {{ quota.level === 'USER' ? '我的' : '本租户' }}{{ quota.period === 'DAY' ? '日' : '月' }}配额：
+        {{ quota.level === 'USER' ? '我的' : '本租户'
+        }}{{ quota.period === 'DAY' ? '日' : '月' }}配额：
         <template v-if="quota.tokenLimit">
           已用 {{ formatNumber(quota.usedTokens) }} / {{ formatNumber(quota.tokenLimit) }} token
           （{{ ratioOf(quota.usedTokens, quota.tokenLimit) }}%）
@@ -34,11 +35,7 @@
     <el-form :inline="true" class="-mb-15px">
       <el-form-item label="下钻维度">
         <el-radio-group v-model="dimension" @change="loadSummary">
-          <el-radio-button
-            v-for="item in DIMENSIONS"
-            :key="item.value"
-            :value="item.value"
-          >
+          <el-radio-button v-for="item in DIMENSIONS" :key="item.value" :value="item.value">
             {{ item.label }}
           </el-radio-button>
         </el-radio-group>
@@ -62,13 +59,21 @@
   <ContentWrap>
     <!-- 合计：先给总数，再给分解。看板上没有总数的话，人会自己拿计算器加 -->
     <el-descriptions :column="4" border class="mb-15px">
-      <el-descriptions-item label="调用次数">{{ formatNumber(total.callCount) }}</el-descriptions-item>
-      <el-descriptions-item label="输入 token">{{ formatNumber(total.promptTokens) }}</el-descriptions-item>
-      <el-descriptions-item label="输出 token">{{ formatNumber(total.completionTokens) }}</el-descriptions-item>
-      <el-descriptions-item label="合计 token">{{ formatNumber(total.totalTokens) }}</el-descriptions-item>
+      <el-descriptions-item label="调用次数">{{
+        formatNumber(total.callCount)
+      }}</el-descriptions-item>
+      <el-descriptions-item label="输入 token">{{
+        formatNumber(total.promptTokens)
+      }}</el-descriptions-item>
+      <el-descriptions-item label="输出 token">{{
+        formatNumber(total.completionTokens)
+      }}</el-descriptions-item>
+      <el-descriptions-item label="合计 token">{{
+        formatNumber(total.totalTokens)
+      }}</el-descriptions-item>
     </el-descriptions>
 
-    <el-table v-loading="loading" :data="summary" stripe>
+    <el-table v-loading="loading" :data="summary" stripe class="xpy-list-table">
       <el-table-column :label="currentDimensionLabel" prop="groupLabel" min-width="180" />
       <el-table-column label="调用次数" prop="callCount" width="110" align="right" />
       <el-table-column label="输入 token" prop="promptTokens" width="130" align="right">
@@ -104,7 +109,13 @@
 
   <!-- 调用明细：独立权限 -->
   <ContentWrap v-hasPermi="['agent:usage:detail']" title="最近的调用明细">
-    <el-table v-loading="detailLoading" :data="records" stripe max-height="420">
+    <el-table
+      v-loading="detailLoading"
+      :data="records"
+      stripe
+      max-height="420"
+      class="xpy-list-table"
+    >
       <el-table-column label="时间" prop="beginTime" width="170" :formatter="dateFormatter" />
       <el-table-column label="场景" prop="scene" width="120" />
       <el-table-column label="模型" prop="modelName" width="140" />

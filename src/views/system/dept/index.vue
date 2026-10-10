@@ -68,6 +68,7 @@
       :default-expand-all="isExpandAll"
       v-if="refreshTable"
       @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
     >
       <el-table-column type="selection" width="55" />
       <el-table-column prop="name" label="部门名称" />
@@ -89,24 +90,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="120">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:dept:update']"
-          >
-            修改
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:dept:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -122,6 +108,7 @@ import { handleTree } from '@/utils/tree'
 import * as DeptApi from '@/api/system/dept'
 import DeptForm from './DeptForm.vue'
 import * as UserApi from '@/api/system/user'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemDept' })
 
@@ -210,6 +197,23 @@ const handleDeleteBatch = async () => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:dept:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:dept:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

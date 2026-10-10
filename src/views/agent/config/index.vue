@@ -24,13 +24,13 @@
   <ContentWrap title="总开关">
     <el-form label-width="120px">
       <el-form-item label="启用 AI 助手">
-        <el-switch
-          v-model="config.enabled"
-          :disabled="!hasUpdatePermi"
-          @change="handleToggle"
-        />
+        <el-switch v-model="config.enabled" :disabled="!hasUpdatePermi" @change="handleToggle" />
         <span class="ml-12px text-14px color-#909399">
-          {{ config.enabled ? '助手已开启，用户可以在「智能助手」页面使用' : '助手已关闭，所有提问会被拒绝' }}
+          {{
+            config.enabled
+              ? '助手已开启，用户可以在「智能助手」页面使用'
+              : '助手已关闭，所有提问会被拒绝'
+          }}
         </span>
       </el-form-item>
       <el-form-item label="开启缘由">
@@ -57,6 +57,18 @@
 
   <!-- 配额 -->
   <ContentWrap title="用量配额" v-hasPermi="['agent:quota:query']">
+    <template #header>
+      <!-- ContentWrap 的 header 插槽外层是 flex flex-grow，ml-auto 把它推到标题行最右 -->
+      <el-button
+        v-hasPermi="['agent:quota:update']"
+        type="primary"
+        plain
+        class="ml-auto"
+        @click="openQuotaForm()"
+      >
+        新增配额
+      </el-button>
+    </template>
     <el-alert type="info" :closable="false" class="mb-12px" show-icon>
       <template #title>
         没有配置配额 = 不限制（但仍然全量计量）。删除一条配额，该维度就恢复为不限制。
@@ -64,17 +76,7 @@
       </template>
     </el-alert>
 
-    <el-button
-      v-hasPermi="['agent:quota:update']"
-      type="primary"
-      plain
-      class="mb-12px"
-      @click="openQuotaForm()"
-    >
-      新增配额
-    </el-button>
-
-    <el-table :data="quotas" v-loading="quotaLoading" stripe>
+    <el-table :data="quotas" v-loading="quotaLoading" stripe class="xpy-list-table">
       <el-table-column label="范围" min-width="180">
         <template #default="{ row }">
           <el-tag v-if="scopeOf(row) === 'TENANT'" type="warning">整个租户</el-tag>
@@ -125,7 +127,7 @@
         要下线某个工具，改代码并发布，这样留得下痕迹。
       </template>
     </el-alert>
-    <el-table :data="tools" v-loading="toolLoading" stripe max-height="460">
+    <el-table :data="tools" v-loading="toolLoading" stripe max-height="460" class="xpy-list-table">
       <!-- 🔴 展示名排在第一列（重构 S1 / L1）：后端一直在下发 displayName，只是前端没声明这个字段、
            于是这一屏 30 行全是下划线英文，找工具只能靠肉眼扫。分组列同理（groupName 本轮才开始下发）。 -->
       <el-table-column label="展示名" prop="displayName" width="160" show-overflow-tooltip>
@@ -207,7 +209,12 @@
         </el-radio-group>
       </el-form-item>
       <el-form-item label="token 上限">
-        <el-input-number v-model="quotaForm.tokenLimit" :min="0" :step="10000" controls-position="right" />
+        <el-input-number
+          v-model="quotaForm.tokenLimit"
+          :min="0"
+          :step="10000"
+          controls-position="right"
+        />
         <span class="ml-8px text-13px color-#909399">留空表示该维度不限</span>
       </el-form-item>
       <el-form-item label="金额上限（元）">
@@ -223,13 +230,10 @@
         </span>
       </el-form-item>
       <el-form-item label="预警线">
-        <el-input-number
-          v-model="warnPercent"
-          :min="1"
-          :max="100"
-          controls-position="right"
-        />
-        <span class="ml-8px text-13px color-#909399">% —— 达到后通知租户联系人，每周期只发一次</span>
+        <el-input-number v-model="warnPercent" :min="1" :max="100" controls-position="right" />
+        <span class="ml-8px text-13px color-#909399"
+          >% —— 达到后通知租户联系人，每周期只发一次</span
+        >
       </el-form-item>
       <el-form-item label="状态">
         <el-radio-group v-model="quotaForm.status">
@@ -401,7 +405,9 @@ const loadTools = async () => {
  * 按 code 去重（agent_def / workflow_def 同 code 多版本共存，下拉只该出现一次），
  * label 用「名称（code）」让管理员既能按名字认、也能核对绑定的是哪个 code。
  */
-function uniqueByCode<T extends { code: string; name: string }>(list: T[]): { code: string; label: string }[] {
+function uniqueByCode<T extends { code: string; name: string }>(
+  list: T[]
+): { code: string; label: string }[] {
   const seen = new Set<string>()
   const out: { code: string; label: string }[] = []
   for (const item of list) {
