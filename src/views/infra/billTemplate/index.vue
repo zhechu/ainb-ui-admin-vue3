@@ -125,40 +125,9 @@
         width="170"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="250" fixed="right">
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button
-            link
-            type="primary"
-            @click="openTest(row)"
-            v-hasPermi="['infra:bill-template:query']"
-          >
-            测试
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openLog(row)"
-            v-hasPermi="['infra:bill-template:query']"
-          >
-            取号日志
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', row.id)"
-            v-hasPermi="['infra:bill-template:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(row)"
-            v-hasPermi="['infra:bill-template:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -193,6 +162,7 @@ import BillTemplateForm from './BillTemplateForm.vue'
 import BillTemplateLogList from './BillTemplateLogList.vue'
 import BillTemplateTestPanel from './BillTemplateTestPanel.vue'
 import { GEN_TYPE, GEN_TYPE_OPTIONS, RESET_CYCLE_OPTIONS } from './constants'
+import type { TableActionButton } from '@/components/TableActions'
 
 /** 单据模板列表 */
 defineOptions({ name: 'InfraBillTemplate' })
@@ -323,6 +293,37 @@ const handleDelete = async (row: BillTemplateApi.BillTemplateVO) => {
   message.success(t('common.delSuccess'))
   await getList()
 }
+
+// 删除不做 disabled（已出过号的模板禁删）：置灰的按钮不解释原因，
+// 而 handleDelete 里那句 message.warning 会告诉用户「如需停止使用请改为停用」
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'test',
+    label: '测试',
+    permission: ['infra:bill-template:query'],
+    onClick: (row) => openTest(row)
+  },
+  {
+    key: 'log',
+    label: '取号日志',
+    permission: ['infra:bill-template:query'],
+    onClick: (row) => openLog(row)
+  },
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['infra:bill-template:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:bill-template:delete'],
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(() => {
   getList()

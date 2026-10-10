@@ -101,23 +101,9 @@
         :formatter="dateFormatter"
       />
       <el-table-column label="更新者" align="center" prop="updater" width="100" />
-      <el-table-column label="操作" align="center" width="280" fixed="right">
+      <el-table-column label="操作" align="center" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openForm('update', row.id)" v-hasPermi="['infra:data-interface:update']">
-            配置
-          </el-button>
-          <el-button link type="primary" @click="openPreview(row)" v-hasPermi="['infra:data-interface:query']">
-            预览
-          </el-button>
-          <el-button link type="primary" @click="openVersion(row)" v-hasPermi="['infra:data-interface:query']">
-            版本
-          </el-button>
-          <el-button link type="primary" @click="openLog(row)" v-hasPermi="['infra:data-interface:query']">
-            日志
-          </el-button>
-          <el-button link type="danger" @click="handleDelete(row)" v-hasPermi="['infra:data-interface:delete']">
-            删除
-          </el-button>
+          <TableActions :row="row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -162,6 +148,7 @@ import DataInterfaceForm from './DataInterfaceForm.vue'
 import PreviewPanel from './components/PreviewPanel.vue'
 import VersionList from './VersionList.vue'
 import LogList from './LogList.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 /** 数据接口列表 */
 defineOptions({ name: 'InfraDataInterface' })
@@ -325,6 +312,41 @@ const handleDelete = async (row: DataInterfaceApi.DataInterfaceVO) => {
   message.success(t('common.delSuccess'))
   await getList()
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'config',
+    label: '配置',
+    permission: ['infra:data-interface:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'preview',
+    label: '预览',
+    permission: ['infra:data-interface:query'],
+    onClick: (row) => openPreview(row)
+  },
+  {
+    key: 'version',
+    label: '版本',
+    permission: ['infra:data-interface:query'],
+    onClick: (row) => openVersion(row)
+  },
+  {
+    key: 'log',
+    label: '日志',
+    permission: ['infra:data-interface:query'],
+    onClick: (row) => openLog(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:data-interface:delete'],
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(async () => {
   typeOptions.value = await DataInterfaceApi.getTypeOptions()

@@ -67,35 +67,9 @@
         label="创建时间"
         prop="createTime"
       />
-      <el-table-column align="center" label="操作" fixed="right">
+      <el-table-column align="center" label="操作" width="200" fixed="right">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['bpm:form:update']"
-            link
-            type="primary"
-            @click="openForm('copy', scope.row.id)"
-          >
-            复制
-          </el-button>
-          <el-button
-            v-hasPermi="['bpm:form:update']"
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-          >
-            编辑
-          </el-button>
-          <el-button v-hasPermi="['bpm:form:query']" link @click="openDetail(scope.row.id)">
-            详情
-          </el-button>
-          <el-button
-            v-hasPermi="['bpm:form:delete']"
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -119,6 +93,7 @@ import { DICT_TYPE } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as FormApi from '@/api/bpm/form'
 import { setConfAndFields2 } from '@/utils/formCreate'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'BpmForm' })
 
@@ -202,6 +177,38 @@ const openDetail = async (rowId: number) => {
   // 弹窗打开
   detailVisible.value = true
 }
+
+// 原「详情」按钮没写 type（EP link 的默认灰），换 TableActions 后统一成 primary：
+// 全站操作列的动作链接都是 primary，这一处灰字是唯一例外，不是有意设计
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'copy',
+    label: '复制',
+    permission: ['bpm:form:update'],
+    onClick: (row) => openForm('copy', row.id)
+  },
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['bpm:form:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['bpm:form:query'],
+    onClick: (row) => openDetail(row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['bpm:form:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
+
 /**表单保存返回后重新加载列表 */
 watch(
   () => currentRoute.value,

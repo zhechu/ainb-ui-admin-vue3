@@ -142,73 +142,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="340" fixed="right">
+      <el-table-column label="操作" align="center" width="200" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openEditor(scope.row, 'view')"
-            v-hasPermi="['agent:def:query']"
-          >
-            查看
-          </el-button>
-          <!-- 需求11：编辑对所有状态开放。草稿与内置行=就地改；已发布/已停用=先派生新草稿版本再进编辑器
-               （历史版本是不可变快照，就地改会让按该版本路由的对话前后不一致）。见 handleEdit -->
-          <el-button
-            link
-            type="primary"
-            @click="handleEdit(scope.row)"
-            v-hasPermi="['agent:def:update']"
-          >
-            编辑
-          </el-button>
-          <!-- 需求11：复制成一个「另一个 Agent」——新编码、version 从 1 起，人设/模型/知识库/工具整份搬过来。
-               🔴 与「编辑派生新版本」是两件事：派生沿用同 code，复制换 code。搞混了会让副本变成别人的 v(n+1) -->
-          <el-button
-            link
-            type="primary"
-            @click="openCopyDialog(scope.row)"
-            v-hasPermi="['agent:def:create']"
-          >
-            复制
-          </el-button>
-          <!--
-            需求8：已停用可重新发布上线。停用只是把它从聊天选择器摘掉，配置仍是完整可用的一份快照，
-            「临时下线排障、修好了再放回来」是常态；此前只给草稿放行，管理员为了原封不动地恢复一个
-            Agent 得先派生新版本再发布，凭空多出一个内容完全相同的 v(n+1)。
-            判据写成 !== PUBLISHED 而不是枚举 DRAFT/DISABLED：状态是封闭枚举，PUBLISHED 行本来就另有「停用」，
-            将来若再加一个可发布状态，这里自动正确，不会静默漏掉。
-          -->
-          <el-button
-            v-if="scope.row.status !== 'PUBLISHED'"
-            link
-            type="success"
-            @click="handlePublish(scope.row)"
-            v-hasPermi="['agent:def:publish']"
-          >
-            {{ scope.row.status === 'DISABLED' ? '重新发布' : '发布' }}
-          </el-button>
-          <el-button
-            v-if="scope.row.status === 'PUBLISHED' && !scope.row.builtin"
-            link
-            type="warning"
-            @click="handleDisable(scope.row)"
-            v-hasPermi="['agent:def:publish']"
-          >
-            停用
-          </el-button>
-          <!-- 需求11：草稿可直接删；已停用也可删（不再被选用，删了不留孤儿）；
-               已发布须先停用（它还挂在聊天选择器里，直接删等于对话选到一个不存在的 Agent）。
-               批量删与单删同口径（2026-09-29 二轮放开草稿）：草稿 / 已停用可勾，已发布灰掉。 -->
-          <el-button
-            v-if="scope.row.status !== 'PUBLISHED' && !scope.row.builtin"
-            link
-            type="danger"
-            @click="handleDelete(scope.row)"
-            v-hasPermi="['agent:def:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -256,6 +192,7 @@ import { checkPermi } from '@/utils/permission'
 import { AgentDefApi, type AgentDefVO } from '@/api/agent/def'
 import { getToolList, type AgentToolVO } from '@/api/agent/config'
 import { keyedLabel } from '@/views/agent/workflow/nameCatalog'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'AgentDef' })
 
@@ -512,6 +449,65 @@ const handleDelete = async (row: AgentDefVO) => {
     await getList()
   } catch {}
 }
+
+// 操作列的按钮配置。下面每条注释都是从模板里逐字搬过来的，只改了位置
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'view',
+    label: '查看',
+    permission: ['agent:def:query'],
+    onClick: (row) => openEditor(row, 'view')
+  },
+  // 需求11：编辑对所有状态开放。草稿与内置行=就地改；已发布/已停用=先派生新草稿版本再进编辑器
+  // （历史版本是不可变快照，就地改会让按该版本路由的对话前后不一致）。见 handleEdit
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: ['agent:def:update'],
+    onClick: (row) => handleEdit(row)
+  },
+  // 需求11：复制成一个「另一个 Agent」——新编码、version 从 1 起，人设/模型/知识库/工具整份搬过来。
+  // 🔴 与「编辑派生新版本」是两件事：派生沿用同 code，复制换 code。搞混了会让副本变成别人的 v(n+1)
+  {
+    key: 'copy',
+    label: '复制',
+    permission: ['agent:def:create'],
+    onClick: (row) => openCopyDialog(row)
+  },
+  // 需求8：已停用可重新发布上线。停用只是把它从聊天选择器摘掉，配置仍是完整可用的一份快照，
+  // 「临时下线排障、修好了再放回来」是常态；此前只给草稿放行，管理员为了原封不动地恢复一个
+  // Agent 得先派生新版本再发布，凭空多出一个内容完全相同的 v(n+1)。
+  // 判据写成 !== PUBLISHED 而不是枚举 DRAFT/DISABLED：状态是封闭枚举，PUBLISHED 行本来就另有「停用」，
+  // 将来若再加一个可发布状态，这里自动正确，不会静默漏掉。
+  {
+    key: 'publish',
+    label: (row) => (row.status === 'DISABLED' ? '重新发布' : '发布'),
+    type: 'success',
+    permission: ['agent:def:publish'],
+    show: (row) => row.status !== 'PUBLISHED',
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'disable',
+    label: '停用',
+    type: 'warning',
+    permission: ['agent:def:publish'],
+    show: (row) => row.status === 'PUBLISHED' && !row.builtin,
+    onClick: (row) => handleDisable(row)
+  },
+  // 需求11：草稿可直接删；已停用也可删（不再被选用，删了不留孤儿）；
+  // 已发布须先停用（它还挂在聊天选择器里，直接删等于对话选到一个不存在的 Agent）。
+  // 批量删与单删同口径（2026-09-29 二轮放开草稿）：草稿 / 已停用可勾，已发布灰掉。
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['agent:def:delete'],
+    show: (row) => row.status !== 'PUBLISHED' && !row.builtin,
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 // ========== 批量删除（需求9）==========
 const checkedIds = ref<number[]>([])

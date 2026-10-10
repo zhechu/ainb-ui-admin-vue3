@@ -57,6 +57,15 @@
       <template #title>
         数据建模会<b>直接修改数据库真实表结构</b>，且数据库 的 DDL <b>无法回滚</b>。
         改表前请先点「预览 DDL」确认将要执行的语句。
+        <!--
+          系统内置表这一句原来挂在「删除」按钮的 el-tooltip 上（「系统内置表，禁止通过数据建模删除」）。
+          操作列换成 TableActions 后单元格内部由组件渲染，页面没地方再套 tooltip；
+          而 tooltip 要包住 disabled 的按钮必须额外套一层 span，那层 span 会打断
+          styles/index.scss 里 .el-button + .el-button 的相邻选择器、让整排按钮贴在一起。
+          搬到页头 alert 是净赚：不用悬停就能看见，也不影响按钮间距。
+          前缀名单由后端 SystemTablePolicy 下发，所以这里不写死具体前缀。
+        -->
+        系统内置表的「删除」按钮会置灰，这类表不能通过数据建模删除。
       </template>
     </el-alert>
     <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
@@ -104,49 +113,9 @@
         width="165"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="250" fixed="right">
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['infra:data-model:update']"
-          >
-            设计
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openPreview(scope.row)"
-            v-hasPermi="['infra:data-model-data:query']"
-          >
-            数据
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openLog(scope.row)"
-            v-hasPermi="['infra:data-model:query']"
-          >
-            DDL日志
-          </el-button>
-          <el-tooltip
-            :disabled="!isFrameworkTable(scope.row.tableName)"
-            content="系统内置表，禁止通过数据建模删除"
-            placement="top"
-          >
-            <span>
-              <el-button
-                link
-                type="danger"
-                :disabled="isFrameworkTable(scope.row.tableName)"
-                @click="handleDelete(scope.row)"
-                v-hasPermi="['infra:data-model:delete']"
-              >
-                删除
-              </el-button>
-            </span>
-          </el-tooltip>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -175,6 +144,7 @@ import * as DataModelApi from '@/api/infra/dataModel'
 import DataModelForm from './DataModelForm.vue'
 import DataModelImportForm from './DataModelImportForm.vue'
 import DataModelLogList from './DataModelLogList.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 /** 数据建模列表 */
 defineOptions({ name: 'InfraDataModel' })
@@ -338,6 +308,36 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
     }
   }
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'design',
+    label: '设计',
+    permission: ['infra:data-model:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'data',
+    label: '数据',
+    permission: ['infra:data-model-data:query'],
+    onClick: (row) => openPreview(row)
+  },
+  {
+    key: 'log',
+    label: 'DDL日志',
+    permission: ['infra:data-model:query'],
+    onClick: (row) => openLog(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:data-model:delete'],
+    disabled: (row) => isFrameworkTable(row.tableName),
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(async () => {
   // 前缀名单拉取失败不应拖垮列表页 —— 失败时按空数组走，拦截交给后端

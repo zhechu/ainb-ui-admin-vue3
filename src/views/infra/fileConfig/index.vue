@@ -96,34 +96,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" min-width="240" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['infra:file-config:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            :disabled="scope.row.master"
-            @click="handleMaster(scope.row.id)"
-            v-hasPermi="['infra:file-config:update']"
-          >
-            主配置
-          </el-button>
-          <el-button link type="primary" @click="handleTest(scope.row.id)">测试</el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['infra:file-config:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -144,6 +119,7 @@ import * as FileConfigApi from '@/api/infra/fileConfig'
 import FileConfigForm from './FileConfigForm.vue'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'InfraFileConfig' })
 
@@ -242,6 +218,37 @@ const handleTest = async (id) => {
     window.open(response, '_blank')
   } catch {}
 }
+
+// 「测试」原本就没有 v-hasPermi，这里同样不给 permission —— 按 TableActions 的口径，
+// 不传 = 不门控（永远显示），与改动前一致
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['infra:file-config:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'master',
+    label: '主配置',
+    permission: ['infra:file-config:update'],
+    disabled: (row) => !!row.master,
+    onClick: (row) => handleMaster(row.id)
+  },
+  {
+    key: 'test',
+    label: '测试',
+    onClick: (row) => handleTest(row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:file-config:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

@@ -124,40 +124,7 @@
       />
       <el-table-column align="center" label="操作" width="200" fixed="right">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['bpm:oa-leave:query']"
-            link
-            type="primary"
-            @click="handleDetail(scope.row)"
-          >
-            详情
-          </el-button>
-          <el-button
-            v-hasPermi="['bpm:oa-leave:query']"
-            link
-            type="primary"
-            @click="handleProcessDetail(scope.row)"
-          >
-            进度
-          </el-button>
-          <el-button
-            v-if="scope.row.result === 1"
-            v-hasPermi="['bpm:oa-leave:create']"
-            link
-            type="danger"
-            @click="cancelLeave(scope.row)"
-          >
-            取消
-          </el-button>
-          <el-button
-            v-if="scope.row.status !== 1"
-            v-hasPermi="['bpm:oa-leave:create']"
-            link
-            type="primary"
-            @click="handleReCreate(scope.row)"
-          >
-            重新发起
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -175,6 +142,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as LeaveApi from '@/api/bpm/leave'
 import * as ProcessInstanceApi from '@/api/bpm/processInstance'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'BpmOALeave' })
 
@@ -269,6 +237,38 @@ const handleProcessDetail = (row) => {
     }
   })
 }
+
+// result === 1 / status !== 1 这两个魔数原样从模板的 v-if 搬过来，没有换成语义常量：
+// 换常量会顺带改动判定口径，超出「只换操作列」的范围。两者实际互斥，所以最多 3 个可见、不折叠
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['bpm:oa-leave:query'],
+    onClick: (row) => handleDetail(row)
+  },
+  {
+    key: 'process',
+    label: '进度',
+    permission: ['bpm:oa-leave:query'],
+    onClick: (row) => handleProcessDetail(row)
+  },
+  {
+    key: 'cancel',
+    label: '取消',
+    type: 'danger',
+    permission: ['bpm:oa-leave:create'],
+    show: (row) => row.result === 1,
+    onClick: (row) => cancelLeave(row)
+  },
+  {
+    key: 'recreate',
+    label: '重新发起',
+    permission: ['bpm:oa-leave:create'],
+    show: (row) => row.status !== 1,
+    onClick: (row) => handleReCreate(row)
+  }
+]
 
 watch(
   () => router.currentRoute.value,

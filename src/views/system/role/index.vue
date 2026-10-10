@@ -143,40 +143,9 @@
         prop="createTime"
         width="170"
       />
-      <el-table-column align="center" fixed="right" label="操作" width="240">
+      <el-table-column align="center" fixed="right" label="操作" width="220">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:role:update']"
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-          >
-            编辑
-          </el-button>
-          <el-button
-            v-hasPermi="['system:permission:assign-user-role']"
-            link
-            type="primary"
-            @click="openMemberPage(scope.row)"
-          >
-            成员
-          </el-button>
-          <el-button
-            v-hasPermi="['system:grant:query']"
-            link
-            type="primary"
-            @click="openGrantPage(scope.row)"
-          >
-            资源授权
-          </el-button>
-          <el-button
-            v-hasPermi="['system:role:delete']"
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -197,6 +166,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import download from '@/utils/download'
 import * as RoleApi from '@/api/system/role'
 import RoleForm from './RoleForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemRole' })
 
@@ -270,6 +240,35 @@ const handleDelete = async (id: number) => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:role:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'member',
+    label: '成员',
+    permission: ['system:permission:assign-user-role'],
+    onClick: (row) => openMemberPage(row)
+  },
+  {
+    key: 'grant',
+    label: '资源授权',
+    permission: ['system:grant:query'],
+    onClick: (row) => openGrantPage(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:role:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 批量删除按钮操作 */
 const checkedIds = ref<number[]>([])
