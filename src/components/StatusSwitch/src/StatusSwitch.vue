@@ -25,7 +25,10 @@ const props = withDefaults(
     loading?: boolean
     activeText?: string
     inactiveText?: string
-    /** 内嵌文字要占位，两个汉字比 EP 默认的 40 宽 */
+    /**
+     * 内嵌文字要占位：两个汉字在 12px 下是 24px，加上圆形按钮与右内边距，
+     * EP 默认的 40 会截字。实测 48 时文字框只剩 2px 余量（右缘约 1px），52 留 6px。
+     */
     width?: number
   }>(),
   {
@@ -33,7 +36,7 @@ const props = withDefaults(
     loading: false,
     activeText: '启用',
     inactiveText: '禁用',
-    width: 48
+    width: 52
   }
 )
 
