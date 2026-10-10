@@ -873,7 +873,7 @@ export const AgentWorkflowApi = {
   /**
    * 沙箱试跑「当前草稿 DSL」（流式），走 {@code POST /agent/workflow-def/sandbox-stream}。
    *
-   * 🔴 与 {@link AgentPlannerApi.runWorkflowStream} 的差异：那个按 code 跑<b>已发布</b>流程，
+   * 🔴 与 {@code POST /agent/workflow/run-stream}（按 code 跑<b>已发布</b>流程，结果只落执行历史）的差异：
    * 这个把<b>设计器里尚未保存/发布的草稿 DSL 原文</b>直传后端试跑——作者改完立刻验证，不必先落库。
    * 后端纪律（见 {@code AgentWorkflowSandboxServiceImpl}）：LLM 与只读工具<b>真跑</b>，
    * 写/不可逆工具被 <b>mock</b>（返回 {@code __sandboxMock} 占位，无真实副作用）；

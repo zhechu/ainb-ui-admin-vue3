@@ -1112,11 +1112,15 @@ const loadMessages = async (conversationId: number) => {
                 : 'done'
           msg.defStatus = draft.status
           /**
-           * 刷新后重建「草稿卡运行撞闸口」的确认卡片：这条路线的挂起没落 execution_id
-           * （聊天路由才落），不补这一查的话，刷新后挂起在对话里<b>一点痕迹都没有</b>，
+           * 刷新后重建「草稿卡运行撞闸口」的确认卡片：这条路线的挂起原先不落 execution_id
+           * （只有聊天路由落），不补这一查的话，刷新后挂起在对话里<b>一点痕迹都没有</b>，
            * 用户只在执行历史里看到一行等待确认却无处可点（2026-09-29 实测的死路）。
            * 🔴 只认「最新一条」执行：用户若在其后又跑过一次，旧的挂起已是被放弃的分支，
            *    为它重建卡片会把用户带去 resume 一条他早已不要的执行。
+           * 🔴 A1 之后这条路线<b>也</b>落 execution_id 了，只是落在<b>另一条</b> agent_message 上
+           *    （草稿卡改走助手通道，后端 settle 的是一条独立消息，镜像聊天路由）。不排重就会看到
+           *    <b>两张</b>确认卡：下面那条消息重建的一张 + 这里合成的一张，而直播时只有一张。
+           *    以带 execution_id 的那条为准（它是后端落的、有 content），草稿卡不再合成。
            */
           if (!item.executionId && msg.cardStatus !== 'pending') {
             const execPage = await AgentWorkflowApi.getExecutionPage({
@@ -1124,9 +1128,11 @@ const loadMessages = async (conversationId: number) => {
               pageSize: 1,
               workflowDefId: draft.defId
             })
-            if (execPage.list?.[0]?.status === 'INTERRUPTED') {
+            const latest = execPage.list?.[0]
+            const alreadyHasCard = !!latest && list.some((m) => m.executionId === latest.id)
+            if (latest?.status === 'INTERRUPTED' && !alreadyHasCard) {
               msg.hitl = {
-                executionId: execPage.list[0].id,
+                executionId: latest.id,
                 // nodeId 不重建：同聊天路由的理由 —— currentNode 是最后跑完的节点，不是闸口
                 content: '流程走到人工确认闸口，已暂停等待您的决定。',
                 manifest: null,
@@ -1138,7 +1144,7 @@ const loadMessages = async (conversationId: number) => {
               }
               // 🔴 不 await：会话重建是一次 Promise.all，等清单会把整段历史的渲染一起拖住。
               //    卡片自己先转圈，到了再换（fillManifest 内部已接住异常，不会产生未处理拒绝）
-              void fillManifest(msg.hitl, execPage.list[0].workflowDefId)
+              void fillManifest(msg.hitl, latest.workflowDefId)
             }
           }
         } catch {
@@ -1783,13 +1789,39 @@ const goDesignFromGate = () => {
 }
 
 /**
- * 运行已发布的流程，把 WorkflowEvent 流渲染成卡片上的节点进度与终态
+ * 运行已发布的流程，把助手聊天事件渲染成卡片上的节点进度、终态，以及一条正常的回复气泡
+ *
+ * 🔴 A1：走 `AgentAssistantApi.runWorkflowStream`（助手通道），不再走 `/agent/workflow/run-stream`。
+ * 差别不在跑法，在<b>回复落到哪</b>：旧通道只写 `agent_workflow_execution`、全程不碰 `agent_message`，
+ * 而聊天历史与 LLM 的记忆都来自 `agent_message` —— 于是点了没回复、刷新即失忆、追问一句模型
+ * 完全不知道刚才跑过什么（用户原话：「连个记忆功能都没有吗」）。
+ * 换成助手通道后回复由后端落库、并作为 MESSAGE 事件回推，前端把它渲染成一条<b>普通的助手气泡</b>
+ * （role/status/content 与 sendStream 那条逐字段同形），于是「直播渲染 == 刷新渲染」这条纪律
+ * 在这一击上也成立。
+ * ⚠️ 旧通道在前端<b>只有这一处</b>调用，改走这里之后那个包装方法已删除（留两个同名方法、
+ * 只有一个会落库，正是当初踩进这个坑的原因）。后端端点保留。
  *
  * 返回 Promise：fetchEventSource 本身不返回完成时机，这里手动包一层，
  * 让 handleConfirmWorkflow 能 await 到「运行结束」再收尾。
  */
 const runWorkflow = (item: any): Promise<void> => {
   return new Promise<void>((resolve) => {
+    const conversationId = innerConversationId.value
+    if (!conversationId) {
+      /**
+       * 🔴 就地拦下、不发请求。后端 conversationId 是 `@NotNull`，缺了会被 Bean Validation 挡在门外，
+       * 而这个接口的 Accept 是 text/event-stream —— 全局处理器写的 JSON 与它内容协商失败，
+       * 用户拿到的是一个<b>空 body</b>（sendStream 的长注释钉过这个故障形态：一个字都没有、
+       * 连 curl 的退出码都是 0）。给一句人话，好过让他对着「没有反应」猜。
+       */
+      item.running = false
+      item.runAbort = null
+      item.cardStatus = 'done'
+      item.runResult = 'error'
+      item.runError = '缺少会话编号，无法运行；请刷新页面后重试'
+      resolve()
+      return
+    }
     item.running = true
     item.runProgress = []
     item.runResult = null
@@ -1797,6 +1829,35 @@ const runWorkflow = (item: any): Promise<void> => {
     const ctrl = new AbortController()
     item.runAbort = ctrl
     let settled = false
+    /**
+     * 回复气泡：MESSAGE 到达时才建，且只建一条
+     *
+     * 🔴 另起一条助手消息、<b>不塞回卡片</b> —— 与 handleHitlDecision 续跑那条同一条纪律：
+     * 后端 settle 的是一条新的 agent_message（不带 workflow_def_id，故刷新后是一条普通气泡）。
+     * 塞回卡片的话，直播看到「卡片变成了答案」、刷新后看到「卡片 + 答案两条」，两边对不上。
+     *
+     * 🔴 不用 typewriter：DONE 那一支后端是<b>一次性</b>给全量回复（不是增量分片），匀速打字只是多等一会儿；
+     * 而 typewriter 是单例、只往「最后一条 assistant」写、并靠 streaming 收口 ——
+     * 在这里驱动它等于把「停止」按钮与空流判定也一并拽进这条路径。
+     */
+    let answerMessage: any = null
+    const ensureAnswerMessage = () => {
+      if (answerMessage) return answerMessage
+      answerMessage = reactive<any>({
+        role: 'assistant',
+        content: '',
+        reasoningContent: '',
+        references: [] as any[],
+        suggestions: [] as AgentSuggestionVO[],
+        status: 'STREAMING',
+        errorMsg: '',
+        createTime: new Date()
+      })
+      messageList.value.push(answerMessage)
+      autoFollow.value = true
+      void scrollToBottom()
+      return answerMessage
+    }
     const finish = () => {
       if (settled) return
       settled = true
@@ -1805,9 +1866,10 @@ const runWorkflow = (item: any): Promise<void> => {
       item.cardStatus = 'done'
       resolve()
     }
-    AgentPlannerApi.runWorkflowStream(
+    AgentAssistantApi.runWorkflowStream(
       item.workflowCode,
       {},
+      conversationId,
       ctrl,
       (event) => {
         let payload: any
@@ -1824,59 +1886,78 @@ const runWorkflow = (item: any): Promise<void> => {
         const data = payload.data
         switch (data.type) {
           case 'META':
-            // 执行实例编号在 META 里下发；INTERRUPTED 事件只带 nodeId，确认卡片两样都要
-            item.runExecutionId = data.executionId
+            // 会话编号本来就已知；引用出处归回复气泡（后端在 DONE 那一支另发一条带 references 的 META）
             break
-          case 'NODE':
-            // NODE 在节点「完成」时到达，带上 nodeId；从预览里回填可读名
+          case 'PLANNING':
+            /**
+             * 进度句。nodeId 只在「NODE 桥出来的那一条」上有，「正在启动流程…」那条是 null。
+             * 🔴 点亮节点格子认 nodeId、不认显示名：名字在<b>重名</b>与<b>无名回落</b>两种情况下都会点错格子
+             *    （卡片里 isNodeDone 正是按 nodeId 比的）。
+             */
+            if (data.executionId) item.runExecutionId = data.executionId
             if (data.nodeId) {
-              const preview = (item.nodes ?? []).find((n: any) => n.id === data.nodeId)
-              item.runProgress = [...item.runProgress, { nodeId: data.nodeId, name: preview?.name }]
+              item.runProgress = [...item.runProgress, { nodeId: data.nodeId, name: data.nodeName }]
             }
             break
-          case 'INTERRUPTED':
+          case 'MESSAGE':
+            // 流程输出。后端 DONE 那一支一次性给全量，直接赋值即可（理由见 ensureAnswerMessage）
+            ensureAnswerMessage().content = data.content || ''
+            break
+          case 'WORKFLOW_CONFIRM':
             item.runResult = 'interrupted'
             /**
-             * 🔴 2026-09-29 修的死路：这里原来只置 runResult='interrupted'，界面上剩一句
-             * 「可在「流程执行」页恢复」—— 而那个页根本不存在，执行历史抽屉也是只读的，
-             * 用户拿着一条 INTERRUPTED 执行无处可点（实测见会话#242 设备管理流程）。
-             * 聊天路由撞闸口会发 WORKFLOW_CONFIRM 落一张确认卡，这条「草稿卡运行」路由
-             * 没有那一落，于是就地补上同一张卡：executionId 取自 META、nodeId 取自本事件。
+             * 🔴 2026-09-29 修的死路，换通道之后照样要在：撞闸口必须就地落一张能点的确认卡，
+             * 而不是一句「可在「流程执行」页恢复」（那个页根本不存在，执行历史抽屉也是只读的）。
+             * 现在这张卡的料<b>随事件过来</b>（executionId/nodeId/nodeName/manifest 都由后端
+             * 按挂起节点裁剪好），比旧通道前端自己拼要准。
              */
-            if (data.executionId ?? item.runExecutionId) {
-              item.hitl = {
-                executionId: data.executionId ?? item.runExecutionId,
-                nodeId: data.nodeId,
-                content: '流程走到人工确认闸口，已暂停等待您的决定。',
-                manifest: null,
-                manifestError: '',
-                manifestLoading: true,
-                running: false,
-                decided: null,
-                error: ''
-              }
+            item.hitl = {
+              executionId: data.executionId,
+              nodeId: data.nodeId,
+              // 显示名与进度句「正在执行：xx」同源；后端拿不到名字时回落成 nodeId
+              nodeName: data.nodeName,
+              content: data.content || '流程走到人工确认闸口，已暂停等待您的决定。',
+              manifest: data.manifest ?? null,
+              manifestError: '',
+              // 事件里没带清单才转圈去查（见下面）；带了就直接是「查完了」
+              manifestLoading: !data.manifest,
+              running: false,
+              decided: null as 'approved' | 'rejected' | 'resolved' | null,
+              error: ''
+            }
+            if (!data.manifest) {
               /**
-               * 🔴 这条路由的事件是 planner 的 `WorkflowEvent`，不是助手那条 `AgentChatEvent`，
-               *    后端不会在 INTERRUPTED 里塞清单，只能前端自己查。
-               *    走 fillManifestByExecution 而不是直接用手头的 `item.workflowDefId`：
-               *    run-stream 按 code 跑，后端选的是已发布/主版本，草稿不一定是那一版。
-               *    nodeId 这条路是**活的**，所以能拿到与直播同等口径的裁剪清单。
+               * 🔴 兜底，不是主路：后端 `buildManifestOrNull` 生成不出来时给 null，而 null 必须显示成
+               * 「清单不可用」，<b>绝不能</b>显示成「本次不产生任何写操作」—— 那等于让人放心点同意。
+               * 所以这里再试一次：走 executionId 反查<b>实际在跑的那一版</b>，而不是手头的
+               * `item.workflowDefId` —— 按 code 跑时后端选的是已发布/主版本，草稿不一定是那一版，
+               * 拿草稿 DSL 生成清单等于给审批人看一份「不会发生的事」。
+               * 仍拿不到就由 fillManifest 落成 manifestError，卡片显示「清单不可用」。
                */
-              void fillManifestByExecution(
-                item.hitl,
-                data.executionId ?? item.runExecutionId,
-                data.nodeId
-              )
+              void fillManifestByExecution(item.hitl, data.executionId, data.nodeId)
             }
             break
           case 'DONE':
-            item.runResult = 'success'
+            /**
+             * 🔴 不能无条件置 success：中断那一轮后端发的是 WORKFLOW_CONFIRM <b>加</b> DONE 两个事件，
+             * 后到的 DONE 会把「已挂起」盖成「运行完成」，卡片上那张待确认的闸口卡就和终态标签
+             * 自相矛盾了。（旧通道的 INTERRUPTED 与 DONE 是 if/else 互斥的，换过来之后不再互斥。）
+             */
+            if (!item.runResult) item.runResult = 'success'
+            if (answerMessage && answerMessage.status === 'STREAMING') {
+              answerMessage.status = 'SUCCESS'
+            }
             break
           case 'ERROR':
             item.runResult = 'error'
             item.runError = data.errorMsg || '运行失败'
+            // 气泡也要标错：后端 settle 落的是一条 FAILURE 消息，刷新后它是红的，直播不能是白的
+            if (answerMessage && answerMessage.status === 'STREAMING') {
+              markError(answerMessage, item.runError)
+            }
             break
           default:
+            // 后端新增了事件类型而前端还没跟上 —— 忽略即可，不要炸掉整个流
             break
         }
       },
@@ -1884,9 +1965,10 @@ const runWorkflow = (item: any): Promise<void> => {
         // 🔴 必须 throw：onerror 不抛异常 fetchEventSource 就会自动无限重连，反复计费
         if (!item.runResult) {
           /**
-           * 🔴 B3-8：编号取自 run-stream 的 META（`item.runExecutionId`）；
-           * 若 INTERRUPTED 已到达，`item.hitl.executionId` 上也有同一个编号，故 ?? 兜一层。
-           * 两者都没有 = META 都没回来，那条执行压根没建起来 ⟹ hint 是空串
+           * 🔴 B3-8：编号取自 PLANNING 事件（后端把 WorkflowEvent 的 META/NODE 桥过来时一并带上，
+           * 见 `AgentChatEvent#planning` 的带定位信息重载）；若已撞闸口，`item.hitl.executionId`
+           * 上也有同一个编号，故 ?? 兜一层。
+           * 两者都没有 = 连「正在启动流程…」都没回来，那条执行压根没建起来 ⟹ hint 是空串
            * （🔴 不能凭空造一个编号：让人去查一条不存在的执行，比不提示更糟）。
            */
           item.runResult = 'error'
@@ -1894,13 +1976,25 @@ const runWorkflow = (item: any): Promise<void> => {
             item.runExecutionId ?? item.hitl?.executionId
           )}`
         }
-        // ⚠️ 走到 `!item.runResult` 为假那一支（多半是 INTERRUPTED 已到、随后断连）时，
+        if (answerMessage && answerMessage.status === 'STREAMING') {
+          markError(answerMessage, item.runError || '连接中断，请重试')
+        }
+        // ⚠️ 走到 `!item.runResult` 为假那一支（多半是 WORKFLOW_CONFIRM 已到、随后断连）时，
         //    草稿卡显示的是「流程已挂起，等待人工确认」那条 alert，**不是** runError，
         //    所以这里补的文案根本不会出现 —— 那种形态下编号由 HitlConfirmCard 的常驻行兜住。
         finish()
         throw err
       },
       () => {
+        // 与 handleSend 同款收口：DONE 没到（连接被掐、后端异常）时气泡不能停在 STREAMING
+        if (answerMessage && answerMessage.status === 'STREAMING') {
+          // 🔴 空流不能算成功，但确认卡片本身算产出（中断那一轮既没有 content 也不会有 DONE 之前的 MESSAGE）
+          if (!answerMessage.content && !item.hitl) {
+            markError(answerMessage, '流程运行结束但没有返回任何内容，请刷新页面查看执行状态')
+          } else {
+            answerMessage.status = 'SUCCESS'
+          }
+        }
         finish()
       }
     )

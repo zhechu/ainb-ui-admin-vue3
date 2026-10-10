@@ -1,7 +1,4 @@
 import request from '@/config/axios'
-import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { getAccessToken, getTenantId } from '@/utils/auth'
-import { config } from '@/config/axios/config'
 // 🔴 类型-only 的循环引用（workflow/index.ts 反过来 import 本文件的 WorkflowEventVO）。
 //    `import type` 会被完全擦除，不产生运行时环 —— 别把它改成值导入。
 import type { ChangeManifestVO } from '@/api/agent/workflow'
@@ -70,38 +67,5 @@ export const AgentPlannerApi = {
    * 后端 @RequestParam code，故走 params（query），与 assistant api 的 POST 约定一致。
    */
   publishWorkflow: (code: string): Promise<AgentWorkflowPublishVO> =>
-    request.post({ url: '/agent/planner/publish-workflow', params: { code } }),
-
-  /**
-   * 运行已发布的流程（流式），复用既有 {@code /agent/workflow/run-stream}。
-   *
-   * 🔴 用 fetchEventSource 而不是原生 EventSource：后者只能发 GET、不能带 Authorization 头，
-   * 而这个接口要登录态（增量14a 起权限为 {@code agent:workflow:run}——副作用面，与只读的
-   * {@code agent:workflow:query} 分开；持有「流程编排」菜单的角色已被迁移非破坏性授予 run）。
-   * 理由与 assistant.sendStream 完全一致。
-   */
-  runWorkflowStream: (
-    code: string,
-    input: Record<string, any>,
-    ctrl: AbortController,
-    onMessage: (event: any) => void,
-    onError: (err: any) => void,
-    onClose: () => void
-  ) => {
-    return fetchEventSource(`${config.base_url}/agent/workflow/run-stream`, {
-      method: 'post',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${getAccessToken()}`,
-        'tenant-id': `${getTenantId()}`
-      },
-      // 运行可能十几秒，用户切走再回来不该发现连接断了
-      openWhenHidden: true,
-      body: JSON.stringify({ code, input }),
-      onmessage: onMessage,
-      onerror: onError,
-      onclose: onClose,
-      signal: ctrl.signal
-    })
-  }
+    request.post({ url: '/agent/planner/publish-workflow', params: { code } })
 }

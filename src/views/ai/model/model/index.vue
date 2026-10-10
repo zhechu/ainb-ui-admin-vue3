@@ -106,8 +106,35 @@
       <el-table-column label="温度参数" align="center" prop="temperature" min-width="80" />
       <el-table-column label="回复数 Token 数" align="center" prop="maxTokens" min-width="140" />
       <el-table-column label="上下文数量" align="center" prop="maxContexts" min-width="100" />
-      <el-table-column label="操作" align="center" width="240" fixed="right">
+      <el-table-column label="操作" align="center" width="300" fixed="right">
         <template #default="scope">
+          <!--
+            启用/禁用单独成一对互斥按钮，不再只有「编辑弹窗里翻状态字段」那一条路：
+            AiModelSaveReqVO 的每个字段都是 @NotNull/@NotEmpty，走那条路必须把整行重新提交一遍。
+            2026-10-10 19:27~19:28 那串连续的 update_time，就是管理员在故障风暴里逐个开弹窗禁用模型的痕迹。
+            🔴 loading 与「测试」各自独立（statusLoadingId / testingId）：共用一个的话，
+            点测试会让同一行的启用禁用按钮跟着一起转圈。
+          -->
+          <el-button
+            v-if="scope.row.status === CommonStatusEnum.ENABLE"
+            link
+            type="warning"
+            :loading="statusLoadingId === scope.row.id"
+            @click="handleUpdateStatus(scope.row, CommonStatusEnum.DISABLE)"
+            v-hasPermi="['ai:model:update']"
+          >
+            禁用
+          </el-button>
+          <el-button
+            v-else
+            link
+            type="success"
+            :loading="statusLoadingId === scope.row.id"
+            @click="handleUpdateStatus(scope.row, CommonStatusEnum.ENABLE)"
+            v-hasPermi="['ai:model:update']"
+          >
+            启用
+          </el-button>
           <el-button
             link
             type="primary"
@@ -158,6 +185,9 @@ import ModelForm from './ModelForm.vue'
 import ModelTestDialog from './ModelTestDialog.vue'
 import { DICT_TYPE, getIntDictOptions, getStrDictOptions } from '@/utils/dict'
 import { ApiKeyApi, ApiKeyVO } from '@/api/ai/model/apiKey'
+// CommonStatusEnum 不在自动导入清单里（自动导入只覆盖 vue / vue-router / useI18n / useMessage /
+// useTable / useCrudSchemas / DICT_TYPE / indexMethod / ElMessage / ElMessageBox 那一批）
+import { CommonStatusEnum } from '@/utils/constants'
 
 /** API 模型列表 */
 defineOptions({ name: 'AiModel' })
@@ -221,6 +251,33 @@ const handleTest = (row: ModelVO) => {
 const handleTestingChange = (testing: boolean) => {
   if (!testing) {
     testingId.value = undefined
+  }
+}
+
+/** 启用 / 禁用操作 */
+// 🔴 只在「禁用」方向二次确认，启用不打断人：启用没有副作用，禁用的后果是下面文案里那两条。
+//    两条都核实过出处：AiModelFailoverServiceImpl#buildCandidateChain 第 1 步只取启用中的模型
+//    （所以候选链立刻少一个）；#buildPinnedChain 对钉住的模型同样校验状态与密钥，不可用就返回空链，
+//    调用方据此抛 MODEL_TASK_PINNED_UNAVAILABLE —— 按「同一任务只用一个模型」的口径刻意不切换。
+// 🔴 顺带的一个后果：新端点虽然只写 status 一列，update_time 照样被 MyBatis-Plus 的填充器刷新，
+//    而失败冷却的记忆是按「model.update_time|apiKey.update_time」这个配置指纹判活的 ——
+//    所以点一下「启用」等于「清掉这个模型的失败冷却，立刻重新纳入候选」，不必干等 30 分钟。
+const statusLoadingId = ref<number>()
+const handleUpdateStatus = async (row: ModelVO, status: number) => {
+  try {
+    if (status === CommonStatusEnum.DISABLE) {
+      await message.confirm(
+        `确认禁用模型「${row.name}」？禁用后所有 AI 调用的候选链立刻少掉它；` +
+          `已经钉住这个模型的进行中任务不会切换到别的模型，而是直接报「本次任务已钉住模型，它现在不可用」。`
+      )
+    }
+    statusLoadingId.value = row.id
+    await ModelApi.updateStatus(row.id, status)
+    message.success(status === CommonStatusEnum.ENABLE ? '启用成功' : '禁用成功')
+    await getList()
+  } catch {
+  } finally {
+    statusLoadingId.value = undefined
   }
 }
 

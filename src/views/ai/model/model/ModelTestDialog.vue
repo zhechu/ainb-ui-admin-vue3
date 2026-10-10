@@ -64,6 +64,8 @@
         <el-descriptions-item label="所属平台">{{ result.platform || '-' }}</el-descriptions-item>
         <el-descriptions-item label="模型标识">{{ result.model || '-' }}</el-descriptions-item>
         <el-descriptions-item label="端点路由">{{ multiModelText }}</el-descriptions-item>
+        <!-- A3：思考模式是配置驱动的第三档判定，不回显就只能靠猜「改了配置到底生效没有」 -->
+        <el-descriptions-item label="思考模式">{{ thinkingText }}</el-descriptions-item>
         <el-descriptions-item label="耗时">
           {{ result.durationMs != null ? `${(result.durationMs / 1000).toFixed(1)}s` : '-' }}
         </el-descriptions-item>
@@ -174,9 +176,24 @@ const multiModelText = computed(() => {
   return value ? '多模态端点' : '文本端点'
 })
 
+const thinkingText = computed(() => {
+  // 同 multiModelText 的口径：null 是「这个平台没有思考模式这档」，不能显示成「关」
+  const value = result.value?.enableThinking
+  if (value === null || value === undefined) {
+    return '不适用（非通义平台）'
+  }
+  return value ? '开' : '关'
+})
+
 const failureReasonText = computed(() => {
   if (result.value?.failureReason === 'QUOTA') {
     return '额度类（QUOTA）：生产链遇到它时判本次调用失败、不切换候选，并冷却 30 分钟'
+  }
+  if (result.value?.failureReason === 'CONFIG') {
+    return (
+      '配置类（CONFIG）：生产链遇到它时会切到下一个候选，并对本模型冷却 30 分钟；' +
+      '改好配置或禁用再启用一次即可立刻解除冷却'
+    )
   }
   if (result.value?.failureReason === 'TRANSIENT') {
     return '瞬时类（TRANSIENT）：生产链遇到它时会切到下一个候选，并对本模型冷却 60 秒'
