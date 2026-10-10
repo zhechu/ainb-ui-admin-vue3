@@ -20,7 +20,7 @@
       -->
       <template v-if="!inlineFormActive">
       <!-- 查询区 -->
-      <ContentWrap v-if="searchItems.length > 0">
+      <ContentWrap v-if="searchItems.length > 0 || hasToolbar">
         <el-form :inline="true" class="-mb-15px" label-width="90px">
           <el-form-item
             v-for="(item, index) in visibleSearchItems"
@@ -142,7 +142,12 @@
               @keyup.enter="handleQuery"
             />
           </el-form-item>
-          <el-form-item>
+          <!--
+            ⚠️ 这个 v-if 是新加的：没有查询项时 visibleSearchItems 为空、上面的 v-for 不产出任何项，
+            不补它就会渲染出一个只有「搜索/重置」的空表单。原来整张卡片靠 searchItems.length > 0
+            整体不渲染，这条分支从没暴露过；现在卡片还要为工具栏渲染，所以必须补上
+          -->
+          <el-form-item v-if="searchItems.length > 0">
             <el-button @click="handleQuery">
               <Icon class="mr-5px" icon="ep:search" />
               搜索
@@ -162,6 +167,48 @@
                 class="ml-2px"
                 :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'"
               />
+            </el-button>
+          </el-form-item>
+          <!--
+            工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
+            按钮本身一字未改 —— 原来就已经是 plain + 按动作性质给色，批量按钮的 disabled
+            与选中数角标也原样搬过来，只换了外层容器（div → el-form-item）。
+          -->
+          <el-form-item v-if="hasToolbar">
+            <!--
+              内置工具栏按钮。文案、图标、顺序都来自列表设计的按钮清单。
+
+              颜色按动作的性质给，与系统里其它管理列表页（如租户管理）保持一致：
+              主操作是主色、导出是成功色、批量删除是危险色。
+              都用默认灰的话，「批量删除」看起来与「导出」一样人畜无害 ——
+              而它是这一排里唯一不可撤销的动作。
+            -->
+            <el-button
+              v-for="btn in builtinToolbarButtons"
+              :key="btn.key"
+              :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
+              plain
+              :type="toolbarButtonType(btn.key)"
+              @click="runBuiltinButton(btn.key)"
+            >
+              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+              {{ btn.label }}
+              <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
+                ({{ selectedRows.length }})
+              </span>
+            </el-button>
+            <!--
+              自定义按钮（工具栏）。⚠️ 这里【不】判可见条件 ——
+              工具栏没有「当前记录」可以求值，见 customButton.ts 的说明
+            -->
+            <el-button
+              v-for="btn in toolbarButtons"
+              :key="btn.key"
+              plain
+              @click="runCustomButton(btn)"
+            >
+              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+              {{ btn.label }}
             </el-button>
           </el-form-item>
         </el-form>
@@ -200,49 +247,16 @@
           />
         </el-tabs>
 
-        <div
-          v-if="builtinToolbarButtons.length || toolbarButtons.length || columnSettingEnabled"
-          class="mb-10px flex items-center"
-        >
-          <!--
-            内置工具栏按钮。文案、图标、顺序都来自列表设计的按钮清单。
-
-            颜色按动作的性质给，与系统里其它管理列表页（如租户管理）保持一致：
-            主操作是主色、导出是成功色、批量删除是危险色。
-            都用默认灰的话，「批量删除」看起来与「导出」一样人畜无害 ——
-            而它是这一排里唯一不可撤销的动作。
-          -->
-          <el-button
-            v-for="btn in builtinToolbarButtons"
-            :key="btn.key"
-            :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
-            plain
-            :type="toolbarButtonType(btn.key)"
-            @click="runBuiltinButton(btn.key)"
-          >
-            <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-            {{ btn.label }}
-            <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
-              ({{ selectedRows.length }})
-            </span>
-          </el-button>
-          <!--
-            自定义按钮（工具栏）。⚠️ 这里【不】判可见条件 ——
-            工具栏没有「当前记录」可以求值，见 customButton.ts 的说明
-          -->
-          <el-button
-            v-for="btn in toolbarButtons"
-            :key="btn.key"
-            plain
-            @click="runCustomButton(btn)"
-          >
-            <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-            {{ btn.label }}
-          </el-button>
-          <!-- 列设置推到最右边：它是「调整视图」而不是「对数据做事」，与左边那排不同类 -->
+        <!--
+          列设置：它是「调整视图」而不是「对数据做事」，与查询区那排工具栏不同类 ——
+          这条理由原来就写在工具栏那个 div 里，工具栏搬进查询区之后，留在列表卡片内
+          反而更贴近它作用的对象（这张表的视图）。
+          没跟着搬进 <el-form-item> 是搬不了：ml-auto 在 inline form 的 item 内不生效
+          （item 宽度由内容决定，没有可分配的自由空间），而查询卡片没有 title、
+          ContentWrap 的 #header 插槽也不渲染，找不到第二个可以右靠的位置。
+        -->
+        <div v-if="columnSettingEnabled" class="mb-10px flex justify-end">
           <ColumnSettingPanel
-            v-if="columnSettingEnabled"
-            class="ml-auto"
             :items="settingColumns"
             @reorder="handleColumnReorder"
             @reset="handleColumnReset"
@@ -1663,6 +1677,17 @@ const builtinButtons = computed(() => normalizeButtons(operationColumn.value.but
 /** 工具栏上要渲染的内置按钮，保持配置里的顺序 */
 const builtinToolbarButtons = computed(() =>
   visibleButtons(builtinButtons.value, 'toolbar').filter((b) => isToolbarButtonAvailable(b.key))
+)
+
+/**
+ * 查询区卡片要不要为了工具栏而渲染
+ *
+ * ⚠️ 不含 columnSettingEnabled：列设置留在列表卡片内，不参与这个判断。
+ * 把它算进来的话，一张「没有查询项、没有工具栏、只开了列设置」的表单会渲染出
+ * 一个只装着搜索按钮的空查询卡片 —— 而搜索按钮自己另有 searchItems.length > 0 的门。
+ */
+const hasToolbar = computed(
+  () => !!(builtinToolbarButtons.value.length || toolbarButtons.value.length)
 )
 
 /** 操作列里要渲染的内置按钮 */
