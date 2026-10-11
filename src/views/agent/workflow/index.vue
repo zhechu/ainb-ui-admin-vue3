@@ -207,159 +207,22 @@
           :formatter="dateFormatter"
         />
         <!--
-          🔴 min-width 不能按「刚好放下」给：这一列的按钮折行**不报错**，只是悄悄折成两行。
-             历史实测：草稿行 8 钮需宽 436px、已发布行 6 钮需宽 434px ⟹ 原来的 440 只剩 4px 余量，
-             任何一个按钮文案变长就折行，故取 520。
-             ⚠️ 那两个数字出自 tests/e2e/agent-workflow-copy.spec.ts 的「操作列不换行」，
-                而该 spec 已随 tests/ 一并从 HEAD 删除 ⟹ 今天**无法再跑出来复核**，只作量级参考留着。
-          ⚠️ 2026-10-09 给不可删的行加了一枚禁用的「删除」后：已发布行 6 钮→7 钮、
-             已停用行 5 钮→6 钮；最宽的仍是草稿行的 8 钮（数量未变）。按「一枚两字 link 钮约 52px」
-             粗算已发布行约 486px，仍在 520 之内 —— 但这是**推算、不是实测**，改这一列的按钮请重新量。
+          操作列收敛到 TableActions：草稿行 8 个动作 → 行内 3 枚 + 「更多」×5，
+          列宽从 min-width 520 改成固定 width（浏览器 100% 缩放实测，数字见提交说明）。
+          旧 520 的依据是「草稿行 8 枚 link 钮实测 436px」——出处 e2e spec 已随 tests/
+          删除，本就只剩量级参考意义；折叠后行内只有 4 字+4 字+2 字+更多，量级完全不同，故重新量。
+          🔴 不可删行的「删除」保持禁用 + tooltip（后端下发的 deleteDeniedReason）：
+             理由不能因为折叠而消失，TableActions 对行内与「更多」下拉项都挂 tooltip。
+          🔴 2026-10-09 那枚非草稿行的实心「复制为新草稿」主操作随折叠退役：进「更多」后
+             与其余项同为纯文字（组件契约：下拉里不加料），再在行内单留一枚实心钮
+             等于在同一个单元格里养第二套渲染路径。它的文案保留在下拉项里。
+          行级判据原样搬进 rowButtons 配置，一条没改：设计/查看设计 与 编辑 按 editable、
+          发布/停用 按 status（可发布性与可编辑性是两条规矩，服务端只下发了后者）、
+          删除 按 deletable（草稿 + 已停用，与 editable 自 2026-10-09 起分家）。
         -->
-        <el-table-column label="操作" align="center" min-width="520" fixed="right">
+        <el-table-column label="操作" align="center" width="270" fixed="right">
           <template #default="scope">
-            <el-button
-              link
-              type="primary"
-              @click="openCanvas(scope.row.id)"
-              v-hasPermi="['agent:workflow:query']"
-            >
-              查看画布
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              @click="openHistory(scope.row)"
-              v-hasPermi="['agent:workflow:query']"
-            >
-              执行历史
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              @click="openVersions(scope.row)"
-              v-hasPermi="['agent:workflow:query']"
-            >
-              版本
-            </el-button>
-            <!-- Req 2：设计与编辑分开——「设计」跳整页设计器画画布；「编辑」在页内面板只改元信息+触发方式 -->
-            <!--
-              🔴 S5-d（修 G14 的前端那半）：「设计」去掉 v-if="status === 'DRAFT'"，改为**常显**。
-                 非草稿行进的是同一个设计器，只是它自己按服务端下发的 editable 落成只读态
-                 （editor/index.vue 的 readonly 也改成读 editable，不再自己判 'DRAFT'）。
-                 文案按 editable 切：设计 / 查看设计 —— 让用户在点之前就知道会不会改得动。
-              🔴 权限从 agent:workflow:update **放宽**到 agent:workflow:query：只读查看不该要写权限。
-                 S5-a 量过这次放宽是安全的（授权脚本第 3 步是从 query 持有者派生出写授权，
-                 故 update 持有者 ⊆ query 持有者，只会让更多人看见）。
-                 ⚠️ 但台账 #109：hasPermi 对 *:*:* 短路、e2e 恒以 admin 登录 ⟹ 这次放宽在 e2e 里
-                 **结构性地证明不了**，别拿「e2e 绿」当它的验收判据。
-              🔴 「编辑」改判 row.editable 而不是 status === 'DRAFT'：判据的唯一出处是
-                 后端 WorkflowDefStatusEnum#isDraft，服务端派生成 editable 下发。
-                 前端再抄一份 'DRAFT' 字面量，等状态机加一档就是「按钮亮着、点了被后端拒」。
-                 ⚠️ 2026-10-09 起「删除」**不再**跟着 editable 走，改判 row.deletable
-                    （判据是 WorkflowDefStatusEnum#isDeletable，草稿 + 已停用）—— 见下面那枚按钮。
-            -->
-            <el-button
-              link
-              type="primary"
-              @click="openEditor(scope.row)"
-              v-hasPermi="['agent:workflow:query']"
-              data-testid="wf-design-btn"
-            >
-              {{ scope.row.editable ? '设计' : '查看设计' }}
-            </el-button>
-            <el-button
-              v-if="scope.row.editable"
-              link
-              type="primary"
-              @click="openFormEdit(scope.row)"
-              v-hasPermi="['agent:workflow:update']"
-            >
-              编辑
-            </el-button>
-            <el-button
-              v-if="scope.row.status === 'DRAFT'"
-              link
-              type="success"
-              @click="handlePublish(scope.row)"
-              v-hasPermi="['agent:workflow:publish']"
-            >
-              发布
-            </el-button>
-            <el-button
-              v-if="scope.row.status === 'PUBLISHED'"
-              link
-              type="warning"
-              @click="handleDisable(scope.row)"
-              v-hasPermi="['agent:workflow:publish']"
-            >
-              停用
-            </el-button>
-            <!--
-              🔴 发布/停用**保留** status === 判据，不跟着改 editable：
-                 「可发布性」与「可编辑性」是两条不同的规矩，服务端只下发了后者。
-                 （后端另有 isExecutable / publishDef 的可发布性判据，但没有对应的广告位字段，
-                 前端在这里自己判 status 是**唯一**选择，不是 G14 那种重复。）
-              🔴 S5-d：复制按钮**所有状态都可用**（草稿/已发布/已停用都能当模板抄），权限归 create
-                 —— 产物是一个新 DRAFT，与「新建流程」同类写动作，后端不新设权限点。
-                 非草稿行把它升成**主操作**（plain 实心而非 link）并改叫「复制为新草稿」：
-                 面对一条改不动的流程，用户真正想做的就是这件事，
-                 而不是一排灰掉的链接里再找一个「编辑」。
-                 ⚠️ 下面两枚是同一个 v-if/v-else 链，中间**不要插注释**（会打断分支配对）。
-            -->
-            <el-button
-              v-if="scope.row.editable"
-              link
-              type="primary"
-              @click="openCopy(scope.row)"
-              v-hasPermi="['agent:workflow:create']"
-              data-testid="wf-copy-btn"
-            >
-              复制
-            </el-button>
-            <el-button
-              v-else
-              type="primary"
-              plain
-              size="small"
-              @click="openCopy(scope.row)"
-              v-hasPermi="['agent:workflow:create']"
-              data-testid="wf-copy-as-draft-btn"
-            >
-              复制为新草稿
-            </el-button>
-            <!--
-              🔴 删除按 row.deletable（服务端派生），不再按 row.editable：两档判据从 2026-10-09 起分家 ——
-                 可编辑只有草稿，可删是草稿 + 已停用。继续用 editable 会让「停用过的流程」永远删不掉
-                 （只剩管理员的 force-delete 一条裸接口，而本页不暴露它）。
-              🔴 不可删的行给一枚**禁用**的删除按钮 + 后端下发的 deleteDeniedReason 作 tooltip，
-                 而不是整枚隐藏：只看到「这行没有删除」的用户得不到任何理由，只能去猜或者提工单
-                 （editDeniedReason 在设计器的只读横幅里就是这么用的）。包一层 span 同样是因为
-                 禁用的 el-button 不派发鼠标事件，tooltip 挂不上去；
-                 而 span 一插进两枚按钮之间，`.el-button + .el-button` 的 12px 间距就失效了，
-                 故 span 自己带 ml-12px（否则这枚「删除」会紧贴着「复制为新草稿」）。
-              ⚠️ 下面两枚是同一个 v-if/v-else 链，中间**不要插注释**（会打断分支配对）。
-            -->
-            <el-tooltip
-              v-if="!scope.row.deletable"
-              :content="scope.row.deleteDeniedReason || DELETE_DENIED_FALLBACK"
-              placement="top"
-            >
-              <span class="ml-12px align-middle">
-                <el-button link type="danger" disabled v-hasPermi="['agent:workflow:delete']">
-                  删除
-                </el-button>
-              </span>
-            </el-tooltip>
-            <el-button
-              v-else
-              link
-              type="danger"
-              @click="handleDelete(scope.row)"
-              v-hasPermi="['agent:workflow:delete']"
-            >
-              删除
-            </el-button>
+            <TableActions :row="scope.row" :buttons="rowButtons" />
           </template>
         </el-table-column>
       </el-table>
@@ -417,6 +280,7 @@ import PublishGateDialog from './components/PublishGateDialog.vue'
 import WorkflowCopyDialog from './components/WorkflowCopyDialog.vue'
 import { precheckPublish } from './publishGate'
 import { triggerTypeLabel } from './editor/triggerCases'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'AgentWorkflow' })
 
@@ -721,6 +585,81 @@ const handleDisable = async (row: AgentWorkflowDefVO) => {
  *   措辞刻意不点名任何具体状态，与后端文案同一条纪律（点名会让另一档配上错话）。
  */
 const DELETE_DENIED_FALLBACK = '当前状态不可删除'
+
+/**
+ * 操作列按钮配置。⚠️ 必须是 setup 层 const（TableActions 的契约）：写成每行调一次的
+ * 工厂函数会每次渲染新建数组、computed 的依赖追踪也会退化；行级差异全靠下面的函数表达。
+ * 顺序即行内 / 下拉里的顺序：只读类在前，写动作居中，删除垫底并带 divided。
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'canvas',
+    label: '查看画布',
+    permission: ['agent:workflow:query'],
+    onClick: (row) => openCanvas(row.id)
+  },
+  {
+    key: 'history',
+    label: '执行历史',
+    permission: ['agent:workflow:query'],
+    onClick: (row) => openHistory(row)
+  },
+  {
+    key: 'versions',
+    label: '版本',
+    permission: ['agent:workflow:query'],
+    onClick: (row) => openVersions(row)
+  },
+  // S5-d：设计常显、文案按 editable 切；权限是 query 不是 update（只读查看不该要写权限）
+  {
+    key: 'design',
+    label: (row) => (row.editable ? '设计' : '查看设计'),
+    permission: ['agent:workflow:query'],
+    onClick: (row) => openEditor(row)
+  },
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['agent:workflow:update'],
+    show: (row) => !!row.editable,
+    onClick: (row) => openFormEdit(row)
+  },
+  // 发布/停用判 status 不判 editable：可发布性与可编辑性是两条规矩，服务端只下发了后者
+  {
+    key: 'publish',
+    label: '发布',
+    type: 'success',
+    permission: ['agent:workflow:publish'],
+    show: (row) => row.status === 'DRAFT',
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'disable',
+    label: '停用',
+    type: 'warning',
+    permission: ['agent:workflow:publish'],
+    show: (row) => row.status === 'PUBLISHED',
+    onClick: (row) => handleDisable(row)
+  },
+  // 复制所有状态都可用（草稿/已发布/已停用都能当模板抄），权限归 create
+  {
+    key: 'copy',
+    label: (row) => (row.editable ? '复制' : '复制为新草稿'),
+    permission: ['agent:workflow:create'],
+    onClick: (row) => openCopy(row)
+  },
+  // 删除判 deletable（草稿+已停用）；不可删时禁用 + tooltip 给后端理由，而不是整枚隐藏
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['agent:workflow:delete'],
+    disabled: (row) => !row.deletable,
+    tooltip: (row) => (row.deletable ? '' : row.deleteDeniedReason || DELETE_DENIED_FALLBACK),
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 /**
  * 单行删除：草稿与已停用可删（已发布须先停用）

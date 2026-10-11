@@ -37,6 +37,13 @@ export interface TableActionButton {
   show?: (row: any) => boolean
   disabled?: RowValue<boolean>
   loading?: RowValue<boolean>
+  /**
+   * 悬停提示，空串 / 不传 = 不挂。给函数是为了按行取后端下发的理由：
+   * 工作流列表不可删的行，禁用的「删除」要靠 deleteDeniedReason 告诉用户为什么，
+   * 只看到「这行没有删除」的人只能去猜或者提工单。
+   * 行内与「更多」下拉项都会挂（折叠不能把理由折没）。
+   */
+  tooltip?: RowValue<string>
   /** 收进「更多」后在该项之前画分隔线 */
   divided?: boolean
   onClick: (row: any) => void
