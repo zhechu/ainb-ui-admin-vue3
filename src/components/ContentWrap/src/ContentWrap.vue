@@ -174,7 +174,7 @@ onBeforeUnmount(() => {
   >
     <template v-if="title" #header>
       <div class="flex items-center">
-        <span class="text-16px font-700">{{ title }}</span>
+        <span :class="`${prefixCls}__title`">{{ title }}</span>
         <ElTooltip v-if="message" effect="dark" placement="right">
           <template #content>
             <div class="max-w-200px">{{ message }}</div>
@@ -199,6 +199,27 @@ $prefix-cls: #{$namespace}-content-wrap;
    但那个 div 里装着列表面板，故第二个 :has 要排除「后续兄弟内含卡片」的情况。 */
 .#{$prefix-cls}:not(:has(~ .#{$prefix-cls})):not(:has(~ * .#{$prefix-cls})) {
   margin-bottom: 0;
+}
+
+/* 卡头品牌签名：与菜单同字号（14px/600）+ 左侧 3px 渐变竖条，
+   让每个面板都带上登录页那一枚品牌渐变的签名 */
+.#{$prefix-cls}__title {
+  position: relative;
+  padding-left: 10px;
+  font-size: 14px;
+  font-weight: 600;
+
+  &::before {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background-image: var(--brand-grad);
+    content: '';
+    transform: translateY(-50%);
+  }
 }
 
 .#{$prefix-cls}--list {

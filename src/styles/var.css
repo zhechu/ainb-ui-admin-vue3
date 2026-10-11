@@ -49,7 +49,8 @@
 
   --app-content-padding: 9px;
 
-  --app-content-bg-color: #f1f4f8;
+  /* 内容区画布底色收进品牌令牌：亮 #e9eef9、暗 #171a21，与登录页画布同色 */
+  --app-content-bg-color: var(--brand-canvas);
 
   /*
    * 页脚已下线（原本只用来展示一行版权），保留变量置 0 是因为流程详情、
@@ -59,10 +60,10 @@
 
   --transition-time-02: 0.2s;
 
-  /* JNPF 风格圆角：控件 4px（EP 默认），卡片 8px 让内容块更圆润 */
+  /* JNPF 风格圆角：控件 4px（EP 默认）。
+     卡片圆角/卡头分隔线不在此覆写 EP 变量——unplugin-element-plus 把 EP css-vars
+     注入在本文件之后，:root 覆写会输；改在 index.scss 的选择器里直接写品牌令牌。 */
   --el-border-radius-base: 4px;
-
-  --el-card-border-radius: 8px;
 
   /*
    * brand start —— 登录页质感的设计令牌（画布 / 表面 / 签名 / 半径阶梯）。
@@ -83,14 +84,23 @@
 
   --brand-blob-o-3: 0.3;
 
-  /* 应用侧画布比登录页克制一档（长时间阅读）；暗色回落到登录页同值 */
-  --brand-canvas-o-1: 0.35;
-
-  --brand-canvas-o-2: 0.25;
-
   --brand-lines: rgb(255 255 255 / 55%);
 
-  --brand-canvas-lines: rgb(255 255 255 / 35%);
+  /* 应用侧画布比登录页克制一档（长时间阅读）：光斑透明度烘进渐变 stop，
+     线稿透明度烘进 SVG 描边；暗色回落到登录页同值（.20 / .14 / .06） */
+  --brand-canvas-blob-1: radial-gradient(
+    circle at 40% 40%,
+    rgb(79 125 249 / 35%) 0%,
+    rgb(79 125 249 / 0%) 70%
+  );
+
+  --brand-canvas-blob-2: radial-gradient(
+    circle at 50% 50%,
+    rgb(34 196 221 / 25%) 0%,
+    rgb(34 196 221 / 0%) 70%
+  );
+
+  --brand-canvas-art: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201440%20900'%20preserveAspectRatio='xMidYMid%20slice'%3E%3Cg%20fill='none'%20stroke='rgba(255,255,255,0.35)'%20stroke-width='1.5'%3E%3Cpath%20d='M-60,150%20L240,60%20L430,150%20L130,240%20Z'/%3E%3Cpath%20d='M-20,190%20L250,110%20L400,180'/%3E%3Cpath%20d='M60,120%20L60,180%20M160,92%20L160,152%20M260,120%20L260,180'/%3E%3Cpath%20d='M980,40%20L1240,-30%20L1420,50%20L1160,120%20Z'/%3E%3Cpath%20d='M380,880%20L760,770%20L1140,880%20L760,990%20Z'/%3E%3Cpath%20d='M470,880%20L760,795%20L1050,880'/%3E%3Cpath%20d='M600,850%20L600,905%20M760,805%20L760,860%20M920,850%20L920,905'/%3E%3C/g%3E%3C/svg%3E");
 
   --brand-surface: #fff;
 
@@ -121,7 +131,7 @@
 }
 
 .dark {
-  --app-content-bg-color: var(--el-bg-color);
+  --app-content-bg-color: var(--brand-canvas);
 
   /* 深色模式下侧栏 / 头部回落到中性深灰；用户自定义色由 JS 内联变量覆盖此处 */
   --left-menu-bg-color: #1d2129;
@@ -151,13 +161,21 @@
 
   --brand-blob-o-3: 0.12;
 
-  --brand-canvas-o-1: 0.2;
-
-  --brand-canvas-o-2: 0.14;
-
   --brand-lines: rgb(255 255 255 / 6%);
 
-  --brand-canvas-lines: rgb(255 255 255 / 6%);
+  --brand-canvas-blob-1: radial-gradient(
+    circle at 40% 40%,
+    rgb(79 125 249 / 20%) 0%,
+    rgb(79 125 249 / 0%) 70%
+  );
+
+  --brand-canvas-blob-2: radial-gradient(
+    circle at 50% 50%,
+    rgb(34 196 221 / 14%) 0%,
+    rgb(34 196 221 / 0%) 70%
+  );
+
+  --brand-canvas-art: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201440%20900'%20preserveAspectRatio='xMidYMid%20slice'%3E%3Cg%20fill='none'%20stroke='rgba(255,255,255,0.06)'%20stroke-width='1.5'%3E%3Cpath%20d='M-60,150%20L240,60%20L430,150%20L130,240%20Z'/%3E%3Cpath%20d='M-20,190%20L250,110%20L400,180'/%3E%3Cpath%20d='M60,120%20L60,180%20M160,92%20L160,152%20M260,120%20L260,180'/%3E%3Cpath%20d='M980,40%20L1240,-30%20L1420,50%20L1160,120%20Z'/%3E%3Cpath%20d='M380,880%20L760,770%20L1140,880%20L760,990%20Z'/%3E%3Cpath%20d='M470,880%20L760,795%20L1050,880'/%3E%3Cpath%20d='M600,850%20L600,905%20M760,805%20L760,860%20M920,850%20L920,905'/%3E%3C/g%3E%3C/svg%3E");
 
   --brand-surface: #1d2129;
 

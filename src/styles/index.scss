@@ -38,6 +38,36 @@
   }
 }
 
+/*
+  面板质感 = 登录页同源表面：无边框 + 面板档圆角 + 静息柔阴影。暗色黑底上柔阴影几乎不可见，
+  层次改由 --brand-edge 的 1px 内描边承担（亮色该令牌为 transparent，即描边只在暗色出现）。
+  选择器写 .el-card.el-card 抬到两档特异性，原因有二：ContentWrap 挂 shadow="never"
+  （.el-card.is-never-shadow 同为两档）；且 element-plus 的样式由 unplugin-element-plus
+  按组件注入、晚于本文件，同档特异性下后写者胜，必须靠档位而不是靠顺序赢。
+  圆角与卡头分隔线也在这里直接写令牌：覆写 --el-card-border-radius 等 EP :root 变量
+  同样会输给后注入的 EP css-vars。
+*/
+.el-card.el-card {
+  border: none;
+  border-radius: var(--brand-radius-panel);
+  background-color: var(--brand-surface);
+  box-shadow:
+    var(--brand-shadow-1),
+    inset 0 0 0 1px var(--brand-edge);
+}
+
+.el-card.el-card .el-card__header {
+  border-bottom-color: var(--brand-line);
+}
+
+/* 嵌套小卡（面板内卡中卡、弹窗内卡）：浅底 + 小一档圆角 + 不叠阴影，
+   与外层品牌表面形成「浅底衬白底」的层次，避免去边框后糊成一片 */
+.el-card .el-card {
+  border-radius: var(--brand-radius-card);
+  background-color: var(--el-fill-color-light);
+  box-shadow: none;
+}
+
 /* 列表「序号」列：收窄左右内边距，让序号列在更小的固定宽度下依然舒适（表头不换行、三位数不挤） */
 .el-table .col-index .cell {
   padding-left: 4px;
