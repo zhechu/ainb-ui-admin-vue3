@@ -377,10 +377,23 @@ describe('🔴 注释里禁止写死源码位置引用（E4 守卫）', () => {
       srcFiles.length,
       `src 只扫到 ${srcFiles.length} 个（今天实测 1434）⟹ 口径大概率坏了`
     ).toBeGreaterThanOrEqual(1100)
-    expect(
-      testFiles.length,
-      `tests 只扫到 ${testFiles.length} 个（今天实测 103）⟹ 口径大概率坏了`
-    ).toBeGreaterThanOrEqual(80)
+    // ⚠️ tests/ 已随「清理垃圾文件」那次提交被整个删掉（195 个文件连 playwright.config.ts），
+    //    所以 collect 返回 0 是**真实状态**，不是口径坏了 —— 原来那条无条件下限因此长期红，
+    //    把整个 test:unit 变成常红套件，新违规混在红灯里没人看得见。
+    //    但探针本身绝不能删：目录若哪天回来、或 glob 被写坏，都得照样报警。
+    //    故改成双向钉死 ——「目录在 ⇒ 必须够数」「目录不在 ⇒ 必须一个都没扫到」，
+    //    两种坏法都会失败，规则（禁令）一个字没放宽。
+    if (existsSync(join(root, 'tests'))) {
+      expect(
+        testFiles.length,
+        `tests 目录存在却只扫到 ${testFiles.length} 个（历史实测 103）⟹ 口径大概率坏了`
+      ).toBeGreaterThanOrEqual(80)
+    } else {
+      expect(
+        testFiles.length,
+        `tests 目录不存在，却扫到了 ${testFiles.length} 个文件 ⟹ collect 的路径拼错了`
+      ).toBe(0)
+    }
 
     const violations: Violation[] = []
     for (const p of [...srcFiles, ...testFiles]) {
