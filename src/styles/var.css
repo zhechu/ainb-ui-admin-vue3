@@ -60,11 +60,6 @@
 
   --transition-time-02: 0.2s;
 
-  /* JNPF 风格圆角：控件 4px（EP 默认）。
-     卡片圆角/卡头分隔线不在此覆写 EP 变量——unplugin-element-plus 把 EP css-vars
-     注入在本文件之后，:root 覆写会输；改在 index.scss 的选择器里直接写品牌令牌。 */
-  --el-border-radius-base: 4px;
-
   /*
    * brand start —— 登录页质感的设计令牌（画布 / 表面 / 签名 / 半径阶梯）。
    * 登录页是这套令牌的首个实例；暗色值见下方 .dark 段，一律抄录登录页已验证的暗色实现，
@@ -128,6 +123,16 @@
 
   --brand-radius-hero: 20px;
   /* brand end */
+}
+
+/*
+ * 控件圆角档 4px→6px（按钮/输入/选择器/标签一档，与面板 12px 成阶梯）。
+ * EP css-vars 由 unplugin-element-plus 注入在本文件之后，单 :root 覆写会输在
+ * 同特异性后来者；双 :root 把特异性提到 (0,2,0) 才赢。卡片圆角/卡头分隔线同理
+ * 不走变量覆写，改在 index.scss 的选择器里直接写品牌令牌。
+ */
+:root:root {
+  --el-border-radius-base: 6px;
 }
 
 .dark {

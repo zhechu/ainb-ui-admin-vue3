@@ -68,6 +68,57 @@
   box-shadow: none;
 }
 
+/*
+  控件层品牌化（圆角档见 var.css 的 :root:root）：弹窗/抽屉取面板圆角与浮起阴影，
+  主按钮取品牌渐变底。选择器档位同卡片一节——EP 样式后注入，靠特异性赢。
+
+  主按钮只动「实心 primary」：plain/text/link 与禁用态原样保留 EP 语义；
+  边框保留 1px 宽度只把颜色透明（布局不跳），hover/active 用 brightness 提亮压暗，
+  渐变是 background-image，EP 的 hover 换底色逻辑与之互不干扰。
+*/
+.el-dialog.el-dialog:not(.is-fullscreen) {
+  border-radius: var(--brand-radius-panel);
+  background-color: var(--brand-surface);
+  box-shadow: var(--brand-shadow-2);
+}
+
+.el-drawer.el-drawer {
+  background-color: var(--brand-surface);
+  box-shadow: var(--brand-shadow-2);
+}
+
+.el-drawer.el-drawer.rtl {
+  border-radius: var(--brand-radius-panel) 0 0 var(--brand-radius-panel);
+}
+
+.el-drawer.el-drawer.ltr {
+  border-radius: 0 var(--brand-radius-panel) var(--brand-radius-panel) 0;
+}
+
+.el-drawer.el-drawer.ttb {
+  border-radius: 0 0 var(--brand-radius-panel) var(--brand-radius-panel);
+}
+
+.el-drawer.el-drawer.btt {
+  border-radius: var(--brand-radius-panel) var(--brand-radius-panel) 0 0;
+}
+
+.el-button.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  border-color: transparent;
+  background-color: transparent;
+  background-image: var(--brand-grad);
+  box-shadow: var(--brand-btn-shadow);
+
+  &:hover,
+  &:focus {
+    filter: brightness(1.08);
+  }
+
+  &:active {
+    filter: brightness(0.94);
+  }
+}
+
 /* 列表「序号」列：收窄左右内边距，让序号列在更小的固定宽度下依然舒适（表头不换行、三位数不挤） */
 .el-table .col-index .cell {
   padding-left: 4px;
