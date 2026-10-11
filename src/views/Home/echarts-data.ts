@@ -2,6 +2,23 @@ import { EChartsOption } from 'echarts'
 
 const { t } = useI18n()
 
+/*
+ * 品牌色板明暗两套：暗色为亮色提亮一档（登录页暗色渐变异族），
+ * 轴标签字色 = --el-text-color-secondary、网格/轴线色 = --el-border-color 的明暗实值
+ * （ECharts option 吃不了 CSS 变量，故在此出两套实值）。
+ * 标题不在画布内画——图表卡头改用全局 .brand-bar-title 签名，i18n 键原样复用。
+ */
+const PALETTE_LIGHT = ['#22a6f2', '#3b4bd8', '#22c4dd', '#6a5ae0', '#98a2b3']
+const PALETTE_DARK = ['#4db4f7', '#7d8bf0', '#35d3e8', '#9a8bf5', '#8d9095']
+const AXIS_TEXT_LIGHT = '#909399'
+const AXIS_TEXT_DARK = '#a3a6ad'
+const AXIS_LINE_LIGHT = '#dcdfe6'
+const AXIS_LINE_DARK = '#4c4d4f'
+
+const palette = (dark: boolean) => (dark ? PALETTE_DARK : PALETTE_LIGHT)
+const axisText = (dark: boolean) => (dark ? AXIS_TEXT_DARK : AXIS_TEXT_LIGHT)
+const axisLine = (dark: boolean) => (dark ? AXIS_LINE_DARK : AXIS_LINE_LIGHT)
+
 export const lineOptions: EChartsOption = {
   title: {
     text: t('analysis.monthlySales'),
@@ -71,11 +88,8 @@ export const lineOptions: EChartsOption = {
   ]
 }
 
-export const pieOptions: EChartsOption = {
-  title: {
-    text: t('analysis.userAccessSource'),
-    left: 'center'
-  },
+export const pieOptions = (dark = false): EChartsOption => ({
+  color: palette(dark),
   tooltip: {
     trigger: 'item',
     formatter: '{a} <br/>{b} : {c} ({d}%)'
@@ -83,6 +97,9 @@ export const pieOptions: EChartsOption = {
   legend: {
     orient: 'vertical',
     left: 'left',
+    textStyle: {
+      color: axisText(dark)
+    },
     data: [
       t('analysis.directAccess'),
       t('analysis.mailMarketing'),
@@ -106,13 +123,10 @@ export const pieOptions: EChartsOption = {
       ]
     }
   ]
-}
+})
 
-export const barOptions: EChartsOption = {
-  title: {
-    text: t('analysis.weeklyUserActivity'),
-    left: 'center'
-  },
+export const barOptions = (dark = false): EChartsOption => ({
+  color: palette(dark),
   tooltip: {
     trigger: 'axis',
     axisPointer: {
@@ -137,10 +151,26 @@ export const barOptions: EChartsOption = {
     ],
     axisTick: {
       alignWithLabel: true
+    },
+    axisLabel: {
+      color: axisText(dark)
+    },
+    axisLine: {
+      lineStyle: {
+        color: axisLine(dark)
+      }
     }
   },
   yAxis: {
-    type: 'value'
+    type: 'value',
+    axisLabel: {
+      color: axisText(dark)
+    },
+    splitLine: {
+      lineStyle: {
+        color: axisLine(dark)
+      }
+    }
   },
   series: [
     {
@@ -149,7 +179,7 @@ export const barOptions: EChartsOption = {
       type: 'bar'
     }
   ]
-}
+})
 
 export const radarOption: EChartsOption = {
   legend: {

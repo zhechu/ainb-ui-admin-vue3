@@ -60,6 +60,27 @@
   border-bottom-color: var(--brand-line);
 }
 
+/* 卡头品牌签名：与菜单同字号（14px/600）+ 左侧 3px×14px 圆角渐变竖条。
+   全局类而非组件 scoped，ContentWrap 与首页图表卡共用同一枚签名。 */
+.brand-bar-title {
+  position: relative;
+  padding-left: 10px;
+  font-size: 14px;
+  font-weight: 600;
+
+  &::before {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background-image: var(--brand-grad);
+    content: '';
+    transform: translateY(-50%);
+  }
+}
+
 /* 嵌套小卡（面板内卡中卡、弹窗内卡）：浅底 + 小一档圆角 + 不叠阴影，
    与外层品牌表面形成「浅底衬白底」的层次，避免去边框后糊成一片 */
 .el-card .el-card {

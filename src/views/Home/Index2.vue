@@ -154,7 +154,7 @@ const { t } = useI18n()
 const loading = ref(true)
 const { getPrefixCls } = useDesign()
 const prefixCls = getPrefixCls('panel')
-const pieOptionsData = reactive<EChartsOption>(pieOptions) as EChartsOption
+const pieOptionsData = reactive<EChartsOption>(pieOptions()) as EChartsOption
 
 let totalState = reactive<AnalysisTotalTypes>({
   users: 0,
@@ -189,7 +189,7 @@ const getUserAccessSource = async () => {
   )
   set(pieOptionsData, 'series.data', data)
 }
-const barOptionsData = reactive<EChartsOption>(barOptions) as EChartsOption
+const barOptionsData = reactive<EChartsOption>(barOptions()) as EChartsOption
 
 // 周活跃量
 const getWeeklyUserActivity = async () => {

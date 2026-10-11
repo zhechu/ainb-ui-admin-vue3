@@ -6,54 +6,39 @@
   />
   <PortalRuntime v-else-if="portalRuntime" class="home-portal-runtime" :portal="portalRuntime" flush />
   <div v-else>
-    <el-card shadow="never">
+    <el-card shadow="never" class="home-hero">
       <el-skeleton :loading="loading" animated>
-        <el-row :gutter="16" justify="space-between">
+        <el-row :gutter="16" justify="space-between" align="middle">
           <el-col :xl="12" :lg="12" :md="12" :sm="24" :xs="24">
             <div class="flex items-center">
               <el-avatar :src="avatar" :size="70" class="mr-16px">
                 <LottieAnimation :animation-data="avatarAnimation" :width="70" :height="70" />
               </el-avatar>
               <div>
-                <div class="text-20px">
+                <div class="home-hero__title">
                   {{ t('workplace.welcome') }} {{ username }} {{ t('workplace.happyDay') }}
                 </div>
-                <div class="mt-10px text-14px text-gray-500">
+                <div class="home-hero__sub mt-10px text-14px">
                   {{ t('workplace.toady') }}，20℃ - 32℃！
                 </div>
               </div>
             </div>
           </el-col>
           <el-col :xl="12" :lg="12" :md="12" :sm="24" :xs="24">
-            <div class="h-70px flex items-center justify-end lt-sm:mt-10px">
-              <div class="px-8px text-right">
-                <div class="mb-16px text-14px text-gray-400">{{ t('workplace.project') }}</div>
-                <CountTo
-                  class="text-20px"
-                  :start-val="0"
-                  :end-val="totalSate.project"
-                  :duration="2600"
-                />
-              </div>
-              <el-divider direction="vertical" />
-              <div class="px-8px text-right">
-                <div class="mb-16px text-14px text-gray-400">{{ t('workplace.toDo') }}</div>
-                <CountTo
-                  class="text-20px"
-                  :start-val="0"
-                  :end-val="totalSate.todo"
-                  :duration="2600"
-                />
-              </div>
-              <el-divider direction="vertical" border-style="dashed" />
-              <div class="px-8px text-right">
-                <div class="mb-16px text-14px text-gray-400">{{ t('workplace.access') }}</div>
-                <CountTo
-                  class="text-20px"
-                  :start-val="0"
-                  :end-val="totalSate.access"
-                  :duration="2600"
-                />
+            <div class="home-hero__stats lt-sm:mt-10px">
+              <div v-for="item in stats" :key="item.key" class="home-stat">
+                <span class="home-chip">
+                  <Icon :icon="item.icon" :size="16" />
+                </span>
+                <div>
+                  <CountTo
+                    class="home-stat__num"
+                    :start-val="0"
+                    :end-val="totalSate[item.key]"
+                    :duration="2600"
+                  />
+                  <div class="home-stat__label">{{ t(item.label) }}</div>
+                </div>
               </div>
             </div>
           </el-col>
@@ -85,17 +70,14 @@
               >
                 <el-card
                   shadow="hover"
-                  class="flex-1 cursor-pointer"
+                  class="home-lift flex-1 cursor-pointer"
                   body-class="flex h-full flex-col"
                   @click="handleProjectClick(item.message)"
                 >
                   <div class="flex items-center">
-                    <Icon
-                      :icon="item.icon"
-                      :size="25"
-                      class="mr-8px flex-none"
-                      :style="{ color: item.color }"
-                    />
+                    <span class="home-chip mr-8px flex-none">
+                      <Icon :icon="item.icon" :size="16" />
+                    </span>
                     <span class="min-w-0 line-clamp-2 text-16px" :title="item.name">{{
                       item.name
                     }}</span>
@@ -125,6 +107,11 @@
             <el-row :gutter="20" justify="space-between">
               <el-col :xl="10" :lg="10" :md="24" :sm="24" :xs="24">
                 <el-card shadow="hover" class="mb-8px">
+                  <template #header>
+                    <div class="h-3 flex justify-between">
+                      <span class="brand-bar-title">{{ t('analysis.userAccessSource') }}</span>
+                    </div>
+                  </template>
                   <el-skeleton :loading="loading" animated>
                     <Echart :options="pieOptionsData" :height="280" />
                   </el-skeleton>
@@ -132,6 +119,11 @@
               </el-col>
               <el-col :xl="14" :lg="14" :md="24" :sm="24" :xs="24">
                 <el-card shadow="hover" class="mb-8px">
+                  <template #header>
+                    <div class="h-3 flex justify-between">
+                      <span class="brand-bar-title">{{ t('analysis.weeklyUserActivity') }}</span>
+                    </div>
+                  </template>
                   <el-skeleton :loading="loading" animated>
                     <Echart :options="barOptionsData" :height="280" />
                   </el-skeleton>
@@ -151,8 +143,10 @@
           <el-skeleton :loading="loading" animated>
             <el-row>
               <el-col v-for="item in shortcut" :key="`team-${item.name}`" :span="8" class="mb-8px">
-                <div class="flex items-center">
-                  <Icon :icon="item.icon" class="mr-8px" :style="{ color: item.color }" />
+                <div class="home-shortcut flex items-center">
+                  <span class="home-chip home-chip--sm mr-8px">
+                    <Icon :icon="item.icon" :size="14" />
+                  </span>
                   <el-link type="default" :underline="false" @click="handleShortcutClick(item.url)">
                     {{ item.name }}
                   </el-link>
@@ -161,7 +155,7 @@
             </el-row>
           </el-skeleton>
         </el-card>
-        <el-card shadow="never" class="mt-8px">
+        <el-card shadow="never" class="home-notice mt-8px">
           <template #header>
             <div class="h-3 flex justify-between">
               <span>{{ t('workplace.notice') }}</span>
@@ -221,13 +215,20 @@ const loading = ref(true)
 const avatar = userStore.getUser.avatar
 const username = userStore.getUser.nickname
 const avatarAnimation = ref(avatarAnimationData)
-const pieOptionsData = reactive<EChartsOption>(pieOptions) as EChartsOption
+const dark = computed(() => appStore.getIsDark)
+const pieOptionsData = reactive<EChartsOption>(pieOptions(dark.value)) as EChartsOption
 // 获取统计数
 let totalSate = reactive<WorkplaceTotal>({
   project: 0,
   access: 0,
   todo: 0
 })
+
+const stats = [
+  { key: 'project', label: 'workplace.project', icon: 'ep:files' },
+  { key: 'todo', label: 'workplace.toDo', icon: 'ep:alarm-clock' },
+  { key: 'access', label: 'workplace.access', icon: 'ep:view' }
+] as const
 
 const getCount = async () => {
   const data = {
@@ -374,7 +375,7 @@ const getUserAccessSource = async () => {
     }
   })
 }
-const barOptionsData = reactive<EChartsOption>(barOptions) as EChartsOption
+const barOptionsData = reactive<EChartsOption>(barOptions(dark.value)) as EChartsOption
 
 // 周活跃量
 const getWeeklyUserActivity = async () => {
@@ -400,6 +401,13 @@ const getWeeklyUserActivity = async () => {
     }
   ])
 }
+
+// 明暗切换时整套换色板/轴色（option 吃不了 CSS 变量），换完把数据重新灌回
+watch(dark, async (isDarkNow) => {
+  Object.assign(pieOptionsData, pieOptions(isDarkNow))
+  Object.assign(barOptionsData, barOptions(isDarkNow))
+  await Promise.all([getUserAccessSource(), getWeeklyUserActivity()])
+})
 
 const getAllApi = async () => {
   await Promise.all([
@@ -459,5 +467,111 @@ initHome()
   max-width: 100%;
   min-width: 0;
   margin: 0;
+}
+
+/* 品牌 hero：20px 大圆角 + 渐变混底 + 右侧等距插画（填色/描边均走令牌，暗色换深填色族） */
+.home-hero {
+  border-radius: var(--brand-radius-hero);
+  background-color: var(--brand-surface);
+  background-image: var(--brand-hero-wash), var(--brand-hero-art);
+  background-repeat: no-repeat, no-repeat;
+  background-position:
+    0 0,
+    right 24px center;
+  background-size:
+    100% 100%,
+    320px 200px;
+}
+
+.home-hero__title {
+  font-size: 19px;
+  font-weight: 700;
+  color: transparent;
+  background-image: var(--brand-grad);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.home-hero__sub {
+  color: var(--el-text-color-secondary);
+}
+
+.home-hero__stats {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.home-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--brand-radius-card);
+  background-color: var(--brand-surface);
+  box-shadow: var(--brand-shadow-1);
+  transition:
+    transform var(--transition-time-02),
+    box-shadow var(--transition-time-02);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--brand-shadow-2);
+  }
+}
+
+.home-stat__num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.home-stat__label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 图标芯片：品牌渐变 12%（暗 20%）做底 + 品牌图标色，替掉裸 Icon 原色 */
+.home-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background-image: var(--brand-chip-bg);
+  color: var(--brand-chip-fg);
+}
+
+.home-chip--sm {
+  width: 26px;
+  height: 26px;
+}
+
+.home-lift,
+.home-shortcut {
+  transition:
+    transform var(--transition-time-02),
+    box-shadow var(--transition-time-02);
+}
+
+.home-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--brand-shadow-2);
+}
+
+.home-shortcut {
+  padding: 4px 6px;
+  border-radius: var(--el-border-radius-base);
+  cursor: pointer;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.home-notice :deep(.el-divider) {
+  border-top-color: var(--brand-line);
 }
 </style>
