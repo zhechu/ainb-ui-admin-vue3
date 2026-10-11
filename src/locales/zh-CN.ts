@@ -161,9 +161,9 @@ export default {
     feature1Title: '在线建模',
     feature1Desc: '表与字段在线定义，业务数据即建即用',
     feature2Title: '可视化编排',
-    feature2Desc: '表单拖拽设计，BPM 与智能体流程图形化编排',
+    feature2Desc: '表单拖拽设计，工作流程与智能体流程图形化编排',
     feature3Title: 'AI 原生',
-    feature3Desc: '智能体、工具与提示词可配置，对话、知识库、绘画已集成'
+    feature3Desc: '智能体协同执行，自然语言驱动操作'
   },
   captcha: {
     verify: '验证',
