@@ -1,132 +1,123 @@
 <template>
   <!-- 列表视图 -->
   <template v-if="viewMode === 'list'">
-  <ContentWrap>
-    <!-- 搜索工作栏 -->
-    <el-form
-      class="-mb-15px"
-      :model="queryParams"
-      ref="queryFormRef"
-      :inline="true"
-      label-width="68px"
-    >
-      <el-form-item label="表名" prop="tableName">
-        <el-input
-          v-model="queryParams.tableName"
-          placeholder="请输入表名"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item label="模型名称" prop="modelName">
-        <el-input
-          v-model="queryParams.modelName"
-          placeholder="请输入模型名称"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
-        <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
-        <el-button
-          type="primary"
-          plain
-          @click="openForm('create')"
-          v-hasPermi="['infra:data-model:create']"
-        >
-          <Icon icon="ep:plus" class="mr-5px" /> 新建模型
-        </el-button>
-        <el-button
-          type="success"
-          plain
-          @click="openImport"
-          v-hasPermi="['infra:data-model:create']"
-        >
-          <Icon icon="ep:download" class="mr-5px" /> 导入已有表
-        </el-button>
-      </el-form-item>
-    </el-form>
-  </ContentWrap>
+    <ContentWrap>
+      <!-- 搜索工作栏 -->
+      <el-form
+        class="-mb-15px"
+        :model="queryParams"
+        ref="queryFormRef"
+        :inline="true"
+        label-width="68px"
+      >
+        <el-form-item label="表名" prop="tableName">
+          <el-input
+            v-model="queryParams.tableName"
+            placeholder="请输入表名"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
+          />
+        </el-form-item>
+        <el-form-item label="模型名称" prop="modelName">
+          <el-input
+            v-model="queryParams.modelName"
+            placeholder="请输入模型名称"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
+          <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
+          <el-button
+            type="primary"
+            plain
+            @click="openForm('create')"
+            v-hasPermi="['infra:data-model:create']"
+          >
+            <Icon icon="ep:plus" class="mr-5px" /> 新建模型
+          </el-button>
+          <el-button
+            type="success"
+            plain
+            @click="openImport"
+            v-hasPermi="['infra:data-model:create']"
+          >
+            <Icon icon="ep:download" class="mr-5px" /> 导入已有表
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </ContentWrap>
 
-  <!-- 列表 -->
-  <ContentWrap>
-    <el-alert type="warning" :closable="false" show-icon class="mb-10px">
-      <template #title>
-        数据建模会<b>直接修改数据库真实表结构</b>，且数据库 的 DDL <b>无法回滚</b>。
-        改表前请先点「预览 DDL」确认将要执行的语句。
+    <!-- 列表 -->
+    <ContentWrap>
+      <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+        <el-table-column
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod(queryParams)"
+          class-name="col-index"
+          label-class-name="col-index"
+        />
+        <el-table-column label="编号" align="center" prop="id" width="80" />
         <!--
-          系统内置表这一句原来挂在「删除」按钮的 el-tooltip 上（「系统内置表，禁止通过数据建模删除」）。
-          操作列换成 TableActions 后单元格内部由组件渲染，页面没地方再套 tooltip；
-          而 tooltip 要包住 disabled 的按钮必须额外套一层 span，那层 span 会打断
-          styles/index.scss 里 .el-button + .el-button 的相邻选择器、让整排按钮贴在一起。
-          搬到页头 alert 是净赚：不用悬停就能看见，也不影响按钮间距。
-          前缀名单由后端 SystemTablePolicy 下发，所以这里不写死具体前缀。
-        -->
-        系统内置表的「删除」按钮会置灰，这类表不能通过数据建模删除。
-      </template>
-    </el-alert>
-    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
-      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
-        label-class-name="col-index"
-      />
-      <el-table-column label="编号" align="center" prop="id" width="80" />
-      <!--
         列宽分配：文本列（模型名称/表名/表描述/备注）用 min-width 弹性伸展，
         吃掉操作列、时间列让出来的空间；创建时间、操作给固定宽，
         避免时间列比模型名称还宽、操作列三个链接按钮却占三百多像素
       -->
-      <el-table-column
-        label="模型名称"
-        align="center"
-        prop="modelName"
-        min-width="150"
-        :show-overflow-tooltip="true"
+        <el-table-column
+          label="模型名称"
+          align="center"
+          prop="modelName"
+          min-width="150"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="表名"
+          align="center"
+          prop="tableName"
+          min-width="150"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="表描述"
+          align="center"
+          prop="tableComment"
+          min-width="130"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="备注"
+          align="center"
+          prop="remark"
+          min-width="100"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="创建时间"
+          align="center"
+          prop="createTime"
+          width="165"
+          :formatter="dateFormatter"
+        />
+        <!-- 实测：设计 数据 DDL日志 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
+        <el-table-column label="操作" align="center" width="230" fixed="right">
+          <template #default="scope">
+            <TableActions :row="scope.row" :buttons="rowButtons" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <Pagination
+        :total="total"
+        v-model:page="queryParams.pageNo"
+        v-model:limit="queryParams.pageSize"
+        @pagination="getList"
       />
-      <el-table-column
-        label="表名"
-        align="center"
-        prop="tableName"
-        min-width="150"
-        :show-overflow-tooltip="true"
-      />
-      <el-table-column
-        label="表描述"
-        align="center"
-        prop="tableComment"
-        min-width="130"
-        :show-overflow-tooltip="true"
-      />
-      <el-table-column
-        label="备注"
-        align="center"
-        prop="remark"
-        min-width="100"
-        :show-overflow-tooltip="true"
-      />
-      <el-table-column
-        label="创建时间"
-        align="center"
-        prop="createTime"
-        width="165"
-        :formatter="dateFormatter"
-      />
-      <!-- 实测：设计 数据 DDL日志 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
-      <el-table-column label="操作" align="center" width="230" fixed="right">
-        <template #default="scope">
-          <TableActions :row="scope.row" :buttons="rowButtons" />
-        </template>
-      </el-table-column>
-    </el-table>
-    <Pagination
-      :total="total"
-      v-model:page="queryParams.pageNo"
-      v-model:limit="queryParams.pageSize"
-      @pagination="getList"
-    />
-  </ContentWrap>
+    </ContentWrap>
   </template>
 
   <!-- 页内视图：模型设计 / 新建（内容较多，不用弹窗） -->
