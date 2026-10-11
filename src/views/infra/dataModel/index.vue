@@ -113,7 +113,8 @@
         width="165"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="220" fixed="right">
+      <!-- 实测：设计 数据 DDL日志 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
+      <el-table-column label="操作" align="center" width="230" fixed="right">
         <template #default="scope">
           <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>

@@ -102,30 +102,36 @@ describe('resolveRowValue', () => {
 })
 
 describe('splitButtons', () => {
-  const five = ['a', 'b', 'c', 'd', 'e'].map((key) => button(key))
+  const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((key) => button(key))
 
   it('正好等于阈值不折叠', () => {
-    expect(splitButtons(five.slice(0, 3), 3)).toEqual({
-      inline: five.slice(0, 3),
+    expect(splitButtons(six.slice(0, 3), 3)).toEqual({
+      inline: six.slice(0, 3),
       folded: []
     })
   })
 
   it('少于阈值不折叠', () => {
-    const two = five.slice(0, 2)
+    const two = six.slice(0, 2)
     expect(splitButtons(two, 3)).toEqual({ inline: two, folded: [] })
   })
 
-  it('超过阈值就折：4 个 = 3 行内 + 1 更多', () => {
-    const { inline, folded } = splitButtons(five.slice(0, 4), 3)
-    expect(keysOf(inline)).toEqual(['a', 'b', 'c'])
-    expect(keysOf(folded)).toEqual(['d'])
+  it('只差一个不折叠：4 个全平铺', () => {
+    // 折成「3 个按钮 + 1 个更多」比 4 个按钮更宽，还多一次点击
+    const four = six.slice(0, 4)
+    expect(splitButtons(four, 3)).toEqual({ inline: four, folded: [] })
   })
 
-  it('超过阈值就折：5 个 = 3 行内 + 2 更多', () => {
-    const { inline, folded } = splitButtons(five, 3)
+  it('超过阈值 + 1 才折：5 个 = 3 行内 + 2 更多', () => {
+    const { inline, folded } = splitButtons(six.slice(0, 5), 3)
     expect(keysOf(inline)).toEqual(['a', 'b', 'c'])
     expect(keysOf(folded)).toEqual(['d', 'e'])
+  })
+
+  it('6 个 = 3 行内 + 3 更多', () => {
+    const { inline, folded } = splitButtons(six, 3)
+    expect(keysOf(inline)).toEqual(['a', 'b', 'c'])
+    expect(keysOf(folded)).toEqual(['d', 'e', 'f'])
   })
 
   it('空列表不折叠也不产出下拉', () => {
@@ -133,7 +139,7 @@ describe('splitButtons', () => {
   })
 
   it('不改传入的数组', () => {
-    const source = five.slice(0, 2)
+    const source = six.slice(0, 2)
     const { inline } = splitButtons(source, 3)
     inline.push(button('x'))
     expect(source).toHaveLength(2)

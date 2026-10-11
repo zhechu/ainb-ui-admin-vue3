@@ -125,7 +125,8 @@
         width="170"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="220" fixed="right">
+      <!-- 实测：测试 取号日志 编辑 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
+      <el-table-column label="操作" align="center" width="230" fixed="right">
         <template #default="{ row }">
           <TableActions :row="row" :buttons="rowButtons" />
         </template>

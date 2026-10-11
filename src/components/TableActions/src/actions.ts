@@ -17,9 +17,13 @@ export interface TableActionButton {
    * 例如工作流列表的设计按钮：可编辑时叫「设计」、否则叫「查看设计」
    */
   label: RowValue<string>
-  /** 给了就渲染，行内与下拉里都渲染 */
-  icon?: string
-  /** 缺省 primary */
+  /**
+   * 按钮配色，缺省 primary。
+   *
+   * ⚠️ 只作用于行内按钮。收进「更多」的项一律是纯文字，不染红也不带图标 ——
+   *    这是标杆页 infra/formDesign 的下拉写法，染色会让全站出现两种「更多」。
+   *    删除项要在下拉里被认出来，靠 divided。
+   */
   type?: 'primary' | 'success' | 'warning' | 'danger' | 'info'
   /**
    * 权限串，任一命中即显示。
@@ -67,16 +71,18 @@ export const resolveRowValue = <T>(value: RowValue<T> | undefined, row: any, fal
 }
 
 /**
- * 严格折叠：超过 maxInline 个就把多出来的收进「更多」
+ * 按阈值把按钮拆成「直接显示」与「收进更多」两组
  *
- * ⚠️ 与 listButton.ts 的 splitInlineButtons 规则不同（那边是 length <= limit + 1 全平铺，
- *    即 4 个按钮不折、5 个才折）。不复用它是刻意的：改它会动到所有已发布表单的操作列行为
- *    并打破它的单测，属于需要单独审批的业务逻辑改动。
+ * ⚠️ 只差一个时不折叠：四个按钮、阈值三 —— 折叠的话是「三个按钮 + 一个下拉」，
+ *    占的宽度反而比四个按钮还多，而且多一次点击。必须真的省下位置才值得折。
+ *    规则与 listButton.ts 的 splitInlineButtons 一致（动态渲染器的行按钮也走这条），
+ *    不复用那个函数是因为它带 normalizeMaxInline —— 那里的阈值来自用户配置、可能是脏值，
+ *    这里的阈值来自代码里的 prop，默认值已经保证合法。
  */
 export const splitButtons = <T>(
   buttons: readonly T[],
   maxInline: number
 ): { inline: T[]; folded: T[] } =>
-  buttons.length <= maxInline
+  buttons.length <= maxInline + 1
     ? { inline: [...buttons], folded: [] as T[] }
     : { inline: buttons.slice(0, maxInline), folded: buttons.slice(maxInline) }

@@ -96,7 +96,8 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="210" fixed="right">
+      <!-- 实测：编辑 主配置 测试 删除 = 210px，与列宽相等没有余量，放到 220 -->
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="scope">
           <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>

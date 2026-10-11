@@ -142,7 +142,8 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="200" fixed="right">
+      <!-- 实测：折成「查看 编辑 复制 + 更多」时需要 214px（含 .cell 左右内边距），200 会折行 -->
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="scope">
           <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>

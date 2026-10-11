@@ -66,15 +66,15 @@ const invoke = (command: string | number | object) => {
         :loading="loadingOf(button)"
         @click="button.onClick(row)"
       >
-        <Icon v-if="button.icon" :icon="button.icon" class="mr-2px" />
         {{ labelOf(button) }}
       </el-button>
 
       <!--
-        trigger="click"：三处手写实现都用 EP 默认的 hover，鼠标扫过密集表格会误弹，且触屏没有 hover
-        触发图标统一到 ep:arrow-down（原来全站分成 arrow-down 和 d-arrow-right 两派）
+        与标杆页 infra/formDesign 的「更多」逐字对齐：EP 默认的 hover 触发、
+        触发器是 link primary 的「更多 + ep:arrow-down」、下拉项是纯文字（无图标、不染红），
+        只在删除项上挂 divided。样式差异会让全站出现两种「更多」，所以这里不做任何加料。
       -->
-      <el-dropdown v-if="folded.length > 0" trigger="click" @command="invoke">
+      <el-dropdown v-if="folded.length > 0" @command="invoke">
         <el-button link :size="size" type="primary">
           {{ moreLabel }}<Icon :icon="moreIcon" class="ml-2px" />
         </el-button>
@@ -87,21 +87,7 @@ const invoke = (command: string | number | object) => {
               :divided="!!button.divided"
               :disabled="disabledOf(button)"
             >
-              <!--
-                染红的类挂在 slot 里的 span 上，不挂在 el-dropdown-item 上：
-                下拉面板是 teleport 到 body 的，而 EP 的 dropdown-item 根节点是
-                el-roving-focus-item、class 被 mergeProps 转发给内层 impl，
-                父组件的 scoped 属性到不了那一层。slot 内容在本组件作用域里编译，span 一定带得上。
-                禁用时不染色，让 EP 的 is-disabled 灰色生效。
-              -->
-              <span
-                :class="{
-                  'table-actions__danger': button.type === 'danger' && !disabledOf(button)
-                }"
-              >
-                <Icon v-if="button.icon" :icon="button.icon" class="mr-4px" />
-                {{ labelOf(button) }}
-              </span>
+              {{ labelOf(button) }}
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -109,9 +95,3 @@ const invoke = (command: string | number | object) => {
     </template>
   </div>
 </template>
-
-<style lang="scss" scoped>
-.table-actions__danger {
-  color: var(--el-color-danger);
-}
-</style>

@@ -143,7 +143,8 @@
         prop="createTime"
         width="170"
       />
-      <el-table-column align="center" fixed="right" label="操作" width="220">
+      <!-- 实测：编辑 成员 资源授权 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
+      <el-table-column align="center" fixed="right" label="操作" width="230">
         <template #default="scope">
           <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>

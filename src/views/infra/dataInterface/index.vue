@@ -101,7 +101,8 @@
         :formatter="dateFormatter"
       />
       <el-table-column label="更新者" align="center" prop="updater" width="100" />
-      <el-table-column label="操作" align="center" width="200" fixed="right">
+      <!-- 实测：折成「配置 预览 版本 + 更多」时需要 214px（含 .cell 左右内边距），200 会折行 -->
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="{ row }">
           <TableActions :row="row" :buttons="rowButtons" />
         </template>

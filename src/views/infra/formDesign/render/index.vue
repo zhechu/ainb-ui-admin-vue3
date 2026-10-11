@@ -156,18 +156,6 @@
               <Icon class="mr-5px" icon="ep:refresh" />
               重置
             </el-button>
-            <el-button
-              v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD"
-              link
-              type="primary"
-              @click="searchCollapsed = !searchCollapsed"
-            >
-              {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
-              <Icon
-                class="ml-2px"
-                :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'"
-              />
-            </el-button>
           </el-form-item>
           <!--
             工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
@@ -209,6 +197,17 @@
             >
               <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
               {{ btn.label }}
+            </el-button>
+          </el-form-item>
+          <!--
+            展开/收起排在最后：它调的是「查询区长什么样」，不是对数据做事的动作。
+            放在搜索/重置紧后面时，「新增」会被挤到一个折叠开关之后 —— 一行里最次要的
+            控件排在最主要的动作前面，读起来像是新增属于折叠功能的一部分。
+          -->
+          <el-form-item v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD">
+            <el-button link type="primary" @click="searchCollapsed = !searchCollapsed">
+              {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
+              <Icon class="ml-2px" :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
             </el-button>
           </el-form-item>
         </el-form>
