@@ -17,12 +17,16 @@
     </el-descriptions>
 
     <el-tabs v-model="activeTab" class="resource-detail-tabs">
-
       <!-- 页签一：授权列表 -->
       <el-tab-pane label="授权列表" name="grants">
         <div class="mb-10px flex justify-end">
-          <el-button v-hasPermi="['system:grant:create']" size="small" type="primary"
-                     @click="openGrantAdd">新增授权</el-button>
+          <el-button
+            v-hasPermi="['system:grant:create']"
+            size="small"
+            type="primary"
+            @click="openGrantAdd"
+            >新增授权</el-button
+          >
         </div>
         <el-table :data="grants" border size="small" v-loading="grantLoading">
           <el-table-column label="主体类型" width="90">
@@ -49,26 +53,43 @@
           <el-table-column label="到期" width="120">
             <template #default="{ row }">
               <el-tag v-if="row.expired" size="small" type="danger">已过期</el-tag>
-              <span v-else-if="row.expireTime" class="text-12px">{{ formatDate(row.expireTime) }}</span>
+              <span v-else-if="row.expireTime" class="text-12px">{{
+                formatDate(row.expireTime)
+              }}</span>
               <span v-else class="text-gray-400 text-12px">永不过期</span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="90" align="center">
             <template #default="{ row }">
-              <el-button link type="danger" size="small" @click="deleteGrantRow(row.id)">删除</el-button>
+              <el-button link type="danger" size="small" @click="deleteGrantRow(row.id)"
+                >删除</el-button
+              >
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-if="grants.length === 0 && !grantLoading" description="暂无授权" :image-size="50" />
+        <el-empty
+          v-if="grants.length === 0 && !grantLoading"
+          description="暂无授权"
+          :image-size="50"
+        />
       </el-tab-pane>
 
       <!-- 页签二：槽位映射 -->
       <el-tab-pane label="槽位映射" name="slots">
-        <el-alert class="mb-12px" type="warning" :closable="false"
-                  title="⚠️ 删掉槽位后，引用该槽位的规则会求值恒假（一行都看不到且不报错），请确认无引用后再删" />
+        <el-alert
+          class="mb-12px"
+          type="warning"
+          :closable="false"
+          title="⚠️ 删掉槽位后，引用该槽位的规则会求值恒假（一行都看不到且不报错），请确认无引用后再删"
+        />
         <div class="mb-10px flex justify-end">
-          <el-button v-hasPermi="['system:slot-mapping:create']" size="small" type="primary"
-                     @click="openSlotAdd">新增槽位</el-button>
+          <el-button
+            v-hasPermi="['system:slot-mapping:create']"
+            size="small"
+            type="primary"
+            @click="openSlotAdd"
+            >新增槽位</el-button
+          >
         </div>
         <el-table :data="slots" border size="small" v-loading="slotLoading">
           <el-table-column label="槽位名称" prop="slot" width="130" />
@@ -76,22 +97,37 @@
           <el-table-column label="说明" prop="description" min-width="160" show-overflow-tooltip />
           <el-table-column label="操作" width="130" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openSlotEdit(row)">编辑</el-button>
-              <el-button link type="danger" size="small" @click="deleteSlotRow(row.id)">删除</el-button>
+              <el-button link type="primary" size="small" @click="openSlotEdit(row)"
+                >编辑</el-button
+              >
+              <el-button link type="danger" size="small" @click="deleteSlotRow(row.id)"
+                >删除</el-button
+              >
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-if="slots.length === 0 && !slotLoading" description="暂无槽位映射" :image-size="50" />
+        <el-empty
+          v-if="slots.length === 0 && !slotLoading"
+          description="暂无槽位映射"
+          :image-size="50"
+        />
       </el-tab-pane>
 
       <!-- 页签：记录分享策略（TODO #48）。只对数据集类资源有意义 -->
       <el-tab-pane label="记录分享" name="share">
-        <el-alert class="mb-12px" type="info" :closable="false" show-icon
-                  title="分享策略决定「谁可以把一条记录分享给别人」。">
+        <el-alert
+          class="mb-12px"
+          type="info"
+          :closable="false"
+          show-icon
+          title="分享策略决定「谁可以把一条记录分享给别人」。"
+        >
           <template #default>
             <div class="text-12px leading-20px">
-              <div>· <b>OWNER_ONLY</b>（默认）仅记录归属人可分享。
-                ⚠️ 依赖 owner 槽位映射——没配槽位时读不到归属人，分享会一律被拒。</div>
+              <div
+                >· <b>OWNER_ONLY</b>（默认）仅记录归属人可分享。 ⚠️ 依赖 owner
+                槽位映射——没配槽位时读不到归属人，分享会一律被拒。</div
+              >
               <div>· <b>ANY_VIEWER</b> 看得见这条记录的人都能分享。</div>
               <div>· <b>DISABLED</b> 完全禁止分享。</div>
               <div class="mt-6px text-orange-600">
@@ -104,21 +140,43 @@
         </el-alert>
         <el-form label-width="100px">
           <el-form-item label="分享策略">
-            <el-select v-model="sharePolicy" class="!w-320px" clearable placeholder="未配置（回落到默认 OWNER_ONLY）">
+            <el-select
+              v-model="sharePolicy"
+              class="!w-320px"
+              clearable
+              placeholder="未配置（回落到默认 OWNER_ONLY）"
+            >
               <el-option label="OWNER_ONLY 仅归属人可分享" value="OWNER_ONLY" />
               <el-option label="ANY_VIEWER 可见者均可分享" value="ANY_VIEWER" />
               <el-option label="DISABLED 禁止分享" value="DISABLED" />
             </el-select>
-            <el-button class="ml-12px" type="primary" :loading="sharePolicySaving"
-                       @click="saveSharePolicy">保 存</el-button>
+            <el-button
+              class="ml-12px"
+              type="primary"
+              :loading="sharePolicySaving"
+              @click="saveSharePolicy"
+              >保 存</el-button
+            >
           </el-form-item>
         </el-form>
       </el-tab-pane>
 
       <!-- 页签三：字段权限（COLUMN/FIELD 资源的子资源列表及其授权快览） -->
       <el-tab-pane label="字段权限" name="fields">
-        <el-alert class="mb-12px" type="info" :closable="false"
-                  title="字段权限管理：给 COLUMN/FIELD 类型的子资源配置 VISIBLE/READONLY/HIDDEN。通常只需对「敏感列」配置。" />
+        <!--
+          ⚠️ 这里原先写的是「配置 VISIBLE/READONLY/HIDDEN」，而 VISIBLE 不是合法值：
+          后端 FieldModeEnum 只有 EDITABLE/READONLY/HIDDEN，parse 不出来的行会在
+          GrantDecisionEngine 的字段模式判定里被【整行忽略】，字段回落到默认可编辑 ——
+          保存成功、列表正常、不报错，只是字段权限压根没生效。
+          下面的下拉早就改对了，唯独这句提示还留着旧值，等于页面自己在教人踩坑。
+          改文案时请连同下拉一起改，两处必须一致
+        -->
+        <el-alert
+          class="mb-12px"
+          type="info"
+          :closable="false"
+          title="字段权限管理：给 COLUMN/FIELD 类型的子资源配置 可编辑 / 只读 / 隐藏（EDITABLE / READONLY / HIDDEN）。通常只需对「敏感列」配置。"
+        />
         <el-table :data="fieldResources" border size="small" v-loading="fieldLoading">
           <el-table-column label="字段名" min-width="160">
             <template #default="{ row }">
@@ -138,12 +196,17 @@
           </el-table-column>
           <el-table-column label="操作" width="90" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openSubResource(row)">配置授权</el-button>
+              <el-button link type="primary" size="small" @click="openSubResource(row)"
+                >配置授权</el-button
+              >
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-if="fieldResources.length === 0 && !fieldLoading"
-                  description="无字段/列子资源（COLUMN/FIELD 类型）" :image-size="50" />
+        <el-empty
+          v-if="fieldResources.length === 0 && !fieldLoading"
+          description="无字段/列子资源（COLUMN/FIELD 类型）"
+          :image-size="50"
+        />
       </el-tab-pane>
 
       <!-- 页签四：子资源列表 -->
@@ -152,7 +215,9 @@
           <el-table-column label="资源名称" min-width="160">
             <template #default="{ row }">
               <span>{{ row.name }}</span>
-              <span v-if="row.permission" class="ml-8px text-11px text-gray-400">{{ row.permission }}</span>
+              <span v-if="row.permission" class="ml-8px text-11px text-gray-400">{{
+                row.permission
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column label="类型" width="90">
@@ -167,12 +232,17 @@
           </el-table-column>
           <el-table-column label="操作" width="90" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openSubResource(row)">详情</el-button>
+              <el-button link type="primary" size="small" @click="openSubResource(row)"
+                >详情</el-button
+              >
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-if="childResources.length === 0 && !childLoading"
-                  description="无子资源" :image-size="50" />
+        <el-empty
+          v-if="childResources.length === 0 && !childLoading"
+          description="无子资源"
+          :image-size="50"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -185,9 +255,14 @@
   <Dialog v-model="slotFormVisible" :title="slotFormTitle" width="440px">
     <el-form ref="slotFormRef" :model="slotForm" :rules="slotRules" label-width="90px">
       <el-form-item label="槽位名称" prop="slot">
-        <el-input v-model="slotForm.slot" placeholder="如 owner / dept / status / bizKey"
-                  :disabled="!!slotForm.id" />
-        <div v-if="slotForm.id" class="text-11px text-gray-400 mt-2px">槽位名称一旦创建不能修改（规则里直接引用它）</div>
+        <el-input
+          v-model="slotForm.slot"
+          placeholder="如 owner / dept / status / bizKey"
+          :disabled="!!slotForm.id"
+        />
+        <div v-if="slotForm.id" class="text-11px text-gray-400 mt-2px"
+          >槽位名称一旦创建不能修改（规则里直接引用它）</div
+        >
       </el-form-item>
       <el-form-item label="真实列名" prop="columnName">
         <el-input v-model="slotForm.columnName" placeholder="如 create_user_id" />
@@ -219,19 +294,53 @@
         <el-input-number v-model="grantForm.subjectRefId" :min="1" class="w-full" />
       </el-form-item>
       <el-form-item label="主体编码" v-if="needsCode">
-        <el-input v-model="grantForm.subjectCode" placeholder="如 all-users / bpm-engine" class="w-full" />
+        <el-input
+          v-model="grantForm.subjectCode"
+          placeholder="如 all-users / bpm-engine"
+          class="w-full"
+        />
       </el-form-item>
-      <el-form-item label="动作" prop="action">
+      <el-form-item prop="action">
+        <template #label>
+          <span class="inline-flex items-center">动作<GrantActionHelp /></span>
+        </template>
+        <!--
+          ⚠️ 这里原先内联硬编码了 8 个 el-option，缺 IMPORT/PRINT/MANAGE/VIEW_ALL/REFERENCE。
+          缺的恰好包含流程资源唯一真正在用的 MANAGE 与 VIEW_ALL ——
+          也就是说从资源侧给流程配「管理员」或「查看全部」根本选不到，只能绕去角色侧配。
+          现在统一走 constants 的共享词表，并按当前资源类型收窄
+        -->
         <el-select v-model="grantForm.action" class="w-full">
-          <el-option label="* 全部动作" value="*" />
-          <el-option label="VIEW 查看" value="VIEW" />
-          <el-option label="CREATE 新增" value="CREATE" />
-          <el-option label="UPDATE 修改" value="UPDATE" />
-          <el-option label="DELETE 删除" value="DELETE" />
-          <el-option label="EXPORT 导出" value="EXPORT" />
-          <el-option label="START 发起" value="START" />
-          <el-option label="DESIGN 设计" value="DESIGN" />
+          <el-option-group :label="GRANT_ACTION_GROUP_LABELS.effective">
+            <el-option
+              v-for="a in actionGroups.effective"
+              :key="a.value"
+              :label="a.label"
+              :value="a.value"
+            />
+          </el-option-group>
+          <el-option-group
+            v-if="actionGroups.reserved.length"
+            :label="GRANT_ACTION_GROUP_LABELS.reserved"
+          >
+            <el-option
+              v-for="a in actionGroups.reserved"
+              :key="a.value"
+              :label="a.label"
+              :value="a.value"
+            />
+          </el-option-group>
         </el-select>
+        <!-- 分组标题上的「配了不生效」随下拉收起就没了，这条常驻警告补的就是那个空档 -->
+        <el-alert
+          v-if="actionWarning"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="mt-4px w-full !py-4px"
+        >
+          <div class="text-12px leading-snug">{{ actionWarning }}</div>
+        </el-alert>
       </el-form-item>
       <el-form-item label="效果" prop="effect">
         <el-radio-group v-model="grantForm.effect">
@@ -242,7 +351,12 @@
       <el-form-item label="字段显示模式">
         <!-- ⚠️ value 必须与后端 FieldModeEnum 一致：EDITABLE / READONLY / HIDDEN。
              后端 parse 不出来的值会让【整行授权被过滤掉】，表现是「配了但完全不生效」 -->
-        <el-select v-model="grantForm.fieldMode" class="w-full" clearable placeholder="不限制（仅对列/字段资源有意义）">
+        <el-select
+          v-model="grantForm.fieldMode"
+          class="w-full"
+          clearable
+          placeholder="不限制（仅对列/字段资源有意义）"
+        >
           <el-option label="可编辑 (EDITABLE)" value="EDITABLE" />
           <el-option label="只读 (READONLY)" value="READONLY" />
           <el-option label="隐藏 (HIDDEN)" value="HIDDEN" />
@@ -254,8 +368,14 @@
         </el-select>
       </el-form-item>
       <el-form-item label="到期时间">
-        <el-date-picker v-model="grantForm.expireTime" type="datetime" class="w-full"
-                        clearable value-format="YYYY-MM-DD HH:mm:ss" placeholder="永不过期" />
+        <el-date-picker
+          v-model="grantForm.expireTime"
+          type="datetime"
+          class="w-full"
+          clearable
+          value-format="YYYY-MM-DD HH:mm:ss"
+          placeholder="永不过期"
+        />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -274,8 +394,12 @@ import {
   formatDefaultEffect,
   defaultEffectTagType,
   formatSubjectType,
-  formatGrantAction
+  formatGrantAction,
+  grantActionGroupsFor,
+  reservedActionWarning,
+  GRANT_ACTION_GROUP_LABELS
 } from './constants'
+import GrantActionHelp from './components/GrantActionHelp.vue'
 
 defineOptions({ name: 'SystemResourceDetailPanel' })
 
@@ -317,24 +441,42 @@ const loadRules = async () => {
 const grantAddVisible = ref(false)
 const grantSaving = ref(false)
 const grantFormRef = ref()
-const grantForm = ref({ subjectType: 'ROLE', subjectRefId: undefined as number | undefined,
-  subjectCode: undefined as string | undefined, action: 'VIEW', effect: 'ALLOW',
+const grantForm = ref({
+  subjectType: 'ROLE',
+  subjectRefId: undefined as number | undefined,
+  subjectCode: undefined as string | undefined,
+  action: 'VIEW',
+  effect: 'ALLOW',
   // TODO #18：字段权限必须能在资源侧配，否则只能写库（e2e 也只能靠夹具 SQL）
   fieldMode: undefined as string | undefined,
   ruleId: undefined as number | undefined,
-  expireTime: undefined as string | undefined })
+  expireTime: undefined as string | undefined
+})
 const grantRules = {
   subjectType: [{ required: true, message: '请选择主体类型', trigger: 'change' }],
   action: [{ required: true, message: '请选择动作', trigger: 'change' }],
-  effect: [{ required: true, message: '请选择效果', trigger: 'change' }],
+  effect: [{ required: true, message: '请选择效果', trigger: 'change' }]
 }
 const needsRefId = computed(() => !['ALL', 'SYSTEM'].includes(grantForm.value.subjectType))
 const needsCode = computed(() => ['ALL', 'SYSTEM'].includes(grantForm.value.subjectType))
+/** 动作下拉随当前资源类型收窄：流程专属动作只在流程/分类资源上开放 */
+const actionGroups = computed(() =>
+  grantActionGroupsFor(resource.value?.type, grantForm.value.action)
+)
+/** 选了不生效的动作时给一句常驻警告，见 reservedActionWarning */
+const actionWarning = computed(() => reservedActionWarning(grantForm.value.action))
 
 const openGrantAdd = () => {
-  Object.assign(grantForm.value, { subjectType: 'ROLE', subjectRefId: undefined,
-    subjectCode: undefined, action: 'VIEW', effect: 'ALLOW',
-    fieldMode: undefined, ruleId: undefined, expireTime: undefined })
+  Object.assign(grantForm.value, {
+    subjectType: 'ROLE',
+    subjectRefId: undefined,
+    subjectCode: undefined,
+    action: 'VIEW',
+    effect: 'ALLOW',
+    fieldMode: undefined,
+    ruleId: undefined,
+    expireTime: undefined
+  })
   grantAddVisible.value = true
   nextTick(() => grantFormRef.value?.clearValidate())
 }
@@ -369,11 +511,11 @@ const loadSlots = async () => {
 const slotFormVisible = ref(false)
 const slotSaving = ref(false)
 const slotFormRef = ref()
-const slotFormTitle = computed(() => slotForm.value.id ? '编辑槽位' : '新增槽位')
+const slotFormTitle = computed(() => (slotForm.value.id ? '编辑槽位' : '新增槽位'))
 const slotForm = ref<Partial<SlotMappingVO>>({})
 const slotRules = {
   slot: [{ required: true, message: '槽位名称不能为空', trigger: 'blur' }],
-  columnName: [{ required: true, message: '列名不能为空', trigger: 'blur' }],
+  columnName: [{ required: true, message: '列名不能为空', trigger: 'blur' }]
 }
 
 const openSlotAdd = () => {
@@ -419,8 +561,9 @@ const loadFieldResources = async () => {
   fieldLoading.value = true
   try {
     const all = await GrantApi.getResourceList()
-    fieldResources.value = all.filter(r =>
-      r.parentId === resource.value!.id && ['COLUMN', 'FIELD'].includes(r.type))
+    fieldResources.value = all.filter(
+      (r) => r.parentId === resource.value!.id && ['COLUMN', 'FIELD'].includes(r.type)
+    )
   } finally {
     fieldLoading.value = false
   }
@@ -438,8 +581,9 @@ const loadChildResources = async () => {
     // 包含 FIELD/COLUMN
     const allWithField = await GrantApi.getResourceList('FIELD').catch(() => [])
     const allWithCol = await GrantApi.getResourceList('COLUMN').catch(() => [])
-    childResources.value = [...all, ...allWithField, ...allWithCol]
-      .filter(r => r.parentId === resource.value!.id)
+    childResources.value = [...all, ...allWithField, ...allWithCol].filter(
+      (r) => r.parentId === resource.value!.id
+    )
   } finally {
     childLoading.value = false
   }
@@ -465,8 +609,13 @@ const open = async (res: ResourceVO) => {
   activeTab.value = 'grants'
   dialogVisible.value = true
   sharePolicy.value = res.sharePolicy ?? ''
-  await Promise.all([loadGrants(), loadSlots(), loadFieldResources(), loadChildResources(),
-                     loadRules()])
+  await Promise.all([
+    loadGrants(),
+    loadSlots(),
+    loadFieldResources(),
+    loadChildResources(),
+    loadRules()
+  ])
 }
 
 /** 从字段/子资源列表递归打开详情（用同一个组件） */

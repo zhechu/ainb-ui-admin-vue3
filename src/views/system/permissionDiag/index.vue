@@ -18,15 +18,23 @@
         </el-select>
       </el-form-item>
       <el-form-item label="动作">
-        <el-select v-model="query.action" class="!w-120px">
-          <el-option label="VIEW" value="VIEW" />
-          <el-option label="CREATE" value="CREATE" />
-          <el-option label="UPDATE" value="UPDATE" />
-          <el-option label="DELETE" value="DELETE" />
-          <el-option label="EXPORT" value="EXPORT" />
-          <el-option label="START" value="START" />
-          <el-option label="* 全部" value="*" />
+        <!--
+          ⚠️ 这里原先内联硬编码了 7 个 el-option，缺 MANAGE / VIEW_ALL / DESIGN / IMPORT /
+          PRINT / REFERENCE。诊断页的用途恰恰是排查「这个人为什么没权限」，
+          而流程权限走的正是 MANAGE 与 VIEW_ALL —— 选不到它们，
+          流程类权限问题在这一页根本诊断不出来。
+          诊断下拉给全量词表、不分「生效/预留」组：预留动作也要能选，
+          才能实测出「配了确实不生效」
+        -->
+        <el-select v-model="query.action" class="!w-140px">
+          <el-option
+            v-for="a in GRANT_ACTION_OPTIONS"
+            :key="a.value"
+            :label="a.label"
+            :value="a.value"
+          />
         </el-select>
+        <GrantActionHelp />
       </el-form-item>
       <el-form-item label="用户">
         <!-- 原来要手填 userId —— 没人记得住用户编号，得先去用户管理翻一遍再回来 -->
@@ -107,7 +115,9 @@
               <el-tag v-if="row.subjectHit" size="small" type="success" class="ml-4px">命中主体</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="动作" width="70" prop="action" />
+          <el-table-column label="动作" width="90">
+            <template #default="{ row }">{{ formatGrantAction(row.action) }}</template>
+          </el-table-column>
           <el-table-column label="效果" width="70" align="center">
             <template #default="{ row }">
               <el-tag size="small" :type="row.effect === 'ALLOW' ? 'success' : 'danger'">{{ row.effect }}</el-tag>
@@ -163,7 +173,14 @@ import * as GrantApi from '@/api/system/grant'
 import * as UserApi from '@/api/system/user'
 import type { PermissionDiagVO } from '@/api/system/grant'
 import { formatDate } from '@/utils/formatTime'
-import { formatResourceType, formatDefaultEffect, defaultEffectTagType } from '@/views/system/resource/constants'
+import {
+  formatResourceType,
+  formatDefaultEffect,
+  defaultEffectTagType,
+  formatGrantAction,
+  GRANT_ACTION_OPTIONS
+} from '@/views/system/resource/constants'
+import GrantActionHelp from '@/views/system/resource/components/GrantActionHelp.vue'
 
 defineOptions({ name: 'SystemPermissionDiag' })
 

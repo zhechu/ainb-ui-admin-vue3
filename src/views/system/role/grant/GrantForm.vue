@@ -63,15 +63,45 @@
           </template>
         </el-select>
       </el-form-item>
-      <el-form-item label="动作" prop="action">
+      <el-form-item prop="action">
+        <template #label>
+          <span class="inline-flex items-center">动作<GrantActionHelp /></span>
+        </template>
         <el-select v-model="formData.action" class="w-full" placeholder="请选择动作">
-          <el-option
-            v-for="a in GRANT_ACTION_OPTIONS"
-            :key="a.value"
-            :label="a.label"
-            :value="a.value"
-          />
+          <el-option-group :label="GRANT_ACTION_GROUP_LABELS.effective">
+            <el-option
+              v-for="a in actionGroups.effective"
+              :key="a.value"
+              :label="a.label"
+              :value="a.value"
+            />
+          </el-option-group>
+          <el-option-group
+            v-if="actionGroups.reserved.length"
+            :label="GRANT_ACTION_GROUP_LABELS.reserved"
+          >
+            <el-option
+              v-for="a in actionGroups.reserved"
+              :key="a.value"
+              :label="a.label"
+              :value="a.value"
+            />
+          </el-option-group>
         </el-select>
+        <!--
+          分组标题上那句「配了不生效」只在下拉展开时看得见，选完就收起来了。
+          这条常驻警告补的就是那个空档：保存会成功、权限不会生效，
+          点「确定」之前必须有一处地方一直提醒着
+        -->
+        <el-alert
+          v-if="actionWarning"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="mt-4px w-full !py-4px"
+        >
+          <div class="text-12px leading-snug">{{ actionWarning }}</div>
+        </el-alert>
       </el-form-item>
       <el-form-item label="效果" prop="effect">
         <el-radio-group v-model="formData.effect">
@@ -139,7 +169,13 @@
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO, GrantSaveReqVO, RuleVO } from '@/api/system/grant'
 import { handleTree } from '@/utils/tree'
-import { GRANT_ACTION_OPTIONS } from '@/views/system/resource/constants'
+import {
+  GRANT_ACTION_GROUP_LABELS,
+  grantActionGroupsFor,
+  isGrantActionAllowed,
+  reservedActionWarning
+} from '@/views/system/resource/constants'
+import GrantActionHelp from '@/views/system/resource/components/GrantActionHelp.vue'
 import dayjs from 'dayjs'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
@@ -258,6 +294,12 @@ const isFieldLevelResource = computed(() => {
   const r = selectedResource.value
   return !!r && ['COLUMN', 'FIELD'].includes(r.type)
 })
+/** 动作下拉的可选项随资源类型变：流程专属动作只在流程/分类上开放 */
+const actionGroups = computed(() =>
+  grantActionGroupsFor(selectedResource.value?.type, formData.value.action)
+)
+/** 选了不生效的动作时给一句常驻警告，见 reservedActionWarning */
+const actionWarning = computed(() => reservedActionWarning(formData.value.action))
 const selectedResourceLabel = computed(() => {
   const r = selectedResource.value
   if (!r) return ''
@@ -286,6 +328,11 @@ const onResourceNodeClick = (data: any) => {
   // 换到非字段级资源时清掉 fieldMode，避免上次的残留被提交上去
   if (!['COLUMN', 'FIELD'].includes(data.type)) {
     formData.value.fieldMode = undefined
+  }
+  // 动作同理：换资源之后原来那个动作可能在新资源上不开放（从流程切到菜单，START 就没意义了）。
+  // 这里重置是安全的 —— 是用户主动换的资源，不是在回显一条既有授权行
+  if (!isGrantActionAllowed(formData.value.action, data.type)) {
+    formData.value.action = 'VIEW'
   }
   formData.value.resourceId = data.id
 }
