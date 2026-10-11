@@ -125,12 +125,11 @@
       <el-table-column label="排序" prop="sort" width="70" align="center" />
       <el-table-column label="操作" width="170" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click.stop="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click.stop="openDetail(row)">详情</el-button>
           <el-button
             v-hasPermi="['system:resource:update']"
             link
             type="primary"
-            size="small"
             @click.stop="openForm('update', row)"
           >
             编辑
@@ -139,7 +138,6 @@
             v-hasPermi="['system:resource:update']"
             link
             type="danger"
-            size="small"
             @click.stop="handleDelete(row)"
           >
             删除
@@ -184,12 +182,11 @@
       <el-table-column label="排序" prop="sort" width="70" align="center" />
       <el-table-column label="操作" width="170" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click.stop="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click.stop="openDetail(row)">详情</el-button>
           <el-button
             v-hasPermi="['system:resource:update']"
             link
             type="primary"
-            size="small"
             @click.stop="openForm('update', row)"
           >
             编辑
@@ -198,7 +195,6 @@
             v-hasPermi="['system:resource:update']"
             link
             type="danger"
-            size="small"
             @click.stop="handleDelete(row)"
           >
             删除
