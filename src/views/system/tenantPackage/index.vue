@@ -76,7 +76,12 @@
       <el-table-column label="套餐名" align="center" prop="name" />
       <el-table-column label="状态" align="center" prop="status" width="100">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:tenant-package:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" />
@@ -122,6 +127,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { CommonStatusEnum } from '@/utils/constants'
 import { dateFormatter } from '@/utils/formatTime'
 import * as TenantPackageApi from '@/api/system/tenantPackage'
 import TenantPackageForm from './TenantPackageForm.vue'
@@ -172,6 +178,22 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 状态列快捷开关：走专用的 update-status 接口，不做整行更新（陈旧行的 menuIds 会被误判为菜单变更，进而传播到该套餐下所有租户） */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: TenantPackageApi.TenantPackageVO, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await TenantPackageApi.updateTenantPackageStatus(
+      row.id,
+      next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    )
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

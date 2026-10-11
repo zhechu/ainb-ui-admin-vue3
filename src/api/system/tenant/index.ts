@@ -57,6 +57,15 @@ export const updateTenant = (data: TenantVO) => {
   return request.put({ url: '/system/tenant/update', data })
 }
 
+// 租户状态修改
+export const updateTenantStatus = (id: number, status: number) => {
+  const data = {
+    id,
+    status
+  }
+  return request.put({ url: '/system/tenant/update-status', data: data })
+}
+
 // 删除租户
 export const deleteTenant = (id: number) => {
   return request.delete({ url: '/system/tenant/delete?id=' + id })
