@@ -226,7 +226,7 @@
                     </el-header>
                     <el-main class="_fc-m-con">
                         <!-- 【本地改动 #7，见 ../VENDOR.md】上游在这里钉了一个链到 form-create.com 的
-                             品牌水印（base64 logo + 一串 !important 定位）。本项目已改名「X评云」，
+                             品牌水印（base64 logo + 一串 !important 定位）。本项目已改名「启凌智搭」，
                              水印对使用者是干扰，整体移除。form-create 是 MIT 许可，去品牌不受限制。
                              该元素 position:absolute，删除不影响 _fc-m-con 的布局流 -->
                         <div class="_fc-m-drag" :class="device"

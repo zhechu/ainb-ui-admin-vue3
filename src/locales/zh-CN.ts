@@ -126,7 +126,7 @@ export default {
     small: '小'
   },
   login: {
-    welcome: '评估执业智能辅助平台',
+    welcome: 'AI原生低代码平台',
     message: '',
     tenantname: '租户名称',
     username: '用户名',
@@ -386,7 +386,7 @@ export default {
       qrSignInFormTitle: '二维码登录',
       signUpFormTitle: '注册',
       forgetFormTitle: '重置密码',
-      signInTitle: '评估执业智能辅助平台',
+      signInTitle: 'AI原生低代码平台',
       signInDesc: '输入您的个人详细信息开始使用！',
       policy: '我同意xxx隐私政策',
       scanSign: `扫码后点击"确认"，即可完成登录`,

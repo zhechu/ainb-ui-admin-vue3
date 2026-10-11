@@ -299,7 +299,7 @@ let notice = reactive<Notice[]>([])
 const getNotice = async () => {
   const data = [
     {
-      title: 'X评云SaaS上线',
+      title: '启凌智搭SaaS上线',
       type: '系统升级',
       keys: ['JDK', 'Vue'],
       date: new Date()
