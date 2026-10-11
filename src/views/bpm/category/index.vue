@@ -85,9 +85,14 @@
       <el-table-column label="分类名" align="center" prop="name" />
       <el-table-column label="分类标志" align="center" prop="code" />
       <el-table-column label="分类描述" align="center" prop="description" />
-      <el-table-column label="分类状态" align="center" prop="status">
+      <el-table-column label="分类状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['bpm:category:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="分类排序" align="center" prop="sort" />
@@ -136,6 +141,7 @@
 import { getIntDictOptions, DICT_TYPE } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import { CategoryApi, CategoryVO } from '@/api/bpm/category'
+import { CommonStatusEnum } from '@/utils/constants'
 import CategoryForm from './CategoryForm.vue'
 
 /** BPM 流程分类 列表 */
@@ -185,6 +191,22 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await CategoryApi.updateCategory({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

@@ -114,7 +114,12 @@
         <el-table-column align="center" label="字典排序" prop="sort" width="90" />
         <el-table-column align="center" label="状态" prop="status" width="90">
           <template #default="scope">
-            <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+            <StatusSwitch
+              :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+              :loading="statusLoadingId === scope.row.id"
+              :permission="['system:dict:update']"
+              @change="(next) => handleUpdateStatus(scope.row, next)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="颜色类型" prop="colorType" width="100" />
@@ -176,6 +181,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import { handleTree } from '@/utils/tree'
 import download from '@/utils/download'
 import * as DictDataApi from '@/api/system/dict/dict.data'
+import { CommonStatusEnum } from '@/utils/constants'
 import type { DictTypeVO } from '@/api/system/dict/dict.type'
 import { DictCacheModeEnum } from '@/api/system/dict/dict.type'
 
@@ -252,6 +258,22 @@ const resetQuery = () => {
   queryParams.keyword = ''
   queryParams.status = undefined
   handleQuery()
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await DictDataApi.updateDictData({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 const handleDelete = async (row: any) => {

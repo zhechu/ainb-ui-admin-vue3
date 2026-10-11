@@ -100,7 +100,14 @@
         label-class-name="col-index"
       />
       <el-table-column label="规则编号" align="center" prop="id" width="90" />
-      <el-table-column label="规则名称" align="center" prop="name" min-width="140" />
+      <!-- 长规则名（如「指定部门 [100, 102, …]」）在 140px 下会折行、把整行顶到 63~86px；截断+悬停看全 -->
+      <el-table-column
+        label="规则名称"
+        align="center"
+        prop="name"
+        min-width="140"
+        show-overflow-tooltip
+      />
       <el-table-column label="来源" align="center" width="90">
         <template #default="scope">
           <!--
@@ -108,7 +115,7 @@
             管理员自己建的规则同样可以选内置模板（比如基于「仅自己的数据」建一条），
             拿模板判会把它们全标成「内置」，还连带着让删除按钮被禁用
           -->
-          <el-tag :type="scope.row.builtIn ? 'info' : 'warning'">
+          <el-tag :type="scope.row.builtIn ? 'info' : 'warning'" size="small">
             {{ scope.row.builtIn ? '内置' : '自定义' }}
           </el-tag>
         </template>
@@ -137,9 +144,19 @@
         min-width="160"
         show-overflow-tooltip
       />
-      <el-table-column label="状态" align="center" prop="status" width="80">
+      <el-table-column label="状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <!--
+            内置规则的开关置灰：后端 updateRule 对 builtIn=true 直接抛 RULE_BUILT_IN_UNEDITABLE，
+            不置灰就是让用户点一下换一个报错。与本页「内置只给查看、不给编辑」「勾选列排除内置」一致
+          -->
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:rule:update']"
+            :disabled="scope.row.builtIn"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column
@@ -168,7 +185,7 @@
             link
             type="danger"
             :disabled="scope.row.builtIn"
-            :title="scope.row.builtIn ? '内置规则不能删除，可将其停用' : ''"
+            :title="scope.row.builtIn ? '内置规则只读：不能删除，也不能改状态' : ''"
             @click="handleDelete(scope.row.id)"
             v-hasPermi="['system:rule:delete']"
           >
@@ -194,6 +211,7 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as GrantApi from '@/api/system/grant'
+import { CommonStatusEnum } from '@/utils/constants'
 import type { RuleVO } from '@/api/system/grant'
 import RuleForm from './RuleForm.vue'
 import { useRuleTemplateMeta } from './useRuleTemplateMeta'
@@ -274,6 +292,22 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (row?: RuleVO) => {
   formRef.value?.open(row)
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await GrantApi.updateRule({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

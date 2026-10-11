@@ -99,9 +99,16 @@
       <el-table-column label="参数名称" align="center" prop="name" :show-overflow-tooltip="true" />
       <el-table-column label="参数键名" align="center" prop="key" :show-overflow-tooltip="true" />
       <el-table-column label="参数键值" align="center" prop="value" />
-      <el-table-column label="是否可见" align="center" prop="visible">
+      <el-table-column label="是否可见" align="center" prop="visible" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.INFRA_BOOLEAN_STRING" :value="scope.row.visible" />
+          <StatusSwitch
+            :model-value="scope.row.visible === true"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['infra:config:update']"
+            active-text="可见"
+            inactive-text="隐藏"
+            @change="(next) => handleUpdateVisible(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="系统内置" align="center" prop="type">
@@ -204,6 +211,19 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 是否可见/启用列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateVisible = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await ConfigApi.updateConfig({ ...row, visible: next })
+    message.success(next ? '已设为可见' : '已设为隐藏')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

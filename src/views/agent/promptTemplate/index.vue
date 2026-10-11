@@ -250,11 +250,12 @@
         <el-table-column label="排序" align="center" prop="sort" width="80" />
         <el-table-column label="状态" align="center" prop="status" width="90">
           <template #default="scope">
-            <span data-testid="tpl-status">
-              <el-tag :type="scope.row.status === 0 ? 'success' : 'info'" size="small">
-                {{ scope.row.status === 0 ? '开启' : '关闭' }}
-              </el-tag>
-            </span>
+            <StatusSwitch
+              :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+              :loading="statusLoadingId === scope.row.id"
+              :permission="['agent:prompt-template:update']"
+              @change="(next) => handleUpdateStatus(scope.row, next)"
+            />
           </template>
         </el-table-column>
         <el-table-column
@@ -320,6 +321,7 @@ import {
   UNCATEGORIZED,
   type AgentPromptTemplateVO
 } from '@/api/agent/promptTemplate'
+import { CommonStatusEnum } from '@/utils/constants'
 import PromptTemplateForm from './components/PromptTemplateForm.vue'
 import PromptTemplateCaseForm from './components/PromptTemplateCaseForm.vue'
 import {
@@ -377,6 +379,22 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryFormRef.value.resetFields()
   handleQuery()
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await AgentPromptTemplateApi.updatePromptTemplate({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 const handleDelete = async (row: AgentPromptTemplateVO) => {

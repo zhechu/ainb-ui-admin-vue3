@@ -117,6 +117,13 @@
             </el-table-column>
             <el-table-column label="状态" align="center" prop="enabled" width="90">
               <template #default="scope">
+                <!--
+                  🔴 内置工具这一栏刻意不给快捷开关。改内置工具的生效值只能整份提交 registered-update，
+                  而后端 detectRelaxation 是拿提交值比【代码声明值】：一个已经被放松过的工具，哪怕这次
+                  只翻 enabled，也会被判成放松并要求 confirmRelax=true。那个 true 的含义是「操作人看过
+                  代价后点的头」（见 BuiltinToolForm.vue 的二次确认框），列表页替用户恒发 true 等于把
+                  后端那道闸拆掉。所以这里保持只读展示，要停用请走「维护」面板。
+                -->
                 <el-tag :type="scope.row.enabled ? 'success' : 'info'" size="small">
                   {{ scope.row.enabled ? '启用' : '停用' }}
                 </el-tag>
@@ -243,9 +250,12 @@
             </el-table-column>
             <el-table-column label="状态" align="center" prop="enabled" width="90">
               <template #default="scope">
-                <el-tag :type="scope.row.enabled ? 'success' : 'info'" size="small">
-                  {{ scope.row.enabled ? '启用' : '停用' }}
-                </el-tag>
+                <StatusSwitch
+                  :model-value="scope.row.enabled === true"
+                  :loading="statusLoadingId === scope.row.id"
+                  :permission="['agent:tool-def:update']"
+                  @change="(next) => handleUpdateEnabled(scope.row, next)"
+                />
               </template>
             </el-table-column>
             <el-table-column
@@ -450,6 +460,19 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryFormRef.value.resetFields()
   handleQuery()
+}
+
+/** 自定义工具页签的状态列快捷开关：走整行更新接口，与编辑面板保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateEnabled = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await AgentToolDefApi.updateToolDef({ ...row, enabled: next })
+    message.success(next ? '已启用' : '已停用')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 const handleDelete = async (row: AgentToolDefVO) => {

@@ -55,9 +55,14 @@
       />
       <el-table-column align="center" label="编号" prop="id" />
       <el-table-column align="center" label="表单名" prop="name" />
-      <el-table-column align="center" label="状态" prop="status">
+      <el-table-column align="center" label="状态" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['bpm:form:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column align="center" label="备注" prop="remark" />
@@ -89,9 +94,9 @@
 </template>
 
 <script lang="ts" setup>
-import { DICT_TYPE } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as FormApi from '@/api/bpm/form'
+import { CommonStatusEnum } from '@/utils/constants'
 import { setConfAndFields2 } from '@/utils/formCreate'
 import type { TableActionButton } from '@/components/TableActions'
 
@@ -149,6 +154,22 @@ const openForm = (type: string, id?: number) => {
     toRouter.query.id = id
   }
   push(toRouter)
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await FormApi.updateForm({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

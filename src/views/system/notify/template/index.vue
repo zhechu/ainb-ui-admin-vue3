@@ -124,9 +124,14 @@
         width="200"
         :show-overflow-tooltip="true"
       />
-      <el-table-column label="开启状态" align="center" prop="status" width="80">
+      <el-table-column label="开启状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:notify-template:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" />
@@ -161,6 +166,7 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as NotifyTemplateApi from '@/api/system/notify/template'
+import { CommonStatusEnum } from '@/utils/constants'
 import NotifyTemplateForm from './NotifyTemplateForm.vue'
 import NotifyTemplateSendForm from './NotifyTemplateSendForm.vue'
 import type { TableActionButton } from '@/components/TableActions'
@@ -211,6 +217,22 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await NotifyTemplateApi.updateNotifyTemplate({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

@@ -111,7 +111,8 @@
         label-class-name="col-index"
         :index="indexMethod(queryParams)"
       />
-      <el-table-column align="center" label="角色编号" prop="id" width="100" />
+      <!-- 实测：10 位角色编号（如 9000000543）在 100px 下会折成 2 行、把整行顶到 63px -->
+      <el-table-column align="center" label="角色编号" prop="id" width="110" />
       <el-table-column label="角色名称" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column align="center" label="角色类型" prop="type" width="110">
         <template #default="scope">
@@ -131,9 +132,14 @@
           <span v-else class="text-gray-400">-</span>
         </template>
       </el-table-column>
-      <el-table-column align="center" label="状态" prop="status" width="100">
+      <el-table-column align="center" label="状态" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:role:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column
@@ -166,6 +172,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import download from '@/utils/download'
 import * as RoleApi from '@/api/system/role'
+import { CommonStatusEnum } from '@/utils/constants'
 import RoleForm from './RoleForm.vue'
 import type { TableActionButton } from '@/components/TableActions'
 
@@ -227,6 +234,22 @@ const openMemberPage = (row: RoleApi.RoleVO) => {
 /** 资源授权：页内跳转到独立的授权页面（不弹窗） */
 const openGrantPage = (row: RoleApi.RoleVO) => {
   router.push({ name: 'SystemRoleGrant', query: { roleId: String(row.id) } })
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await RoleApi.updateRole({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */
