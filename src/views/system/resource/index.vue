@@ -105,7 +105,7 @@
       <el-table-column type="selection" width="46" />
       <el-table-column label="资源名称" min-width="230">
         <template #default="{ row }">
-          <span class="text-13px">{{ row.name }}</span>
+          <span>{{ row.name }}</span>
           <el-tag v-if="row.menuId" class="ml-6px" size="small" type="info">菜单派生</el-tag>
         </template>
       </el-table-column>
@@ -164,7 +164,7 @@
       <el-table-column type="selection" width="46" />
       <el-table-column label="资源名称" min-width="230">
         <template #default="{ row }">
-          <span class="text-13px">{{ row.name }}</span>
+          <span>{{ row.name }}</span>
           <el-tag v-if="row.menuId" class="ml-6px" size="small" type="info">菜单派生</el-tag>
         </template>
       </el-table-column>
