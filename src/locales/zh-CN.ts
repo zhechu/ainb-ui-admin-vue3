@@ -158,12 +158,12 @@ export default {
     resetPasswordSuccess: '重置密码成功',
     invalidTenantName: '无效的租户名称',
     slogan: 'AI原生低代码平台',
-    feature1Title: '模型驱动',
-    feature1Desc: '数据建模一次定义，页面与接口一键生成',
+    feature1Title: '在线建模',
+    feature1Desc: '表与字段在线定义，业务数据即建即用',
     feature2Title: '可视化编排',
-    feature2Desc: '流程、表单、报表拖拽即得，所见即所得',
+    feature2Desc: '表单拖拽设计，BPM 与智能体流程图形化编排',
     feature3Title: 'AI 原生',
-    feature3Desc: '智能体协同执行，自然语言驱动操作'
+    feature3Desc: '智能体、工具与提示词可配置，对话、知识库、绘画已集成'
   },
   captcha: {
     verify: '验证',

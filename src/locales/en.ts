@@ -158,12 +158,12 @@ export default {
     resetPasswordSuccess: 'Reset Password Success',
     invalidTenantName: 'Invalid Tenant Name',
     slogan: 'AI-Native Low-Code Platform',
-    feature1Title: 'Model-Driven',
-    feature1Desc: 'Define data models once; pages and APIs generated in one click',
+    feature1Title: 'Online Modeling',
+    feature1Desc: 'Define tables and fields online; business data usable once modeled',
     feature2Title: 'Visual Orchestration',
-    feature2Desc: 'Drag-and-drop flows, forms and reports — WYSIWYG',
+    feature2Desc: 'Drag-and-drop form design; BPM and agent flows arranged graphically',
     feature3Title: 'AI-Native',
-    feature3Desc: 'Agents collaborate; natural language drives operations'
+    feature3Desc: 'Agents, tools and prompts configurable; chat, knowledge base and imaging built in'
   },
   captcha: {
     verify: 'Verify',
