@@ -61,6 +61,30 @@
 }
 
 /*
+  行高严格对齐参考站（81.71.100.62 模型配置列表）的单行 41px = 内容 24 + 上下 padding 16 + 边框 1。
+
+  td 高度 41 是单行行的下限（border-box，含 padding 与边框）：内容不足 24 的行
+  （操作列 link 按钮只有 20px）原本落到 40，比参考站矮 1px，补齐后全站单行行高逐页一致；
+  真有多行内容的单元格（如流程编排「对话驱动 Agent」）自然撑高，不裁切。
+
+  开关外框压到 24 与 el-tag 同高：EP .el-switch 外框默认 height:32px（内芯 20px），
+  会把带状态开关的行撑到 49px——参考站该行是 41。这里只改外框预留高度，
+  内芯尺寸、内嵌文字、颜色一律不动（开关的交互与语义是业务，不在样式改造范围）。
+
+  vertical-align 必须一起给：.el-switch 是 inline-flex，按基线对齐时行盒会为它多留 1px 下伸部，
+  实测行高停在 42（改 top / line-height:0 / 单元格 line-height:24px 三者等效，取 top）。
+
+  选择器挂在 .xpy-list-table 下：只收敛改过的列表，表单 / 详情里的开关不受影响。
+*/
+.xpy-list-table td.el-table__cell {
+  height: 41px;
+}
+.xpy-list-table .el-switch {
+  height: 24px;
+  vertical-align: top;
+}
+
+/*
   去掉固定列边缘的投影分隔线
 
   表格横向溢出时 EP 会在左/右固定列内侧画一条 box-shadow 分隔线，
