@@ -67,8 +67,7 @@ const handleAdd = (type: string | number | object) => {
   min-width: 0;
   min-height: 54px;
   padding: 8px 16px;
-  background: var(--portal-surface);
-  border-bottom: 1px solid var(--portal-border-light);
+  flex: 1 1 auto;
   align-items: center;
   gap: 18px;
 }
