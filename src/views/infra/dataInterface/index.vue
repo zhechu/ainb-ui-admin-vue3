@@ -64,7 +64,18 @@
       <el-table-column label="接口名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="接口编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="责任人" prop="owner" align="center" width="100" :show-overflow-tooltip="true" />
-      <el-table-column label="分类" prop="category" align="center" width="100" />
+      <!--
+        实测：100px 下「表单设计示例」（6 个汉字 ≈ 84px + .cell 左右内边距 24px）会折成 2 行，
+        整行被撑到 63px，与其余 41px 的行混在一起像坏了。放宽到 120px 让现值全部单行，
+        并加 tooltip 兜住将来更长的分类名 —— 截断+悬停看全，好过折行把整排行高打乱
+      -->
+      <el-table-column
+        label="分类"
+        prop="category"
+        align="center"
+        width="120"
+        :show-overflow-tooltip="true"
+      />
       <el-table-column label="类型" align="center" width="110">
         <template #default="{ row }">
           <el-tag size="small">{{ typeLabel(row.type) }}</el-tag>
