@@ -383,7 +383,6 @@ watch(
                           item.matched[item.matched.length - 1].meta?.icon))
                     "
                     :icon="item?.meta?.icon || item.matched[item.matched.length - 1].meta.icon"
-                    :size="12"
                     class="mr-5px"
                   />
                   {{
@@ -539,7 +538,8 @@ $prefix-cls: #{$namespace}-tags-view;
     height: calc(100% - 6px);
     padding-right: 15px;
     margin-left: 4px;
-    font-size: 12px;
+    /* 与菜单同源：页签文字大小跟随菜单字号变量，避免与上下两行（导航栏、菜单）字号脱节 */
+    font-size: var(--el-menu-item-font-size);
     cursor: pointer;
     border: 1px solid #d9d9d9;
     border-radius: 2px;
