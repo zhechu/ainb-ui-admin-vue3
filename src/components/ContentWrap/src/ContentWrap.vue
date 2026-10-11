@@ -194,8 +194,10 @@ onBeforeUnmount(() => {
 $prefix-cls: #{$namespace}-content-wrap;
 
 /* 末位面板不再叠加下外边距，让页面底部留白与顶部（--app-content-padding）一致。
-   不能用 :last-child —— 页面末尾总有 Dialog 渲染出的零高度 .el-overlay 兄弟节点。 */
-.#{$prefix-cls}:not(:has(~ .#{$prefix-cls})) {
+   不能用 :last-child —— 页面末尾总有 Dialog 渲染出的零高度 .el-overlay 兄弟节点；
+   也不能只看兄弟卡片 —— 表单运行时页把树+列表包在一个 div 里，查询面板的兄弟中没有卡片，
+   但那个 div 里装着列表面板，故第二个 :has 要排除「后续兄弟内含卡片」的情况。 */
+.#{$prefix-cls}:not(:has(~ .#{$prefix-cls})):not(:has(~ * .#{$prefix-cls})) {
   margin-bottom: 0;
 }
 
