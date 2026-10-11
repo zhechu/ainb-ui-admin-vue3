@@ -26,6 +26,18 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
+      <el-form-item label="所属组织" prop="deptId">
+        <el-tree-select
+          v-model="queryParams.deptId"
+          :data="deptList"
+          :props="defaultProps"
+          check-strictly
+          clearable
+          node-key="id"
+          placeholder="请选择所属组织"
+          class="!w-240px"
+        />
+      </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="请选择状态" clearable class="!w-240px">
           <el-option
@@ -80,6 +92,11 @@
       <el-table-column label="岗位名称" align="center" prop="name" />
       <el-table-column label="岗位编码" align="center" prop="code" />
       <el-table-column label="岗位顺序" align="center" prop="sort" />
+      <el-table-column label="所属组织" align="center" prop="deptId" width="140">
+        <template #default="scope">
+          {{ deptNameMap[scope.row.deptId] || '-' }}
+        </template>
+      </el-table-column>
       <el-table-column label="岗位备注" align="center" prop="remark" />
       <el-table-column label="状态" align="center" prop="status" width="90">
         <template #default="scope">
@@ -135,8 +152,10 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { CommonStatusEnum } from '@/utils/constants'
 import { dateFormatter } from '@/utils/formatTime'
+import { defaultProps, handleTree } from '@/utils/tree'
 import download from '@/utils/download'
 import * as PostApi from '@/api/system/post'
+import * as DeptApi from '@/api/system/dept'
 import PostForm from './PostForm.vue'
 
 defineOptions({ name: 'SystemPost' })
@@ -152,10 +171,13 @@ const queryParams = reactive({
   pageSize: 20,
   code: '',
   name: '',
+  deptId: undefined,
   status: undefined
 })
 const queryFormRef = ref() // 搜索的表单
 const exportLoading = ref(false) // 导出的加载中
+const deptList = ref<Tree[]>([]) // 组织树，供搜索栏的组织筛选使用
+const deptNameMap = ref<Record<number, string>>({}) // 组织编号 → 名称，供列表的组织列渲染
 
 /** 查询岗位列表 */
 const getList = async () => {
@@ -251,7 +273,11 @@ const handleExport = async () => {
 }
 
 /** 初始化 **/
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await getList()
+  // 搜索栏的组织树与列表的组织列共用这一次 simple-list，不再多发请求
+  const depts = await DeptApi.getSimpleDeptList()
+  deptList.value = handleTree(depts)
+  deptNameMap.value = Object.fromEntries(depts.map((dept) => [dept.id, dept.name]))
 })
 </script>
