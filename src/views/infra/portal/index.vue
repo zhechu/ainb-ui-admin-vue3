@@ -95,60 +95,9 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="390" fixed="right" align="center">
+      <el-table-column label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button
-            v-if="!isLinkPortal(row)"
-            v-hasPermi="['infra:portal:update']"
-            link
-            type="primary"
-            @click="handleDesign(row)"
-            ><Icon icon="ep:edit-pen" class="mr-3px" />设计</el-button
-          >
-          <el-button
-            v-hasPermi="['infra:portal:update']"
-            link
-            type="primary"
-            @click="handleEdit(row)"
-            ><Icon icon="ep:setting" class="mr-3px" />编辑</el-button
-          >
-          <el-button
-            v-hasPermi="['infra:portal:publish']"
-            link
-            type="success"
-            @click="handlePublish(row)"
-            >发布</el-button
-          >
-          <el-button
-            v-if="!isLinkPortal(row)"
-            v-hasPermi="['infra:portal:query']"
-            link
-            @click="handleVersions(row)"
-            >版本</el-button
-          >
-          <el-dropdown @command="(command: string) => handleCommand(command, row)"
-            ><el-button link type="primary"
-              >更多<Icon icon="ep:arrow-down" class="ml-2px" /></el-button
-            ><template #dropdown
-              ><el-dropdown-menu
-                ><el-dropdown-item
-                  v-if="!isLinkPortal(row)"
-                  v-hasPermi="['infra:portal:preview']"
-                  command="preview"
-                  >预览</el-dropdown-item
-                ><el-dropdown-item
-                  v-if="isPublished(row)"
-                  v-hasPermi="['infra:portal:publish']"
-                  command="unpublish"
-                  >下线</el-dropdown-item
-                ><el-dropdown-item v-hasPermi="['infra:portal:create']" command="copy"
-                  >复制</el-dropdown-item
-                ><el-dropdown-item v-hasPermi="['infra:portal:delete']" command="delete" divided
-                  >删除</el-dropdown-item
-                ></el-dropdown-menu
-              ></template
-            ></el-dropdown
-          >
+          <TableActions :row="row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -177,6 +126,7 @@
 import { ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import * as PortalApi from '@/api/infra/portal'
+import type { TableActionButton } from '@/components/TableActions'
 import PortalRuntime from '@/components/Portal/Runtime/PortalRuntime.vue'
 import PortalForm from './PortalForm.vue'
 import VersionDrawer from './components/VersionDrawer.vue'
@@ -331,12 +281,67 @@ const handlePreview = async (row: PortalApi.PortalVO) => {
   previewData.value = await PortalApi.previewPortal(row.id)
   previewVisible.value = true
 }
-const handleCommand = (command: string, row: PortalApi.PortalVO) => {
-  if (command === 'preview') handlePreview(row)
-  if (command === 'unpublish') handleUnpublish(row)
-  if (command === 'copy') handleCopy(row)
-  if (command === 'delete') handleDelete(row)
-}
+/**
+ * 操作列按钮清单。行级条件（外链门户没有设计/版本/预览、未发布没有下线）
+ * 原来散在模板的 v-if 里，现在落在各按钮的 show 上；command 字符串映射消失
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'design',
+    label: '设计',
+    permission: ['infra:portal:update'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handleDesign(row)
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: ['infra:portal:update'],
+    onClick: (row) => handleEdit(row)
+  },
+  {
+    key: 'publish',
+    label: '发布',
+    type: 'success',
+    permission: ['infra:portal:publish'],
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'versions',
+    label: '版本',
+    permission: ['infra:portal:query'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handleVersions(row)
+  },
+  {
+    key: 'preview',
+    label: '预览',
+    permission: ['infra:portal:preview'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handlePreview(row)
+  },
+  {
+    key: 'unpublish',
+    label: '下线',
+    permission: ['infra:portal:publish'],
+    show: (row) => isPublished(row),
+    onClick: (row) => handleUnpublish(row)
+  },
+  {
+    key: 'copy',
+    label: '复制',
+    permission: ['infra:portal:create'],
+    onClick: (row) => handleCopy(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:portal:delete'],
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(getList)
 </script>

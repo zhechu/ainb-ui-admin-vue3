@@ -107,51 +107,9 @@
       <el-table-column label="处理器的名字" align="center" prop="handlerName" />
       <el-table-column label="处理器的参数" align="center" prop="handlerParam" />
       <el-table-column label="CRON 表达式" align="center" prop="cronExpression" />
-      <el-table-column label="操作" align="center" min-width="200" fixed="right">
+      <el-table-column label="操作" align="center" min-width="220" fixed="right">
         <template #default="scope">
-          <el-button
-            type="primary"
-            link
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['infra:job:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            type="primary"
-            link
-            @click="handleChangeStatus(scope.row)"
-            v-hasPermi="['infra:job:update']"
-          >
-            {{ scope.row.status === InfraJobStatusEnum.STOP ? '开启' : '暂停' }}
-          </el-button>
-          <el-button
-            type="danger"
-            link
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['infra:job:delete']"
-          >
-            删除
-          </el-button>
-          <el-dropdown
-            @command="(command) => handleCommand(command, scope.row)"
-            v-hasPermi="['infra:job:trigger', 'infra:job:query']"
-          >
-            <el-button type="primary" link><Icon icon="ep:d-arrow-right" /> 更多</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="handleRun" v-if="checkPermi(['infra:job:trigger'])">
-                  执行一次
-                </el-dropdown-item>
-                <el-dropdown-item command="openDetail" v-if="checkPermi(['infra:job:query'])">
-                  任务详细
-                </el-dropdown-item>
-                <el-dropdown-item command="handleJobLog" v-if="checkPermi(['infra:job:query'])">
-                  调度日志
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -171,7 +129,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
-import { checkPermi } from '@/utils/permission'
+import type { TableActionButton } from '@/components/TableActions'
 import JobForm from './JobForm.vue'
 import JobDetail from './JobDetail.vue'
 import download from '@/utils/download'
@@ -307,22 +265,51 @@ const handleDeleteBatch = async () => {
   } catch {}
 }
 
-/** '更多'操作按钮 */
-const handleCommand = (command, row) => {
-  switch (command) {
-    case 'handleRun':
-      handleRun(row)
-      break
-    case 'openDetail':
-      openDetail(row.id)
-      break
-    case 'handleJobLog':
-      handleJobLog(row?.id)
-      break
-    default:
-      break
+/**
+ * 操作列按钮清单。顺序即显示顺序：前三个行内，第四个起收进「更多」。
+ * 原来「更多」靠 handleCommand 的 switch 把 command 字符串映射回 handler，
+ * 现在每个按钮自带 onClick，映射这层样板消失
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['infra:job:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'status',
+    label: (row) => (row.status === InfraJobStatusEnum.STOP ? '开启' : '暂停'),
+    permission: ['infra:job:update'],
+    onClick: (row) => handleChangeStatus(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:job:delete'],
+    onClick: (row) => handleDelete(row.id)
+  },
+  {
+    key: 'run',
+    label: '执行一次',
+    permission: ['infra:job:trigger'],
+    onClick: (row) => handleRun(row)
+  },
+  {
+    key: 'detail',
+    label: '任务详细',
+    permission: ['infra:job:query'],
+    onClick: (row) => openDetail(row.id)
+  },
+  {
+    key: 'log',
+    label: '调度日志',
+    permission: ['infra:job:query'],
+    onClick: (row) => handleJobLog(row.id)
   }
-}
+]
 
 /** 执行一次 */
 const handleRun = async (row: JobApi.JobVO) => {

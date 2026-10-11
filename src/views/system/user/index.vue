@@ -158,50 +158,9 @@
             :formatter="dateFormatter"
             width="180"
           />
-          <el-table-column label="操作" align="center" width="160" fixed="right">
+          <el-table-column label="操作" align="center" width="260" fixed="right">
             <template #default="scope">
-              <div class="flex items-center justify-center">
-                <el-button
-                  type="primary"
-                  link
-                  @click="openForm('update', scope.row.id)"
-                  v-hasPermi="['system:user:update']"
-                >
-                  <Icon icon="ep:edit" />修改
-                </el-button>
-                <el-dropdown
-                  @command="(command) => handleCommand(command, scope.row)"
-                  v-hasPermi="[
-                    'system:user:delete',
-                    'system:user:update-password',
-                    'system:permission:assign-user-role'
-                  ]"
-                >
-                  <el-button type="primary" link><Icon icon="ep:d-arrow-right" /> 更多</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        command="handleDelete"
-                        v-if="checkPermi(['system:user:delete'])"
-                      >
-                        <Icon icon="ep:delete" />删除
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="handleResetPwd"
-                        v-if="checkPermi(['system:user:update-password'])"
-                      >
-                        <Icon icon="ep:key" />重置密码
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="handleRole"
-                        v-if="checkPermi(['system:permission:assign-user-role'])"
-                      >
-                        <Icon icon="ep:circle-check" />分配角色
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
+              <TableActions :row="scope.row" :buttons="rowButtons" />
             </template>
           </el-table-column>
         </el-table>
@@ -228,6 +187,7 @@
 import { useFieldPermission } from '@/hooks/web/useFieldPermission'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { checkPermi } from '@/utils/permission'
+import type { TableActionButton } from '@/components/TableActions'
 import { dateFormatter } from '@/utils/formatTime'
 import { CommonStatusEnum } from '@/utils/constants'
 import * as UserApi from '@/api/system/user'
@@ -341,22 +301,38 @@ const handleExport = () => {
   })
 }
 
-/** 操作分发 */
-const handleCommand = (command: string, row: UserApi.UserVO) => {
-  switch (command) {
-    case 'handleDelete':
-      handleDelete(row.id)
-      break
-    case 'handleResetPwd':
-      handleResetPwd(row)
-      break
-    case 'handleRole':
-      handleRole(row)
-      break
-    default:
-      break
+/**
+ * 操作列按钮清单。四个按钮不折叠（折叠成「三个 + 更多」比四个按钮还宽），
+ * 所以这一页不再有「更多」下拉，handleCommand 的 command 字符串映射也随之消失
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:user:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:user:delete'],
+    onClick: (row) => handleDelete(row.id)
+  },
+  {
+    key: 'resetPwd',
+    label: '重置密码',
+    permission: ['system:user:update-password'],
+    onClick: (row) => handleResetPwd(row)
+  },
+  {
+    key: 'role',
+    label: '分配角色',
+    permission: ['system:permission:assign-user-role'],
+    onClick: (row) => handleRole(row)
   }
-}
+]
 
 /** 删除按钮操作 */
 const handleDelete = async (id: number) => {

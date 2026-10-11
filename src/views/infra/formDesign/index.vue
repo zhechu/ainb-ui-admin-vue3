@@ -133,45 +133,14 @@
         prop="createTime"
         width="170"
       />
-      <el-table-column align="center" fixed="right" label="操作" width="280">
+      <el-table-column align="center" fixed="right" label="操作" width="220">
+        <!--
+          本页的「更多」曾是全站样式标杆（hover 触发、link primary 触发器、纯文字下拉项、
+          删除项 divided）。那段标杆写法已收进 TableActions，浏览器实测两者计算样式逐字一致，
+          所以这里换组件不换观感
+        -->
         <template #default="scope">
-          <el-button
-            v-hasPermi="['infra:form-design:update']"
-            link
-            type="primary"
-            @click="handleUpdate(scope.row.id)"
-          >
-            设计
-          </el-button>
-          <el-button
-            v-hasPermi="['infra:form-design:publish']"
-            link
-            type="success"
-            @click="handlePublish(scope.row)"
-          >
-            发布
-          </el-button>
-          <el-button
-            v-hasPermi="['infra:form-design:query']"
-            link
-            @click="handleVersion(scope.row)"
-          >
-            版本
-          </el-button>
-          <el-dropdown @command="(cmd: string) => handleCommand(cmd, scope.row)">
-            <el-button link type="primary">
-              更多<Icon icon="ep:arrow-down" class="ml-2px" />
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="copy">复制</el-dropdown-item>
-                <el-dropdown-item v-if="scope.row.menuId" command="unpublish">
-                  下线
-                </el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -196,6 +165,7 @@
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as FormDesignApi from '@/api/infra/formDesign'
+import type { TableActionButton } from '@/components/TableActions'
 import * as MenuApi from '@/api/system/menu'
 import PublishDialog from './components/PublishDialog.vue'
 import VersionDrawer from './components/VersionDrawer.vue'
@@ -288,16 +258,45 @@ const handleVersion = (row: FormDesignApi.FormDesignVO) => {
   versionDrawerRef.value?.open(row)
 }
 
-/** 下拉菜单的命令分发 */
-const handleCommand = (command: string, row: FormDesignApi.FormDesignVO) => {
-  if (command === 'copy') {
-    handleCopy(row)
-  } else if (command === 'unpublish') {
-    handleUnpublish(row)
-  } else if (command === 'delete') {
-    handleDelete(row)
+/**
+ * 操作列按钮清单。下拉里的三项原来不带权限门控（复制/下线/删除谁都能点），
+ * 搬进清单后保持不门控：permission 不传 = 不门控，与组件口径一致
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '设计',
+    permission: ['infra:form-design:update'],
+    onClick: (row) => handleUpdate(row.id)
+  },
+  {
+    key: 'publish',
+    label: '发布',
+    type: 'success',
+    permission: ['infra:form-design:publish'],
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'version',
+    label: '版本',
+    permission: ['infra:form-design:query'],
+    onClick: (row) => handleVersion(row)
+  },
+  { key: 'copy', label: '复制', onClick: (row) => handleCopy(row) },
+  {
+    key: 'unpublish',
+    label: '下线',
+    show: (row) => !!row.menuId,
+    onClick: (row) => handleUnpublish(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    onClick: (row) => handleDelete(row)
   }
-}
+]
 
 /**
  * 下线：同样是两步操作
