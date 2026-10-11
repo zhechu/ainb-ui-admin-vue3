@@ -2,7 +2,7 @@
   <div
     ref="pageRef"
     :style="{ height: pageHeight ? pageHeight + 'px' : undefined }"
-    class="flex gap-16px"
+    class="flex gap-[var(--app-content-padding)]"
   >
     <!-- 左：字典分类树 -->
     <ContentWrap :body-style="panelBodyStyle" class="w-280px flex-none h-full !mb-0">

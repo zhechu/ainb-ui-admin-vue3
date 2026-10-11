@@ -3,8 +3,8 @@
   <doc-alert title="三方登陆" url="https://doc.iocoder.cn/social-user/" />
   <doc-alert title="Excel 导入导出" url="https://doc.iocoder.cn/excel-import-and-export/" />
 
-  <!-- gutter 收紧到 10：默认 20 时左右两卡片之间会有一条贯穿整页的宽灰缝，观感松散 -->
-  <el-row :gutter="10">
+  <!-- gutter 收到与页面外边距同值（9px，--app-content-padding）：默认 20 时左右两卡片之间会有一条贯穿整页的宽灰缝，观感松散 -->
+  <el-row :gutter="9">
     <!-- 左侧部门树 -->
     <el-col :span="4" :xs="24">
       <ContentWrap class="h-1/1">

@@ -3368,7 +3368,7 @@ onMounted(() => {
 /* 左侧树 + 列表的分栏布局 */
 .list-with-tree {
   display: flex;
-  gap: 16px;
+  gap: var(--app-content-padding);
   align-items: flex-start;
 }
 
