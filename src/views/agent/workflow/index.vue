@@ -207,10 +207,12 @@
           :formatter="dateFormatter"
         />
         <!--
-          操作列收敛到 TableActions：草稿行 8 个动作 → 行内 3 枚 + 「更多」×5，
+          操作列收敛到 TableActions：草稿行 7 个动作 → 行内 3 枚 + 「更多」×4，
           列宽从 min-width 520 改成固定 width（浏览器 100% 缩放实测，数字见提交说明）。
           旧 520 的依据是「草稿行 8 枚 link 钮实测 436px」——出处 e2e spec 已随 tests/
           删除，本就只剩量级参考意义；折叠后行内只有 4 字+4 字+2 字+更多，量级完全不同，故重新量。
+          🔴 「查看画布」2026-10-11 退役：只读画布与「查看设计」同质，两个入口只留后者；
+             它曾是 WorkflowCanvasDialog 的唯一入口，按钮没了对话框也就没人挂，组件一并删除。
           🔴 不可删行的「删除」保持禁用 + tooltip（后端下发的 deleteDeniedReason）：
              理由不能因为折叠而消失，TableActions 对行内与「更多」下拉项都挂 tooltip。
           🔴 2026-10-09 那枚非草稿行的实心「复制为新草稿」主操作随折叠退役：进「更多」后
@@ -235,8 +237,6 @@
       />
     </ContentWrap>
 
-    <!-- 只读画布对话框（S5-d：底部加「打开完整设计器（只读）」，看得到每格配置） -->
-    <WorkflowCanvasDialog ref="canvasRef" @design="goDesign" />
     <!-- 执行历史抽屉 -->
     <ExecutionHistoryDrawer ref="historyRef" />
     <!-- 版本管理抽屉（增量14b：对比/回滚/设主版本） -->
@@ -271,7 +271,6 @@ import {
   type AgentWorkflowDefVO,
   type AgentPlannerAdoptionStatVO
 } from '@/api/agent/workflow'
-import WorkflowCanvasDialog from './components/WorkflowCanvasDialog.vue'
 import ExecutionHistoryDrawer from './components/ExecutionHistoryDrawer.vue'
 import WorkflowVersionDrawer from './components/WorkflowVersionDrawer.vue'
 import WorkflowForm from './components/WorkflowForm.vue'
@@ -401,12 +400,6 @@ const handleQuery = () => {
 const resetQuery = () => {
   queryFormRef.value.resetFields()
   handleQuery()
-}
-
-/** 查看画布 */
-const canvasRef = ref()
-const openCanvas = (id: number) => {
-  canvasRef.value.open(id)
 }
 
 /** 执行历史 */
@@ -592,12 +585,6 @@ const DELETE_DENIED_FALLBACK = '当前状态不可删除'
  * 顺序即行内 / 下拉里的顺序：只读类在前，写动作居中，删除垫底并带 divided。
  */
 const rowButtons: TableActionButton[] = [
-  {
-    key: 'canvas',
-    label: '查看画布',
-    permission: ['agent:workflow:query'],
-    onClick: (row) => openCanvas(row.id)
-  },
   {
     key: 'history',
     label: '执行历史',

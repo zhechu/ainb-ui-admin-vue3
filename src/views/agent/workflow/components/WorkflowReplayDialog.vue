@@ -10,7 +10,7 @@
      合并逻辑全在纯函数 replayModel.ts（vitest 兜底），本组件只负责取数 + 渲染。
   🔴 回放的是「执行当时那一版」的 DSL：execution.workflowDefId 指向具体版本行，getDef 拿到的就是它，
      节点 id 与 trace.nodeId 逐字对应，不会因流程后来又发新版而错位。
-  🔴 只读画布：不可拖动/连线/编辑（与 WorkflowCanvasDialog 同），但可选中最节点看详情。
+  🔴 只读画布：不可拖动/连线/编辑，但可选中最节点看详情。
   🔴 VueFlow 容器必须有显式高度，否则 0 高不渲染（R1）——画布区固定 h-520px。
   🔴 DSL 可能为空/非法：try/catch + el-alert 显式报错，绝不白屏（R3）。
 -->
