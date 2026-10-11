@@ -1,5 +1,7 @@
 <template>
-  <div class="flex h-[calc(100vh-130px)] bg-[var(--el-bg-color)] rounded-8px overflow-hidden">
+  <div
+    class="flex h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height)-2*var(--app-content-padding))] bg-[var(--el-bg-color)] rounded-8px overflow-hidden"
+  >
     <!-- 左：会话列表 -->
     <div class="w-240px border-r border-[var(--el-border-color-lighter)] border-r-solid">
       <ConversationList
