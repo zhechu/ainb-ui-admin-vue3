@@ -1976,7 +1976,7 @@ onMounted(setVideoRate)
   width: 100%;
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 12px;
   overflow: hidden;
   background: var(--portal-surface);
   border: 1px solid var(--portal-border);
