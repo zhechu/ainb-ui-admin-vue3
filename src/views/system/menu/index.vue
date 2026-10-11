@@ -88,6 +88,7 @@
           :width="width"
           fixed
           row-key="id"
+          :row-class="stripeRowClass"
         />
       </template>
     </el-auto-resizer>
@@ -110,6 +111,10 @@ import { CommonStatusEnum } from '@/utils/constants'
 import { CACHE_KEY, useCache } from '@/hooks/web/useCache'
 
 defineOptions({ name: 'SystemMenu' })
+
+// 隔行浅色按真实行号取模：v2 只渲染可视窗口的行，CSS nth-child 会让条纹跟着滚动手抖
+const stripeRowClass = ({ rowIndex }: { rowIndex: number }) =>
+  rowIndex % 2 === 1 ? 'xpy-v2-striped' : ''
 
 // 虚拟列表表格
 // 🔴 用 computed 而不是常量数组：多选列的勾选态存在 checkedIds 里，而 el-table-v2 的单元格是它自己

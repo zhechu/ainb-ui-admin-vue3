@@ -61,3 +61,43 @@ export const formatDefaultEffect = (effect: string | undefined) =>
  */
 export const defaultEffectTagType = (effect: string | undefined) =>
   effect === 'ALLOW' ? 'success' : 'info'
+
+/**
+ * 授权主体类型的中文。措辞与 ResourceDetailPanel 新增授权表单的下拉项逐字一致，
+ * 两处漂移的话会出现「表单里选的是『所有登录用户』、列表里显示另一个词」
+ */
+export const SUBJECT_TYPE_OPTIONS = [
+  { label: '角色', value: 'ROLE' },
+  { label: '用户', value: 'USER' },
+  { label: '部门', value: 'DEPT' },
+  { label: '用户组', value: 'GROUP' },
+  { label: '所有登录用户', value: 'ALL' },
+  { label: '系统身份', value: 'SYSTEM' }
+]
+
+export const formatSubjectType = (type: string | undefined) =>
+  SUBJECT_TYPE_OPTIONS.find((item) => item.value === type)?.label ?? type
+
+/**
+ * 授权动作的中文。表单下拉只给了 8 个常用动作，但后端 GrantActionEnum 有 13 个，
+ * 历史授权行里可能出现表单给不出的 code（IMPORT/PRINT/MANAGE/VIEW_ALL/REFERENCE），
+ * 所以这里按枚举全集配，认不出的原样显示（与 formatResourceType 同一口径）
+ */
+export const GRANT_ACTION_OPTIONS = [
+  { label: '全部动作', value: '*' },
+  { label: '查看', value: 'VIEW' },
+  { label: '新增', value: 'CREATE' },
+  { label: '修改', value: 'UPDATE' },
+  { label: '删除', value: 'DELETE' },
+  { label: '导出', value: 'EXPORT' },
+  { label: '导入', value: 'IMPORT' },
+  { label: '打印', value: 'PRINT' },
+  { label: '发起', value: 'START' },
+  { label: '设计', value: 'DESIGN' },
+  { label: '管理', value: 'MANAGE' },
+  { label: '查看全部', value: 'VIEW_ALL' },
+  { label: '引用', value: 'REFERENCE' }
+]
+
+export const formatGrantAction = (action: string | undefined) =>
+  GRANT_ACTION_OPTIONS.find((item) => item.value === action)?.label ?? action

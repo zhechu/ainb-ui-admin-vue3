@@ -6,7 +6,9 @@
       <el-descriptions-item label="权限标识">
         <el-tag size="small" type="info">{{ resource?.permission || '（目录）' }}</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item label="类型">{{ formatResourceType(resource?.type) }}</el-descriptions-item>
+      <el-descriptions-item label="类型">{{
+        formatResourceType(resource?.type)
+      }}</el-descriptions-item>
       <el-descriptions-item label="默认效果">
         <el-tag size="small" :type="defaultEffectTagType(resource?.defaultEffect)">
           {{ formatDefaultEffect(resource?.defaultEffect) }}
@@ -23,11 +25,15 @@
                      @click="openGrantAdd">新增授权</el-button>
         </div>
         <el-table :data="grants" border size="small" v-loading="grantLoading">
-          <el-table-column label="主体类型" width="90" prop="subjectType" />
+          <el-table-column label="主体类型" width="90">
+            <template #default="{ row }">{{ formatSubjectType(row.subjectType) }}</template>
+          </el-table-column>
           <el-table-column label="主体ID/编码" width="100">
             <template #default="{ row }">{{ row.subjectRefId ?? row.subjectCode }}</template>
           </el-table-column>
-          <el-table-column label="动作" width="80" prop="action" />
+          <el-table-column label="动作" width="80">
+            <template #default="{ row }">{{ formatGrantAction(row.action) }}</template>
+          </el-table-column>
           <el-table-column label="效果" width="70" align="center">
             <template #default="{ row }">
               <el-tag size="small" :type="row.effect === 'ALLOW' ? 'success' : 'danger'">
@@ -263,7 +269,13 @@
 import * as GrantApi from '@/api/system/grant'
 import type { ResourceVO, GrantVO, SlotMappingVO } from '@/api/system/grant'
 import { formatDate } from '@/utils/formatTime'
-import { formatResourceType, formatDefaultEffect, defaultEffectTagType } from './constants'
+import {
+  formatResourceType,
+  formatDefaultEffect,
+  defaultEffectTagType,
+  formatSubjectType,
+  formatGrantAction
+} from './constants'
 
 defineOptions({ name: 'SystemResourceDetailPanel' })
 

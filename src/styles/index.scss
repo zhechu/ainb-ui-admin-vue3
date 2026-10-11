@@ -90,3 +90,18 @@
 .el-table .el-table-fixed-column--right.is-first-column::before {
   display: none;
 }
+
+/*
+  el-table-v2（虚拟表格，菜单管理 / 地区管理）的隔行浅色
+
+  v2 是 div 网格，上面 .xpy-list-table 的三条选择器全落在 .el-table__cell / thead 上，
+  挂上去是空转，所以这两页不挂那个类；表头底色与加粗 v2 自带
+  （--el-table-header-bg-color 默认即 fill-color-light），这里只补 v2 没有的 stripe。
+
+  ⚠️ 不能写 .el-table-v2__row:nth-child(even)：v2 只渲染可视窗口里的那几行，
+  滚动时 DOM 子序的奇偶会翻，条纹会跟着滚动手抖。改由各页的 row-class 回调
+  按【真实行号】取模（EP 会把 rowIndex 传进回调），条纹才稳定。
+*/
+.el-table-v2 .el-table-v2__row.xpy-v2-striped {
+  background-color: var(--el-fill-color-lighter);
+}
