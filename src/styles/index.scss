@@ -110,3 +110,19 @@
 .el-table-v2 .el-table-v2__row.xpy-v2-striped {
   background-color: var(--el-fill-color-lighter);
 }
+
+/*
+  查询面板的行间距与页面外边距统一（--app-content-padding）
+
+  列表页查询表单的既有约定是 <el-form class="-mb-15px" :inline="true">：
+  行与行的间距来自 EP .el-form-item 的 18px 下边距，表单自身的 -15px 用来抵掉末行多出的那段。
+  这里把两者一起收到 --app-content-padding：行间距 = 9px（与页面顶部留白同值），
+  且末行下边距被表单的 -9px 精确抵消，面板内上下留白对称（各为 body 的 10px padding）。
+  选择器挂 .v-content-wrap：弹窗 / 抽屉里不在面板中的表单不受影响。
+*/
+.v-content-wrap .el-form--inline {
+  margin-bottom: calc(-1 * var(--app-content-padding));
+}
+.v-content-wrap .el-form--inline .el-form-item {
+  margin-bottom: var(--app-content-padding);
+}

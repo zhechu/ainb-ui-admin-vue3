@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
   <ElCard
     ref="cardRef"
     :body-style="bodyStyle"
-    :class="[prefixCls, 'mb-[11.25px]', { [`${prefixCls}--list`]: isListContent }]"
+    :class="[prefixCls, 'mb-[var(--app-content-padding)]', { [`${prefixCls}--list`]: isListContent }]"
     shadow="never"
   >
     <template v-if="title" #header>
