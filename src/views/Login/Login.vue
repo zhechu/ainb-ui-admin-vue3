@@ -101,8 +101,8 @@ const prefixCls = getPrefixCls('login')
 $prefix-cls: #{$namespace}-login;
 
 .#{$prefix-cls} {
-  /* 浅色磨砂画布；暗色回落到中性深灰 */
-  background-color: #e9eef9;
+  /* 浅色磨砂画布；暗色回落到中性深灰（令牌 --brand-canvas 的暗值即 --login-bg-color） */
+  background-color: var(--brand-canvas);
 
   .login-canvas {
     position: absolute;
@@ -114,14 +114,14 @@ $prefix-cls: #{$namespace}-login;
       position: absolute;
       border-radius: 50%;
       filter: blur(70px);
-      opacity: 0.55;
 
       &--1 {
         top: -180px;
         left: -120px;
         width: 560px;
         height: 560px;
-        background: radial-gradient(circle at 40% 40%, #4f7df9 0%, rgb(79 125 249 / 0%) 70%);
+        background: var(--brand-blob-1);
+        opacity: var(--brand-blob-o-1);
       }
 
       &--2 {
@@ -129,8 +129,8 @@ $prefix-cls: #{$namespace}-login;
         right: -80px;
         width: 620px;
         height: 620px;
-        background: radial-gradient(circle at 50% 50%, #22c4dd 0%, rgb(34 196 221 / 0%) 70%);
-        opacity: 0.4;
+        background: var(--brand-blob-2);
+        opacity: var(--brand-blob-o-2);
       }
 
       &--3 {
@@ -138,8 +138,8 @@ $prefix-cls: #{$namespace}-login;
         left: 30%;
         width: 680px;
         height: 680px;
-        background: radial-gradient(circle at 50% 50%, #6a5ae0 0%, rgb(106 90 224 / 0%) 70%);
-        opacity: 0.3;
+        background: var(--brand-blob-3);
+        opacity: var(--brand-blob-o-3);
       }
     }
 
@@ -148,7 +148,7 @@ $prefix-cls: #{$namespace}-login;
       inset: 0;
       width: 100%;
       height: 100%;
-      color: rgb(255 255 255 / 0.55);
+      color: var(--brand-lines);
     }
   }
 
@@ -164,7 +164,7 @@ $prefix-cls: #{$namespace}-login;
     &__title {
       font-size: 19px;
       font-weight: 700;
-      background-image: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+      background-image: var(--brand-grad);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
@@ -187,9 +187,9 @@ $prefix-cls: #{$namespace}-login;
     width: 100%;
     max-width: 960px;
     min-height: 540px;
-    border-radius: 20px;
-    background-color: #fff;
-    box-shadow: 0 24px 64px rgb(31 45 90 / 14%);
+    border-radius: var(--brand-radius-hero);
+    background-color: var(--brand-surface);
+    box-shadow: var(--brand-shadow-2);
     animation: login-card-in 0.5s ease both;
 
     &__brand {
@@ -201,7 +201,7 @@ $prefix-cls: #{$namespace}-login;
     &__divider {
       flex: none;
       width: 1px;
-      background-color: #eef1f6;
+      background-color: var(--brand-line);
     }
 
     &__form {
@@ -223,7 +223,7 @@ $prefix-cls: #{$namespace}-login;
     &__mobile-title {
       font-size: 18px;
       font-weight: 700;
-      background-image: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+      background-image: var(--brand-grad);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
@@ -268,42 +268,7 @@ $prefix-cls: #{$namespace}-login;
   }
 }
 
-/* 暗色模式 */
-.dark .#{$prefix-cls} {
-  background-color: var(--login-bg-color);
-
-  .login-canvas {
-    &__blob {
-      opacity: 0.2;
-
-      &--2 {
-        opacity: 0.14;
-      }
-
-      &--3 {
-        opacity: 0.12;
-      }
-    }
-
-    &__lines {
-      color: rgb(255 255 255 / 0.06);
-    }
-  }
-
-  .login-topbar__title,
-  .login-card__mobile-title {
-    background-image: linear-gradient(120deg, #4db4f7 0%, #7d8bf0 100%);
-  }
-
-  .login-card {
-    background-color: #1d2129;
-    box-shadow: 0 24px 64px rgb(0 0 0 / 40%);
-
-    &__divider {
-      background-color: #2c3038;
-    }
-  }
-}
+/* 暗色模式：画布 / 表面 / 渐变 / 阴影全部由 --brand-* 令牌的暗值承担，这里无需覆盖 */
 
 /* 窄屏：单栏卡片，隐藏品牌栏与分隔线 */
 @media (max-width: 1279px) {

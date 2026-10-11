@@ -63,6 +63,61 @@
   --el-border-radius-base: 4px;
 
   --el-card-border-radius: 8px;
+
+  /*
+   * brand start —— 登录页质感的设计令牌（画布 / 表面 / 签名 / 半径阶梯）。
+   * 登录页是这套令牌的首个实例；暗色值见下方 .dark 段，一律抄录登录页已验证的暗色实现，
+   * 不新造暗色色板，保证登录 → 应用的明暗衔接无跳变。
+   */
+  --brand-canvas: #e9eef9;
+
+  --brand-blob-1: radial-gradient(circle at 40% 40%, #4f7df9 0%, rgb(79 125 249 / 0%) 70%);
+
+  --brand-blob-2: radial-gradient(circle at 50% 50%, #22c4dd 0%, rgb(34 196 221 / 0%) 70%);
+
+  --brand-blob-3: radial-gradient(circle at 50% 50%, #6a5ae0 0%, rgb(106 90 224 / 0%) 70%);
+
+  --brand-blob-o-1: 0.55;
+
+  --brand-blob-o-2: 0.4;
+
+  --brand-blob-o-3: 0.3;
+
+  /* 应用侧画布比登录页克制一档（长时间阅读）；暗色回落到登录页同值 */
+  --brand-canvas-o-1: 0.35;
+
+  --brand-canvas-o-2: 0.25;
+
+  --brand-lines: rgb(255 255 255 / 55%);
+
+  --brand-canvas-lines: rgb(255 255 255 / 35%);
+
+  --brand-surface: #fff;
+
+  --brand-line: #eef1f6;
+
+  /* 暗色黑底上柔阴影不可见，面板层次靠这圈 1px 内描边；亮色透明即不出现 */
+  --brand-edge: transparent;
+
+  --brand-shadow-1: 0 1px 2px rgb(31 45 90 / 4%), 0 8px 24px rgb(31 45 90 / 8%);
+
+  --brand-shadow-2: 0 24px 64px rgb(31 45 90 / 14%);
+
+  --brand-btn-shadow: 0 4px 12px rgb(59 75 216 / 24%);
+
+  --brand-grad: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+
+  --brand-chip-bg: linear-gradient(135deg, rgb(34 166 242 / 12%) 0%, rgb(59 75 216 / 12%) 100%);
+
+  --brand-chip-fg: #2b6bf5;
+
+  /* 半径阶梯：控件(--el-border-radius-base) < 小卡 < 面板 < hero */
+  --brand-radius-panel: 12px;
+
+  --brand-radius-card: 10px;
+
+  --brand-radius-hero: 20px;
+  /* brand end */
 }
 
 .dark {
@@ -86,6 +141,41 @@
   --top-header-bg-color: #171a21;
 
   --top-header-text-color: #fff;
+
+  /* brand 暗色：与登录页 .dark 实现同值 */
+  --brand-canvas: var(--login-bg-color);
+
+  --brand-blob-o-1: 0.2;
+
+  --brand-blob-o-2: 0.14;
+
+  --brand-blob-o-3: 0.12;
+
+  --brand-canvas-o-1: 0.2;
+
+  --brand-canvas-o-2: 0.14;
+
+  --brand-lines: rgb(255 255 255 / 6%);
+
+  --brand-canvas-lines: rgb(255 255 255 / 6%);
+
+  --brand-surface: #1d2129;
+
+  --brand-line: #2c3038;
+
+  --brand-edge: rgb(255 255 255 / 6%);
+
+  --brand-shadow-1: 0 1px 2px rgb(0 0 0 / 32%), 0 8px 24px rgb(0 0 0 / 32%);
+
+  --brand-shadow-2: 0 24px 64px rgb(0 0 0 / 40%);
+
+  --brand-btn-shadow: 0 4px 12px rgb(0 0 0 / 40%);
+
+  --brand-grad: linear-gradient(120deg, #4db4f7 0%, #7d8bf0 100%);
+
+  --brand-chip-bg: linear-gradient(135deg, rgb(34 166 242 / 20%) 0%, rgb(59 75 216 / 20%) 100%);
+
+  --brand-chip-fg: #6ea8f7;
 }
 
 .portal-theme {

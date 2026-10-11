@@ -211,7 +211,7 @@ const appStore = useAppStore()
   &__title {
     font-size: 21px;
     font-weight: 700;
-    background-image: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+    background-image: var(--brand-grad);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -266,8 +266,8 @@ const appStore = useAppStore()
     width: 30px;
     height: 30px;
     border-radius: 8px;
-    background: linear-gradient(135deg, rgb(34 166 242 / 12%) 0%, rgb(59 75 216 / 12%) 100%);
-    color: #2b6bf5;
+    background: var(--brand-chip-bg);
+    color: var(--brand-chip-fg);
 
     svg {
       width: 17px;
@@ -290,17 +290,6 @@ const appStore = useAppStore()
   &__feature-desc {
     font-size: 12px;
     color: var(--el-text-color-secondary);
-  }
-}
-
-.dark .brand-panel {
-  &__title {
-    background-image: linear-gradient(120deg, #4db4f7 0%, #7d8bf0 100%);
-  }
-
-  &__feature-icon {
-    background: linear-gradient(135deg, rgb(34 166 242 / 20%) 0%, rgb(59 75 216 / 20%) 100%);
-    color: #6ea8f7;
   }
 }
 </style>
