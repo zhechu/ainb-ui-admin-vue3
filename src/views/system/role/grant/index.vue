@@ -18,7 +18,12 @@
     <el-form :inline="true" :model="queryParams" class="-mb-15px" label-width="68px">
       <el-form-item label="动作" prop="action">
         <el-select v-model="queryParams.action" class="!w-200px" clearable placeholder="全部">
-          <el-option v-for="a in ACTIONS" :key="a.value" :label="a.label" :value="a.value" />
+          <el-option
+            v-for="a in GRANT_ACTION_OPTIONS"
+            :key="a.value"
+            :label="a.label"
+            :value="a.value"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="效果" prop="effect">
@@ -80,7 +85,11 @@
   </ContentWrap>
 
   <ContentWrap>
-    <el-empty v-if="!roleId" description="缺少角色参数，请从角色管理页的「资源授权」进入" :image-size="80" />
+    <el-empty
+      v-if="!roleId"
+      description="缺少角色参数，请从角色管理页的「资源授权」进入"
+      :image-size="80"
+    />
     <template v-else>
       <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
         <el-table-column
@@ -109,10 +118,10 @@
             <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
-        <el-table-column align="center" label="动作" prop="action" width="100">
+        <el-table-column align="center" label="动作" prop="action" width="120">
           <template #default="scope">
             <el-tag size="small" :type="scope.row.action === '*' ? 'warning' : 'info'">
-              {{ scope.row.action }}
+              {{ formatGrantAction(scope.row.action) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -131,7 +140,11 @@
         </el-table-column>
         <el-table-column align="center" label="字段模式" width="100">
           <template #default="scope">
-            <el-tag v-if="scope.row.fieldMode" size="small" :type="fieldModeTagType(scope.row.fieldMode) as any">
+            <el-tag
+              v-if="scope.row.fieldMode"
+              size="small"
+              :type="fieldModeTagType(scope.row.fieldMode) as any"
+            >
               {{ fieldModeLabel(scope.row.fieldMode) }}
             </el-tag>
             <span v-else class="text-gray-400">-</span>
@@ -188,6 +201,7 @@ import { formatDate } from '@/utils/formatTime'
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO } from '@/api/system/grant'
 import * as RoleApi from '@/api/system/role'
+import { GRANT_ACTION_OPTIONS, formatGrantAction } from '@/views/system/resource/constants'
 import GrantForm from './GrantForm.vue'
 
 defineOptions({ name: 'SystemRoleGrantPage' })
@@ -215,22 +229,6 @@ const loadRole = async () => {
     role.value = undefined
   }
 }
-
-const ACTIONS = [
-  { label: '* 全部动作', value: '*' },
-  { label: 'VIEW 查看', value: 'VIEW' },
-  { label: 'CREATE 新增', value: 'CREATE' },
-  { label: 'UPDATE 修改', value: 'UPDATE' },
-  { label: 'DELETE 删除', value: 'DELETE' },
-  { label: 'EXPORT 导出', value: 'EXPORT' },
-  { label: 'IMPORT 导入', value: 'IMPORT' },
-  { label: 'PRINT 打印', value: 'PRINT' },
-  { label: 'START 发起', value: 'START' },
-  { label: 'DESIGN 设计', value: 'DESIGN' },
-  { label: 'MANAGE 管理', value: 'MANAGE' },
-  { label: 'VIEW_ALL 查看全部', value: 'VIEW_ALL' },
-  { label: 'REFERENCE 被引用查询', value: 'REFERENCE' }
-]
 
 const loading = ref(false)
 const list = ref<GrantVO[]>([])
@@ -309,10 +307,10 @@ const handleDelete = async (id: number) => {
 }
 
 const fieldModeLabel = (mode: string) => {
-  return ({ EDITABLE: '可编辑', READONLY: '只读', HIDDEN: '隐藏' })[mode] ?? mode
+  return { EDITABLE: '可编辑', READONLY: '只读', HIDDEN: '隐藏' }[mode] ?? mode
 }
 const fieldModeTagType = (mode: string) => {
-  return ({ EDITABLE: 'success', READONLY: 'warning', HIDDEN: 'danger' })[mode] ?? ''
+  return { EDITABLE: 'success', READONLY: 'warning', HIDDEN: 'danger' }[mode] ?? ''
 }
 
 const handleBack = () => {

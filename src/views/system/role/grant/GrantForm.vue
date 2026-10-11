@@ -65,7 +65,12 @@
       </el-form-item>
       <el-form-item label="动作" prop="action">
         <el-select v-model="formData.action" class="w-full" placeholder="请选择动作">
-          <el-option v-for="a in ACTIONS" :key="a.value" :label="a.label" :value="a.value" />
+          <el-option
+            v-for="a in GRANT_ACTION_OPTIONS"
+            :key="a.value"
+            :label="a.label"
+            :value="a.value"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="效果" prop="effect">
@@ -134,6 +139,7 @@
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO, GrantSaveReqVO, RuleVO } from '@/api/system/grant'
 import { handleTree } from '@/utils/tree'
+import { GRANT_ACTION_OPTIONS } from '@/views/system/resource/constants'
 import dayjs from 'dayjs'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
@@ -232,22 +238,6 @@ const reloadResourceTree = async () => {
 }
 
 // -------- 资源选择（虚拟化树） --------
-
-const ACTIONS = [
-  { label: '* 全部动作', value: '*' },
-  { label: 'VIEW 查看', value: 'VIEW' },
-  { label: 'CREATE 新增', value: 'CREATE' },
-  { label: 'UPDATE 修改', value: 'UPDATE' },
-  { label: 'DELETE 删除', value: 'DELETE' },
-  { label: 'EXPORT 导出', value: 'EXPORT' },
-  { label: 'IMPORT 导入', value: 'IMPORT' },
-  { label: 'PRINT 打印', value: 'PRINT' },
-  { label: 'START 发起', value: 'START' },
-  { label: 'DESIGN 设计', value: 'DESIGN' },
-  { label: 'MANAGE 管理', value: 'MANAGE' },
-  { label: 'VIEW_ALL 查看全部', value: 'VIEW_ALL' },
-  { label: 'REFERENCE 被引用查询', value: 'REFERENCE' }
-]
 
 const resourceTreeRef = ref()
 const resourceById = computed(() => {

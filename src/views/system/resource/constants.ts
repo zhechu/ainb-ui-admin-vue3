@@ -3,7 +3,7 @@
  *
  * 走前端常量模块而不是系统字典：这些 code 与后端 ResourceTypeEnum 一一对应、不会由管理员
  * 自助增改，与 infra/formDesign 的 FORM_TYPE_OPTIONS 是同一惯例；引字典反而要多一条 SQL 迁移。
- * 资源页、资源详情面板、权限诊断页共用这一份，避免三处各写一遍再漂移。
+ * 资源页、资源详情面板、权限诊断页、角色资源授权页共用这一份，避免多处各写一遍再漂移。
  */
 
 /** 资源类型下拉项。顺序与后端 ResourceTypeEnum 的声明顺序一致 */
@@ -79,12 +79,17 @@ export const formatSubjectType = (type: string | undefined) =>
   SUBJECT_TYPE_OPTIONS.find((item) => item.value === type)?.label ?? type
 
 /**
- * 授权动作的中文。表单下拉只给了 8 个常用动作，但后端 GrantActionEnum 有 13 个，
- * 历史授权行里可能出现表单给不出的 code（IMPORT/PRINT/MANAGE/VIEW_ALL/REFERENCE），
- * 所以这里按枚举全集配，认不出的原样显示（与 formatResourceType 同一口径）
+ * 授权动作的中文，按后端 GrantActionEnum 全集配（13 个）。
+ *
+ * 这是全站唯一一份动作词表：角色资源授权页的列表动作列、搜索下拉、编辑表单下拉都从这里取，
+ * 不再各自维护私有副本 —— 三份列表曾经逐字相同，但「相同」是靠人盯的，改一处忘两处就漂移。
+ *
+ * `*` 的 label 刻意带上星号：它是通配符而不是一个具体动作，
+ * 只写「全部动作」会和下面的 VIEW_ALL「查看全部」读起来分不清谁是谁。
+ * REFERENCE 用「被引用查询」，逐字取自 GrantActionEnum 的 javadoc。
  */
 export const GRANT_ACTION_OPTIONS = [
-  { label: '全部动作', value: '*' },
+  { label: '* 全部动作', value: '*' },
   { label: '查看', value: 'VIEW' },
   { label: '新增', value: 'CREATE' },
   { label: '修改', value: 'UPDATE' },
@@ -96,8 +101,13 @@ export const GRANT_ACTION_OPTIONS = [
   { label: '设计', value: 'DESIGN' },
   { label: '管理', value: 'MANAGE' },
   { label: '查看全部', value: 'VIEW_ALL' },
-  { label: '引用', value: 'REFERENCE' }
+  { label: '被引用查询', value: 'REFERENCE' }
 ]
 
+/**
+ * 认不出的 code 原样显示（与 formatResourceType 同一口径），不能改成 '-'：
+ * sys_grant.action 里存着枚举外的历史值（实测有 EXEC），兜底掉了就渲染成空白 tag，
+ * 界面上既看不出这一行是什么动作，也看不出它是脏数据
+ */
 export const formatGrantAction = (action: string | undefined) =>
   GRANT_ACTION_OPTIONS.find((item) => item.value === action)?.label ?? action
