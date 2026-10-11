@@ -54,11 +54,14 @@
         :tree-props="{ children: 'children' }"
         height="100%"
         row-key="id"
+        class="xpy-list-table"
       >
         <el-table-column label="分类名称" min-width="210" prop="name" show-overflow-tooltip>
           <template #default="{ row }">
             <Icon class="mr-4px align-middle" :icon="nodeIcon(row)" :size="14" />
-            <span class="align-middle">{{ row.name }}</span>
+            <!-- 文字不能带 align-middle：vertical-align:middle 会把 19px 的字体盒压到基线以下，
+                 行盒从 23px 涨到 25px（实测行高 42 而不是 41）。图标带 align-middle 不会，它只有 14px -->
+            <span>{{ row.name }}</span>
           </template>
         </el-table-column>
         <el-table-column label="编码" min-width="180" prop="type" show-overflow-tooltip />
