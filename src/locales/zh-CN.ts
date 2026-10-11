@@ -156,7 +156,14 @@ export default {
     SmsSendMsg: '验证码已发送',
     resetPassword: '重置密码',
     resetPasswordSuccess: '重置密码成功',
-    invalidTenantName: '无效的租户名称'
+    invalidTenantName: '无效的租户名称',
+    slogan: 'AI原生低代码平台',
+    feature1Title: '模型驱动',
+    feature1Desc: '数据建模一次定义，页面与接口一键生成',
+    feature2Title: '可视化编排',
+    feature2Desc: '流程、表单、报表拖拽即得，所见即所得',
+    feature3Title: 'AI 原生',
+    feature3Desc: '智能体协同执行，自然语言驱动操作'
   },
   captcha: {
     verify: '验证',

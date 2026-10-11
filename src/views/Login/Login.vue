@@ -1,76 +1,76 @@
 <template>
-  <div
-    :class="prefixCls"
-    class="relative h-[100%] lt-md:px-10px lt-sm:px-10px lt-xl:px-10px lt-xl:px-10px"
-  >
-    <div class="relative mx-auto h-full flex">
-      <el-scrollbar
-        :class="`${prefixCls}__left flex-1 relative p-30px lt-xl:hidden`"
-        view-class="h-full"
-        wrap-class="overflow-x-hidden"
+  <div :class="prefixCls" class="relative h-[100%] overflow-hidden">
+    <!-- 背景层：极光光斑 + 等距线稿 -->
+    <div class="login-canvas" aria-hidden="true">
+      <div class="login-canvas__blob login-canvas__blob--1"></div>
+      <div class="login-canvas__blob login-canvas__blob--2"></div>
+      <div class="login-canvas__blob login-canvas__blob--3"></div>
+      <svg
+        class="login-canvas__lines"
+        viewBox="0 0 1440 900"
+        preserveAspectRatio="xMidYMid slice"
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <!-- 左上角的 logo + 系统标题 -->
-        <div class="relative flex items-center text-white">
-          <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-          <span class="text-20px font-bold">{{ underlineToHump(appStore.getTitle) }}</span>
-        </div>
-        <!-- 左边的背景图 + 欢迎语 -->
-        <div class="h-[calc(100%-60px)] flex items-center justify-center">
-          <TransitionGroup
-            appear
-            enter-active-class="animate__animated animate__bounceInLeft"
-            tag="div"
-          >
-            <img key="1" alt="" class="w-350px" src="@/assets/svgs/login-box-bg.svg" />
-            <div key="2" class="text-3xl text-white">{{ t('login.welcome') }}</div>
-            <div key="3" class="mt-5 text-14px font-normal text-white">
-              {{ t('login.message') }}
-            </div>
-          </TransitionGroup>
-        </div>
-      </el-scrollbar>
-      <el-scrollbar
-        class="relative flex-1 p-30px dark:bg-[var(--login-bg-color)] lt-sm:p-10px"
-        view-class="h-full"
-        wrap-class="overflow-x-hidden"
-      >
-        <!-- 右上角的主题、语言选择 -->
-        <div
-          class="flex items-center justify-between at-2xl:justify-end at-xl:justify-end"
-          style="color: var(--el-text-color-primary)"
-        >
-          <div class="flex items-center at-2xl:hidden at-xl:hidden">
-            <img alt="" class="mr-10px h-48px w-48px" src="@/assets/imgs/logo.png" />
-            <span class="text-20px font-bold">{{ underlineToHump(appStore.getTitle) }}</span>
-          </div>
-          <div class="flex items-center justify-end space-x-10px h-48px">
-            <ThemeSwitch />
-            <LocaleDropdown />
-          </div>
-        </div>
-        <!-- 右边的登录界面 -->
-        <Transition appear enter-active-class="animate__animated animate__bounceInRight">
-          <div
-            class="m-auto h-[calc(100%-60px)] w-[100%] flex items-center at-2xl:max-w-500px at-lg:max-w-500px at-md:max-w-500px at-xl:max-w-500px"
-          >
-            <!-- 账号登录 -->
-            <LoginForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-            <!-- 手机登录 -->
-            <MobileForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-            <!-- 二维码登录 -->
-            <QrCodeForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-            <!-- 注册 -->
-            <RegisterForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-            <!-- 三方登录 -->
-            <SSOLoginVue class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-            <!-- 忘记密码 -->
-            <ForgetPasswordForm class="m-auto h-auto p-20px lt-xl:(rounded-3xl light:bg-white)" />
-          </div>
-        </Transition>
-      </el-scrollbar>
+        <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M-60,150 L240,60 L430,150 L130,240 Z" />
+          <path d="M-20,190 L250,110 L400,180" />
+          <path d="M60,120 L60,180 M160,92 L160,152 M260,120 L260,180" />
+          <path d="M980,40 L1240,-30 L1420,50 L1160,120 Z" />
+          <path d="M380,880 L760,770 L1140,880 L760,990 Z" />
+          <path d="M470,880 L760,795 L1050,880" />
+          <path d="M600,850 L600,905 M760,805 L760,860 M920,850 L920,905" />
+        </g>
+      </svg>
     </div>
+
+    <!-- 顶栏：品牌 + 主题/语言 -->
+    <div class="login-topbar">
+      <div class="flex items-center">
+        <img alt="" class="mr-10px h-34px w-34px" src="@/assets/imgs/logo.png" />
+        <span class="login-topbar__title">{{ underlineToHump(appStore.getTitle) }}</span>
+      </div>
+      <div class="flex items-center space-x-10px h-34px">
+        <ThemeSwitch />
+        <LocaleDropdown />
+      </div>
+    </div>
+
+    <!-- 居中卡片 -->
+    <div class="login-stage">
+      <div class="login-card">
+        <div class="login-card__brand">
+          <BrandPanel />
+        </div>
+        <div class="login-card__divider"></div>
+        <div class="login-card__form">
+          <!-- 窄屏紧凑品牌头 -->
+          <div class="login-card__mobile-head">
+            <img alt="" class="mr-8px h-30px w-30px" src="@/assets/imgs/logo.png" />
+            <span class="login-card__mobile-title">{{ underlineToHump(appStore.getTitle) }}</span>
+            <span class="login-card__mobile-sep">·</span>
+            <span class="login-card__mobile-slogan">{{ t('login.slogan') }}</span>
+          </div>
+          <!-- 账号登录 -->
+          <LoginForm class="login-form-slot" />
+          <!-- 手机登录 -->
+          <MobileForm class="login-form-slot" />
+          <!-- 二维码登录 -->
+          <QrCodeForm class="login-form-slot" />
+          <!-- 注册 -->
+          <RegisterForm class="login-form-slot" />
+          <!-- 三方登录 -->
+          <SSOLoginVue class="login-form-slot" />
+          <!-- 忘记密码 -->
+          <ForgetPasswordForm class="login-form-slot" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 版权 -->
+    <div class="login-footer">Copyright @ 2026 启凌 | MIT License</div>
   </div>
 </template>
+
 <script lang="ts" setup>
 import { underlineToHump } from '@/utils'
 
@@ -87,6 +87,7 @@ import {
   SSOLoginVue,
   ForgetPasswordForm
 } from './components'
+import BrandPanel from './components/BrandPanel.vue'
 
 defineOptions({ name: 'Login' })
 
@@ -100,22 +101,231 @@ const prefixCls = getPrefixCls('login')
 $prefix-cls: #{$namespace}-login;
 
 .#{$prefix-cls} {
-  overflow: auto;
+  /* 浅色磨砂画布；暗色回落到中性深灰 */
+  background-color: #e9eef9;
 
-  &__left {
-    &::before {
+  .login-canvas {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+
+    &__blob {
       position: absolute;
-      top: 0;
-      left: 0;
-      z-index: -1;
+      border-radius: 50%;
+      filter: blur(70px);
+      opacity: 0.55;
+
+      &--1 {
+        top: -180px;
+        left: -120px;
+        width: 560px;
+        height: 560px;
+        background: radial-gradient(circle at 40% 40%, #4f7df9 0%, rgb(79 125 249 / 0%) 70%);
+      }
+
+      &--2 {
+        top: -220px;
+        right: -80px;
+        width: 620px;
+        height: 620px;
+        background: radial-gradient(circle at 50% 50%, #22c4dd 0%, rgb(34 196 221 / 0%) 70%);
+        opacity: 0.4;
+      }
+
+      &--3 {
+        bottom: -260px;
+        left: 30%;
+        width: 680px;
+        height: 680px;
+        background: radial-gradient(circle at 50% 50%, #6a5ae0 0%, rgb(106 90 224 / 0%) 70%);
+        opacity: 0.3;
+      }
+    }
+
+    &__lines {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
-      /* 品牌渐变（与 logo 同色系），替代原先的纯深蓝底 */
-      background-image: linear-gradient(160deg, #2b6bf5 0%, #19b9c9 100%);
-      background-position: center;
-      background-repeat: no-repeat;
-      content: '';
+      color: rgb(255 255 255 / 0.55);
     }
+  }
+
+  .login-topbar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 72px;
+    padding: 0 32px;
+
+    &__title {
+      font-size: 19px;
+      font-weight: 700;
+      background-image: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+  }
+
+  .login-stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(100% - 72px - 48px);
+    padding: 0 24px;
+    overflow: auto;
+  }
+
+  .login-card {
+    display: flex;
+    width: 100%;
+    max-width: 960px;
+    min-height: 540px;
+    border-radius: 20px;
+    background-color: #fff;
+    box-shadow: 0 24px 64px rgb(31 45 90 / 14%);
+    animation: login-card-in 0.5s ease both;
+
+    &__brand {
+      flex: 1 1 50%;
+      max-width: 480px;
+      min-width: 0;
+    }
+
+    &__divider {
+      flex: none;
+      width: 1px;
+      background-color: #eef1f6;
+    }
+
+    &__form {
+      flex: 1 1 50%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 40px 48px;
+    }
+
+    &__mobile-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    &__mobile-title {
+      font-size: 18px;
+      font-weight: 700;
+      background-image: linear-gradient(120deg, #22a6f2 0%, #3b4bd8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    &__mobile-sep {
+      margin: 0 6px;
+      color: var(--el-text-color-placeholder);
+    }
+
+    &__mobile-slogan {
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
+    }
+  }
+
+  .login-form-slot {
+    width: 100%;
+  }
+
+  .login-footer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 暗色模式 */
+.dark .#{$prefix-cls} {
+  background-color: var(--login-bg-color);
+
+  .login-canvas {
+    &__blob {
+      opacity: 0.2;
+
+      &--2 {
+        opacity: 0.14;
+      }
+
+      &--3 {
+        opacity: 0.12;
+      }
+    }
+
+    &__lines {
+      color: rgb(255 255 255 / 0.06);
+    }
+  }
+
+  .login-topbar__title,
+  .login-card__mobile-title {
+    background-image: linear-gradient(120deg, #4db4f7 0%, #7d8bf0 100%);
+  }
+
+  .login-card {
+    background-color: #1d2129;
+    box-shadow: 0 24px 64px rgb(0 0 0 / 40%);
+
+    &__divider {
+      background-color: #2c3038;
+    }
+  }
+}
+
+/* 窄屏：单栏卡片，隐藏品牌栏与分隔线 */
+@media (max-width: 1279px) {
+  .#{$prefix-cls} .login-card {
+    max-width: 460px;
+    min-height: 0;
+
+    &__brand,
+    &__divider {
+      display: none;
+    }
+
+    &__form {
+      padding: 32px 28px;
+    }
+  }
+}
+
+/* 宽屏：隐藏紧凑品牌头（品牌栏已承载） */
+@media (min-width: 1280px) {
+  .#{$prefix-cls} .login-card__mobile-head {
+    display: none;
   }
 }
 </style>

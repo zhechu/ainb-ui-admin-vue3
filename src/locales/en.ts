@@ -156,7 +156,14 @@ export default {
     SmsSendMsg: 'code has been sent',
     resetPassword: 'Reset Password',
     resetPasswordSuccess: 'Reset Password Success',
-    invalidTenantName: 'Invalid Tenant Name'
+    invalidTenantName: 'Invalid Tenant Name',
+    slogan: 'AI-Native Low-Code Platform',
+    feature1Title: 'Model-Driven',
+    feature1Desc: 'Define data models once; pages and APIs generated in one click',
+    feature2Title: 'Visual Orchestration',
+    feature2Desc: 'Drag-and-drop flows, forms and reports — WYSIWYG',
+    feature3Title: 'AI-Native',
+    feature3Desc: 'Agents collaborate; natural language drives operations'
   },
   captcha: {
     verify: 'Verify',
