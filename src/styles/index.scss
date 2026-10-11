@@ -45,35 +45,16 @@
 }
 
 /*
-  列表页统一观感（以「表单设计」列表为标杆）
+  列表页统一观感 = 参考站 81.71.100.62 的模型配置列表 = Element Plus 默认表体
 
-  表头压一层浅底 + 加粗：滚动时表头不会「混进」第一行；
-  隔行浅色由 el-table 的 stripe 属性负责（见各页 <el-table class="xpy-list-table" stripe>）；
-  行高放宽到 14px 内边距：短文本表格不会挤成一叠细线、扫读串行；
-  操作列 link 按钮之间留 12px：避免「编辑删除」连成一串。
-
-  样式集中在此一处，各列表页只需给主表挂 xpy-list-table + stripe，无需各自写 scoped 样式。
+  2026-10-11 应用户要求改回此观感并推广到全部改过的页面：表头白底、灰字（#909399）600 字重、
+  表头 40 / 行高 41（单元格 padding 8px 0），隔行浅色由各页 stripe 属性负责，序号列各页按约定手写。
+  这些全是 EP 默认（--el-table-header-bg-color=fill-color-blank、
+  --el-table-header-text-color=text-color-secondary、thead th font-weight 600），
+  所以这个类不再覆盖任何表体底色与内边距——此前在这里压的浅底表头 + 14px padding 与参考站分歧，退役。
+  类里只剩三件 EP 不给的事：序号列窄内边距（见上）、操作列按钮与「更多」下拉的 12px 间距（见下）、
+  固定列边缘投影隐藏（见下）。各列表页仍挂 xpy-list-table + stripe，无需各自写 scoped 样式。
 */
-.xpy-list-table.el-table--default .el-table__cell {
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-/*
-  EP 对固定列表头有多条不透明底色规则：
-  基础 `.el-table__header-wrapper tr th.el-table-fixed-column--*`（0,2,2），
-  以及滚动状态 `.el-table.is-scrolling-right/-none th.el-table-fixed-column--*`（0,3,1）
-  —— 表格不横向溢出(is-scrolling-none)或滚到右缘时，「操作」表头会被盖回白色。
-  这里用 .el-table.xpy-list-table thead tr th 把权重抬到 (0,3,3) 一次性压过全部状态。
-*/
-.el-table.xpy-list-table thead tr th.el-table__cell,
-.el-table.xpy-list-table thead tr th.el-table-fixed-column--left,
-.el-table.xpy-list-table thead tr th.el-table-fixed-column--right {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color-light);
-}
-
 .xpy-list-table .el-button + .el-button,
 .xpy-list-table .el-button + .el-dropdown {
   margin-left: 12px;
@@ -84,7 +65,7 @@
 
   表格横向溢出时 EP 会在左/右固定列内侧画一条 box-shadow 分隔线，
   贴在「操作」列左边、贯穿每一行，观感像一条多余的白缝（表单设计页不溢出、没有这条线）。
-  固定列本身已有表头底色 + 隔行色与滚动区自然区分，这条投影反而显脏，故统一隐藏。
+  固定列本身已有隔行色 + 白底表头与滚动区自然区分，这条投影反而显脏，故统一隐藏。
 */
 .el-table .el-table-fixed-column--left.is-last-column::before,
 .el-table .el-table-fixed-column--right.is-first-column::before {
@@ -94,9 +75,9 @@
 /*
   el-table-v2（虚拟表格，菜单管理 / 地区管理）的隔行浅色
 
-  v2 是 div 网格，上面 .xpy-list-table 的三条选择器全落在 .el-table__cell / thead 上，
-  挂上去是空转，所以这两页不挂那个类；表头底色与加粗 v2 自带
-  （--el-table-header-bg-color 默认即 fill-color-light），这里只补 v2 没有的 stripe。
+  v2 是 div 网格，上面 .xpy-list-table 的选择器落不到它的节点上，
+  挂上去是空转，所以这两页不挂那个类；v2 表头的白底与 700 加粗是它自带的
+  （--el-table-header-bg-color 与 v1 同一个变量，默认白），与 v1 现在的观感一致，这里只补 v2 没有的 stripe。
 
   ⚠️ 不能写 .el-table-v2__row:nth-child(even)：v2 只渲染可视窗口里的那几行，
   滚动时 DOM 子序的奇偶会翻，条纹会跟着滚动手抖。改由各页的 row-class 回调
