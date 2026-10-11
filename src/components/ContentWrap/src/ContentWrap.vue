@@ -102,7 +102,8 @@ const updateListLayout = () => {
     const sectionStyle = contentSection ? getComputedStyle(contentSection) : undefined
     const paddingBottom = Number.parseFloat(sectionStyle?.paddingBottom || '0') || 0
     const marginBottom = Number.parseFloat(getComputedStyle(card).marginBottom || '0') || 0
-    const height = Math.floor(contentBottom - cardRect.top - paddingBottom - marginBottom - 1)
+    // 不再额外减 1px：floor 已保证不溢出，多减会让底部留白比顶部（--app-content-padding）大 1px
+    const height = Math.floor(contentBottom - cardRect.top - paddingBottom - marginBottom)
 
     // 窄屏下搜索区可能已经占满首屏，列表卡片位于首屏之外时保留自然高度，
     // 让外层页面滚动，避免把列表压缩成几像素。
@@ -191,6 +192,12 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 $prefix-cls: #{$namespace}-content-wrap;
+
+/* 末位面板不再叠加下外边距，让页面底部留白与顶部（--app-content-padding）一致。
+   不能用 :last-child —— 页面末尾总有 Dialog 渲染出的零高度 .el-overlay 兄弟节点。 */
+.#{$prefix-cls}:not(:has(~ .#{$prefix-cls})) {
+  margin-bottom: 0;
+}
 
 .#{$prefix-cls}--list {
   display: flex;
