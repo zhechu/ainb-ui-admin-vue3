@@ -1,13 +1,16 @@
 <!--
-  部门树选择组件（通用复用）
+  组织树选择组件（通用复用）
 
-  功能：搜索输入框 + 部门树，支持点击同一节点取消选中
+  功能：搜索输入框 + 组织树，支持点击同一节点取消选中
   Props:
-    filterPlaceholder — 搜索输入框占位文字（默认 '请输入部门名称'）
+    filterPlaceholder — 搜索输入框占位文字（默认 '请输入组织名称'）
   Events:
     node-click(deptId: number | undefined) — 点击节点后触发，取消选中时传 undefined
   Expose:
     reset() — 清空选中状态（供外部重置按钮调用）
+
+  ⚠️ 改默认占位文字会同时改到所有没显式传 filterPlaceholder 的调用方
+  （目前是用户管理页左侧树、用户选择弹窗），不只是组织管理页自己
 -->
 <template>
   <div class="h-full">
@@ -44,7 +47,7 @@ withDefaults(
     filterPlaceholder?: string // 搜索输入框占位文字
   }>(),
   {
-    filterPlaceholder: '请输入部门名称'
+    filterPlaceholder: '请输入组织名称'
   }
 )
 
@@ -53,11 +56,11 @@ const emit = defineEmits<{
 }>()
 
 const filterText = ref('') // 过滤关键字
-const deptList = ref<Tree[]>([]) // 部门树数据
+const deptList = ref<Tree[]>([]) // 组织树数据
 const treeRef = ref<InstanceType<typeof ElTree>>() // 树 Ref
 let currentNodeId: number | null = null // 当前选中的节点 ID
 
-/** 加载部门树 */
+/** 加载组织树 */
 const loadTree = async () => {
   const res = await DeptApi.getSimpleDeptList()
   deptList.value = handleTree(res)
