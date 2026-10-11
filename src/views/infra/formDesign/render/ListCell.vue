@@ -114,14 +114,35 @@ const handleDownload = (file: CellFileItem) => {
 </script>
 
 <style lang="scss" scoped>
+/*
+  单元格内容一律压到 24px 高，行高才能与全站列表的单行 41px 对齐
+  （41 = 内容 24 + 上下 padding 16 + 边框 1，见 src/styles/index.scss）。
+
+  两个超标的来源，实测都会把行顶出 41：
+  - el-link 默认 25px（附件名 / 超链接列）→ 行 42px；
+  - 缩略图原先 32px → 行 49px。缩略图点一下就是全屏预览（preview-src-list），
+    24px 足够认出是哪张图，看清细节本来就不该在列表这一层做。
+*/
+/*
+  ⚠️ 两条选择器都要：超链接分支里 el-link 是本组件模板的根节点，scope id 打在它自己身上，
+  `:deep(.el-link)`（编译成 `[data-v] .el-link`，只匹配后代）够不着它；
+  附件分支里 el-link 嵌套在 .list-cell-files 里，又只有 :deep 够得着。
+*/
+.el-link,
+:deep(.el-link) {
+  height: 24px;
+  /* inline-flex 按基线对齐时行盒会为它多留 1px 下伸部（实测行高 42），与 index.scss 里开关同病同治 */
+  vertical-align: top;
+}
+
 .list-cell-images {
   display: flex;
   align-items: center;
   gap: 4px;
 
   :deep(.el-image) {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     border-radius: 4px;
     cursor: pointer;
   }

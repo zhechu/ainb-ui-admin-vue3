@@ -143,33 +143,34 @@
             />
           </el-form-item>
           <!--
-            ⚠️ 这个 v-if 是新加的：没有查询项时 visibleSearchItems 为空、上面的 v-for 不产出任何项，
-            不补它就会渲染出一个只有「搜索/重置」的空表单。原来整张卡片靠 searchItems.length > 0
-            整体不渲染，这条分支从没暴露过；现在卡片还要为工具栏渲染，所以必须补上
-          -->
-          <el-form-item v-if="searchItems.length > 0">
-            <el-button @click="handleQuery">
-              <Icon class="mr-5px" icon="ep:search" />
-              搜索
-            </el-button>
-            <el-button @click="resetQuery">
-              <Icon class="mr-5px" icon="ep:refresh" />
-              重置
-            </el-button>
-          </el-form-item>
-          <!--
-            工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
-            按钮本身一字未改 —— 原来就已经是 plain + 按动作性质给色，批量按钮的 disabled
-            与选中数角标也原样搬过来，只换了外层容器（div → el-form-item）。
-          -->
-          <el-form-item v-if="hasToolbar">
-            <!--
-              内置工具栏按钮。文案、图标、顺序都来自列表设计的按钮清单。
+            搜索/重置、工具栏、展开收起同处一个 form-item。
 
-              颜色按动作的性质给，与系统里其它管理列表页（如租户管理）保持一致：
-              主操作是主色、导出是成功色、批量删除是危险色。
-              都用默认灰的话，「批量删除」看起来与「导出」一样人畜无害 ——
-              而它是这一排里唯一不可撤销的动作。
+            ⚠️ 不能拆成多个 form-item：inline 表单里 EP 给每个 form-item 加 margin-right:32px，
+            拆开后「重置」与「新增」之间就是 32px 的洞（实测），而静态列表页
+            （infra/formDesign/index.vue、ai/model/model）把这一排放在同一个 item 里、
+            按钮间距走 .el-button + .el-button 的 12px。拆开会同时把「展开(4)」
+            单独挤到下一行行首，读起来像它属于另一组控件。
+
+            ⚠️ 搜索/重置这对按钮要自带 v-if：没有查询项时 visibleSearchItems 为空、
+            上面的 v-for 不产出任何项，不补它就会渲染出一个只有「搜索/重置」的空表单。
+            原来整张卡片靠 searchItems.length > 0 整体不渲染，这条分支从没暴露过；
+            现在卡片还要为工具栏渲染，所以门挪到了这对按钮上。
+          -->
+          <el-form-item v-if="searchItems.length > 0 || hasToolbar">
+            <template v-if="searchItems.length > 0">
+              <el-button @click="handleQuery">
+                <Icon class="mr-5px" icon="ep:search" />
+                搜索
+              </el-button>
+              <el-button @click="resetQuery">
+                <Icon class="mr-5px" icon="ep:refresh" />
+                重置
+              </el-button>
+            </template>
+            <!--
+              工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
+              按钮本身一字未改 —— 原来就已经是 plain + 按动作性质给色，批量按钮的 disabled
+              与选中数角标也原样搬过来，只换了外层容器（div → el-form-item）。
             -->
             <el-button
               v-for="btn in builtinToolbarButtons"
@@ -198,14 +199,17 @@
               <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
               {{ btn.label }}
             </el-button>
-          </el-form-item>
-          <!--
-            展开/收起排在最后：它调的是「查询区长什么样」，不是对数据做事的动作。
-            放在搜索/重置紧后面时，「新增」会被挤到一个折叠开关之后 —— 一行里最次要的
-            控件排在最主要的动作前面，读起来像是新增属于折叠功能的一部分。
-          -->
-          <el-form-item v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD">
-            <el-button link type="primary" @click="searchCollapsed = !searchCollapsed">
+            <!--
+              展开/收起排在最后：它调的是「查询区长什么样」，不是对数据做事的动作。
+              放在搜索/重置紧后面时，「新增」会被挤到一个折叠开关之后 —— 一行里最次要的
+              控件排在最主要的动作前面，读起来像是新增属于折叠功能的一部分。
+            -->
+            <el-button
+              v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD"
+              link
+              type="primary"
+              @click="searchCollapsed = !searchCollapsed"
+            >
               {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
               <Icon class="ml-2px" :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
             </el-button>
@@ -268,7 +272,7 @@
           ref="tableRef"
           v-loading="listLoading"
           :border="gridBorderNeeded"
-          class="runtime-table"
+          class="runtime-table xpy-list-table"
           :data="tableData"
           :default-sort="defaultSortProp"
           :row-class-name="rowClassName"
@@ -307,7 +311,9 @@
             align="center"
             :fixed="hasLeftFixedColumn ? 'left' : false"
             label="序号"
-            width="64"
+            width="44"
+            class-name="col-index"
+            label-class-name="col-index"
           >
             <template #default="scope">{{ rowIndexOf(scope.$index) }}</template>
           </el-table-column>
@@ -3274,43 +3280,24 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
-  列表的行高与表头
+  列表观感 = 模型配置列表（参考站 81.71.100.62）= 全站 xpy-list-table
 
-  向租户管理那一类管理列表页看齐。默认状态下这张表是最密的一档
-  （ContentWrap 给所有列表页定了单元格 4px 内边距，行高只有 32px），
-  而它的单元格里装的是标签、缩略图、附件链接这些比纯文本更高的东西，
-  挤在一起时一行的上下几乎贴着边框。
+  表格挂了 xpy-list-table，行高 41 / 表头白底灰字 600 / 按钮间距 12px / 序号列窄内边距
+  全部由 src/styles/index.scss 统一给，这里不再各写一套。
 
-  ⚠️ 选择器要压过 ContentWrap
-
-  ContentWrap 那条是 `.content-wrap[data-v-x] .el-table--default .el-table__cell`，
-  权重 (0,4,0)。写成 `.runtime-table :deep(.el-table__cell)` 只有 (0,3,0)，
-  会被它整条盖掉、一点效果都没有。重复一次类名抬到 (0,5,0)，
-  比 !important 更容易在 DevTools 里看明白是谁盖了谁。
-
-  只改本模块、不动 ContentWrap：那条规则作用于系统里每一个列表页。
+  历史上这里压过两件事，都已退役：
+  - 单元格 12px 上下内边距（行高 49px）。当时的理由是「ContentWrap 给所有列表页定了
+    4px 内边距、行高只有 32px，而这张表装的是标签/缩略图/附件」——ContentWrap 那条
+    4px 规则早已删除，全站列表行高统一到 41px 之后，这张表单独 49px 反而成了异类。
+    单元格里真有更高的内容（缩略图、附件链接）时，td 的 height 只是下限，行会自然撑高。
+  - 表头浅底 + 主色文字。参考站的表头是白底、#909399 灰字、600 字重，浅底表头在
+    2026-10-11 那一轮已随 xpy-list-table 一起退役，这张表没理由留着。
 */
-.runtime-table.runtime-table.el-table--default :deep(.el-table__cell) {
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
-
-.runtime-table :deep(.el-table__header-wrapper th) {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color-light);
-}
 
 /* 合计行与数据区拉开，否则最后一行数据看起来像是合计的一部分 */
 .runtime-table :deep(.el-table__footer-wrapper td) {
   font-weight: 600;
   background-color: var(--el-fill-color-light);
-}
-
-/* 操作列里的 link 按钮连成一串时很难点准，拉开一点 */
-.runtime-table :deep(.el-table__body .el-button + .el-button),
-.runtime-table :deep(.el-table__body .el-button + .el-dropdown) {
-  margin-left: 10px;
 }
 
 /*
