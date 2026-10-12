@@ -1,5 +1,5 @@
 <template>
-  <Dialog v-model="dialogVisible" title="批量添加授权" width="780px">
+  <Dialog v-model="dialogVisible" title="批量授权" width="780px">
     <el-form v-loading="formLoading" label-width="110px">
       <el-form-item label="资源">
         <div class="w-full">
@@ -22,18 +22,30 @@
             </el-button>
           </div>
           <div class="mb-4px text-11px leading-tight text-gray-400">
-            勾选父节点<b>不会</b>自动勾选子节点 —— 菜单与其下的按钮是各自独立的权限点。
-            要整片选，用节点行尾的「选子树」。
+            勾一个资源<b>不会</b>自动带上它下面的资源。想整片选，点该行的「全选下级」
+            （会把它和它下面的资源一起勾上，括号里是数量）；想整片撤，点「取消下级」。
           </div>
           <div class="w-full rounded-4px border border-solid border-[var(--el-border-color)] p-4px">
             <!--
-              🔴 check-strictly 必须开：父子联动的前提是「勾父蕴含子」，而这个权限模型里
-              MENU 与其下的 ACTION / 按钮是**各自独立的 permission 串**，
-              给父资源授权不隐含子资源。开着联动会导致「勾一个菜单，
-              静默把它下面几十个按钮全授出去」—— 用户看不见自己授了什么。
-              勾什么授什么，所见即所得。
-              效率损失用显式操作补：行尾那个「选子树」。与联动的本质区别是——
-              联动是隐式副作用，选子树是一次显式有意的批量选择，且结果全部以勾选态可见
+              🔴 check-strictly 必须开，但**理由不是**「给父资源授权不隐含子资源」——
+              那句话曾经写在这里，是错的。后端 GrantDecisionEngine#isAllowed 把资源自身
+              与它全部祖先的 id 收进同一个 chainIds，再用 chainIds.contains 过滤授权行，
+              祖先与自身的行无差别地混在一起判；优先级是 全局拒绝 > 上下文拒绝 >
+              上下文允许 > 全局允许 > 资源默认效果。所以祖先上一条「允许」本来就足以放行后代，
+              祖先上一条「拒绝」也能否决后代自己的「允许」。本库 1086 个资源里 954 个有真实父级，
+              grant-enabled 也是 true —— 这套继承对约 88% 的资源是活的，不是纸面机制。
+
+              真正要开 check-strictly 的理由是：联动模式下父节点的勾选态由子节点**反推**
+              （子节点没勾满时父节点会被踢出 checkedKeys 落进半选态），
+              于是「只勾这个菜单本身、不勾它下面的按钮」这个配置就表达不出来了 ——
+              而本项目菜单可见性同样走 sys_grant，这个能力有实际用途。
+              加上 el-tree-v2 没有把重算父节点状态的那个方法 expose 出来，
+              切换模式后勾选态与 checkedIds 会对不上，且无法主动纠正。
+
+              于是「全选下级」的真实代价也要说清楚：它产生的是**冗余但更耐久**的授权行 ——
+              不是多授了权（祖先链本来就覆盖后代），而是将来撤销父级那一条时，
+              下级因为自己有行而**不受影响**，一步撤不干净。这是显式勾选换来的确定性，
+              不是隐患，但操作者得知道自己换的是什么
             -->
             <el-tree-v2
               ref="treeRef"
@@ -53,13 +65,14 @@
                     {{ data.permission }}
                   </span>
                   <el-button
+                    v-if="data.children?.length"
                     class="ml-auto"
                     link
                     size="small"
                     type="primary"
-                    @click.stop="selectSubtree(data)"
+                    @click.stop="toggleSubtree(data)"
                   >
-                    选子树
+                    {{ subtreeActionLabel(data.id) }}
                   </el-button>
                 </span>
               </template>
@@ -76,7 +89,7 @@
           START / DESIGN / MANAGE / VIEW_ALL 也端出来，选中即产生「能保存但永不参与鉴权」
           的死行 —— 单条表单里那是一行，批量一次就是 N 行。
           交集**保留**预留动作（新增/修改/删除…）：「一次开 查看+新增+修改+删除」
-          这个高频场景配的正是它们，裁掉等于砍掉批量添加的一半用途。
+          这个高频场景配的正是它们，裁掉等于砍掉批量授权的一半用途。
           分组展示 + 下面那条常驻警告照旧，与单条表单同一套机制
         -->
         <el-select
@@ -170,9 +183,11 @@ import GrantActionHelp from '@/views/system/resource/components/GrantActionHelp.
 import { useResourceTreePicker } from './useResourceTreePicker'
 import {
   GRANT_BATCH_MAX_ITEMS,
+  buildSubtreeIndex,
   confirmPastExpireTime,
   expandGrantBatch,
-  intersectGrantActionOptions
+  intersectGrantActionOptions,
+  isSubtreeFullyChecked
 } from './batchGrant'
 
 defineOptions({ name: 'SystemRoleGrantBatchForm' })
@@ -213,21 +228,41 @@ const syncChecked = (_data: any, checkedInfo: { checkedKeys: (string | number)[]
   checkedIds.value = checkedInfo.checkedKeys.map(Number)
 }
 
+const checkedSet = computed(() => new Set(checkedIds.value))
+const subtreeIndex = computed(() => buildSubtreeIndex(resourceTree.value))
+
 /**
- * 把「该节点 + 全部后代」并入已勾集合。
+ * 行尾按钮的文案。括号里的数量**含自身**，且与 toggleSubtree 取自同一份索引 ——
+ * 「按钮上写的数」和「点下去实际勾中的数」必须是同一个数，否则这个数字就是在骗人
  *
- * 这是 check-strictly 的效率补偿：与父子联动的区别在于它是**显式**的一次批量选择，
- * 结果全部以勾选态呈现，不是勾一个父节点就静默带出几十个看不见的子授权
+ * `!` 是安全的：按钮只渲染在有下级的行上（v-if="data.children?.length"），
+ * 而索引覆盖了树里的每一个节点
  */
-const selectSubtree = (data: any) => {
-  const ids: number[] = []
-  const walk = (n: any) => {
-    ids.push(n.id)
-    n.children?.forEach(walk)
+const subtreeActionLabel = (id: number) => {
+  const ids = subtreeIndex.value.get(id)!
+  const label = isSubtreeFullyChecked(ids, checkedSet.value) ? '取消下级' : '全选下级'
+  return `${label}（${ids.length}）`
+}
+
+/**
+ * 整片勾选 / 整片取消，一个函数两个方向。
+ *
+ * 只有「选」没有「取消」时，用户想撤掉一片只能一个个点回去，或者点「清空」把**全部**
+ * 已选项一起炸掉 —— 勾了几十个资源之后，后者基本等于放弃这次操作重来
+ */
+const toggleSubtree = (data: any) => {
+  const ids = subtreeIndex.value.get(data.id)!
+  if (isSubtreeFullyChecked(ids, checkedSet.value)) {
+    const drop = new Set(ids)
+    checkedIds.value = checkedIds.value.filter((id) => !drop.has(id))
+  } else {
+    // 并集语义：部分勾选时点「全选下级」只把缺的补上，不翻掉已经勾好的那些
+    checkedIds.value = [...new Set([...checkedIds.value, ...ids])]
   }
-  walk(data)
-  checkedIds.value = [...new Set([...checkedIds.value, ...ids])]
-  // setCheckedKeys 不会触发 @check，所以要自己把 checkedIds 与树的勾选态一起写
+  // setCheckedKeys 不会触发 @check，所以要自己把 checkedIds 与树的勾选态一起写。
+  // ⚠️ check-strictly 下它**不会级联**（useCheck 里 toggle 的递归被 !props.checkStrictly
+  //    挡着），必须传完整的显式 id 列表 —— 这正是上面那份索引存在的理由。
+  //    反过来在联动模式下传父 id 会连带把新出现的子节点一起勾上，收不回来
   nextTick(() => treeRef.value?.setCheckedKeys(checkedIds.value))
 }
 

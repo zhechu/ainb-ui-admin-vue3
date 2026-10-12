@@ -88,7 +88,7 @@
           @click="openBatchForm"
         >
           <Icon class="mr-5px" icon="ep:copy-document" />
-          批量添加
+          批量授权
         </el-button>
         <el-button
           v-hasPermi="['system:grant:delete']"
@@ -226,7 +226,7 @@
 
   <!-- 新增/编辑授权弹窗 -->
   <GrantForm ref="formRef" @success="getList" />
-  <!-- 批量添加授权弹窗：资源多选 × 动作多选，提交笛卡尔积 -->
+  <!-- 批量授权弹窗：资源多选 × 动作多选，提交笛卡尔积 -->
   <GrantBatchForm ref="batchFormRef" @success="getList" />
 </template>
 <script lang="ts" setup>
@@ -336,7 +336,7 @@ const openForm = (type: 'create' | 'update', row?: GrantVO) => {
   formRef.value.open(type, roleId.value, row)
 }
 
-/** 批量添加授权 */
+/** 批量授权 */
 const batchFormRef = ref()
 const openBatchForm = () => {
   batchFormRef.value.open(roleId.value)

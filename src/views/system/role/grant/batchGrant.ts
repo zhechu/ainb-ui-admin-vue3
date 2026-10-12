@@ -34,7 +34,7 @@ export const GRANT_BATCH_MAX_ITEMS = 500
  *
  * **为什么交集必须保留预留动作**：`effective = false` 的 CREATE / UPDATE / DELETE /
  * EXPORT / IMPORT / PRINT / REFERENCE 一个都不能裁 ——「一次给一个资源开
- * 查看/新增/修改/删除」这个高频场景配的**正是预留动作**，裁掉它们等于砍掉批量添加的
+ * 查看/新增/修改/删除」这个高频场景配的**正是预留动作**，裁掉它们等于砍掉批量授权的
  * 一半用途。它们配了不生效这件事由 `reservedActionWarning` 的常驻警告负责说明，
  * 不是靠从选项里消失来暗示。
  *
@@ -98,6 +98,62 @@ export const expandGrantBatch = (input: GrantBatchInput): GrantSaveReqVO[] => {
     }
   }
   return items
+}
+
+/**
+ * 收集「该资源 + 它下面全部资源」的 id，**含自身**，前序遍历。
+ *
+ * 树结构相关的三件事（收集、建索引、判断是否已整片勾上）都放在这个模块里而不是
+ * 写在 GrantBatchForm.vue 里，理由与本模块其它函数相同：组件测不动，纯函数测得动。
+ * 而这三件事决定「点一次『全选下级』到底勾上了哪些资源」，错了不会报错，
+ * 只会静默多授或少授一片权限
+ */
+export const collectSubtreeIds = (node: any): number[] => {
+  const ids: number[] = []
+  const walk = (n: any) => {
+    ids.push(n.id)
+    n.children?.forEach(walk)
+  }
+  walk(node)
+  return ids
+}
+
+/**
+ * 一次性建好 资源 id → 子树 id 列表 的索引。
+ *
+ * **为什么不在模板里现算**：按钮文案要在每次勾选变化后对每个可见行重算一遍
+ * （「全选下级」还是「取消下级」取决于该片是否已勾满）。树有一两千个节点，
+ * 虚拟化下一屏约 20 行，而顶层菜单的子树能有几百个 id —— 现算就是
+ * 20 × 几百 次遍历、每次重渲染都来一遍。建一次索引后每行只剩一次 Map 查 + 一次 every
+ *
+ * 内部走 collectSubtreeIds 而不是另写一份遍历：两份遍历逻辑迟早漂移，
+ * 漂了之后「按钮上显示的数量」与「点下去实际勾中的数量」就不是同一个数了
+ */
+export const buildSubtreeIndex = (tree: any[]): Map<number, number[]> => {
+  const index = new Map<number, number[]>()
+  const walk = (nodes: any[]) => {
+    nodes.forEach((node) => {
+      index.set(node.id, collectSubtreeIds(node))
+      if (node.children?.length) walk(node.children)
+    })
+  }
+  walk(tree)
+  return index
+}
+
+/**
+ * 该片资源是否已被完整勾选 —— 决定按钮显示「取消下级」还是「全选下级」。
+ *
+ * ⚠️ 没有索引（`undefined`）或空数组时返回 **false**：这类行本来就不该渲染按钮
+ * （叶子节点没有下级），但万一渲染出来了，显示「全选下级」至多是多点一次，
+ * 显示「取消下级」则会把一个**没勾上的**资源当成已勾上的去取消，看着像按钮失灵
+ */
+export const isSubtreeFullyChecked = (
+  subtreeIds: number[] | undefined,
+  checkedSet: ReadonlySet<number>
+): boolean => {
+  if (!subtreeIds?.length) return false
+  return subtreeIds.every((id) => checkedSet.has(id))
 }
 
 /**
