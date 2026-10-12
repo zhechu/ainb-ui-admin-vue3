@@ -158,6 +158,126 @@ export const getGrantListBySubject = async (
   })
 }
 
+// ========== 生效权限树（智能查看）==========
+
+/**
+ * 一项生效动作，以及它是**从哪来的**
+ *
+ * 🔴 这里没有一个字段是前端算出来的：判决与出处全部由后端
+ * `GrantDecisionEngine#explain` 给出，`isAllowed` 已退化成 `explain(...).allowed()`，
+ * 所以图上说「拥有」与鉴权放行在构造上不可能分叉。
+ * 前端只负责把 `source` 翻译成人话，绝不重算优先级
+ */
+export interface EffectiveActionVO {
+  /** 动作码；`*` 表示「全部动作」——要么是通配授权折叠而来，要么是无人配置时的默认放行 */
+  action: string
+  effect: string // ALLOW | DENY
+  /**
+   * 权限来源：
+   * - `EXPLICIT` 本资源自己配的行
+   * - `INHERITED` 祖先配的行（扁平列表永远展示不出来的信息）
+   * - `ALL_USERS` 全员主体 `ALL / all-users` 的行
+   * - `DEFAULT` 链上没有任何行，回落到资源的 default_effect 列
+   */
+  source: 'EXPLICIT' | 'INHERITED' | 'ALL_USERS' | 'DEFAULT'
+  /** 投出决定性一票的资源节点。INHERITED 时指向那个祖先，前端显示「继承自「X」」 */
+  sourceResourceId?: number
+  sourceResourceName?: string
+  /** 命中的授权行编号，可用来跳回列表页定位；source=DEFAULT 时为空（压根没有行） */
+  grantId?: number
+  ruleId?: number
+  ruleName?: string
+  fieldMode?: string // EDITABLE | READONLY | HIDDEN
+  expireTime?: string
+  /** 命中的是谁的行：主体闭包里可能同时有本角色、继承来的上级角色、全员主体 */
+  subjectType?: string
+  subjectRefId?: number
+  subjectCode?: string
+}
+
+export interface EffectiveResourceNodeVO {
+  id: number
+  parentId: number
+  name: string
+  permission?: string
+  type: string // MENU/ACTION/PROCESS/CATEGORY/DATASET/COLUMN/FIELD
+  depth?: number
+  sort?: number
+  /** 资源的 default_effect **列**，不是按 type 推出来的值（实测 PROCESS 有 18 行是 ALLOW） */
+  defaultEffect?: string
+  /**
+   * 自身没有任何生效权限、仅为撑起树而保留的路径节点。
+   * 不区分的话前端会把一个空目录渲染成「有权限」
+   */
+  structural: boolean
+  actions: EffectiveActionVO[]
+  children: EffectiveResourceNodeVO[]
+}
+
+export interface EffectiveTreeSummaryVO {
+  /** 最终树里的节点数，含 structural 路径节点 */
+  nodeCount: number
+  /** 最终树里的生效动作数（折叠成 `*` 的按 1 计） */
+  actionCount: number
+  inheritedCount: number
+  allUsersCount: number
+  /**
+   * 纯默认放行（无人配置）的节点数。🔴 与 includeDefaultAllow 开关**无关**，
+   * 两种模式下都是同一个数 —— 它存在的意义就是告诉你「收起了多少个」
+   */
+  defaultAllowCount: number
+  /** 被显式 DENY 否决的 (资源 × 动作) 数。不含「没人配过」的 default_effect=DENY */
+  deniedCount: number
+  /** 已过期、未计入判定的授权行数。不报数的话树形节点数和列表页行数对不上，会被当成 bug */
+  expiredSkippedCount: number
+  /** 该角色是超管角色：真实鉴权**旁路**授权台账，这张图画的是台账，两者不是一回事 */
+  superAdminRole: boolean
+}
+
+export interface EffectiveTreeRespVO {
+  /** 实际参与判定的主体清单（取自 `SubjectKey#asString()`，已排序），要在页面上明示 */
+  subjects: string[]
+  summary: EffectiveTreeSummaryVO
+  tree: EffectiveResourceNodeVO[]
+}
+
+/**
+ * 查询某个主体的**生效**权限树（角色权限地图，只读）
+ *
+ * 与 `getGrantListBySubject` 的区别：那个返回台账上的**行**，这个返回判定后的**结论** ——
+ * 同一资源上的 4 行会合并成 1 个节点、父菜单的 ALLOW 会让没有自己行的子按钮显示为生效、
+ * 祖先的 DENY 会否决后代自己的 ALLOW、过期的行会消失（但在 summary 里报数）。
+ *
+ * 🔴 口径要在页面上写清楚，否则一定被当成漏权限报上来：
+ * - 只算**角色维度**（该角色 + 其在主体图上的祖先 + 可选的全员主体），
+ *   **不含**用户级 / 岗位 / 部门 / 用户组授权，因此**少于**「拥有该角色的用户实际能做的」
+ * - 只认**启用**的资源行，与菜单清单、权限清单同口径
+ * - `sys_grant` 分租户而 `sys_resource` 是全局表，所以同一棵树在不同租户下剪枝结果不同
+ *
+ * @param includeFieldLevel 是否包含 COLUMN / FIELD 这两类字段级资源
+ * @param includeAllSubject 是否并入全员主体。🔴 关掉会漏掉实测那 9 条全员授权
+ * @param includeDefaultAllow 是否包含「纯默认放行」的节点。实测超管角色有 205 个，
+ *        全渲染出来会淹掉真正配过的那些，所以默认收起
+ */
+export const getEffectiveTree = async (
+  subjectType: string,
+  subjectRefId: number,
+  includeFieldLevel = false,
+  includeAllSubject = true,
+  includeDefaultAllow = false
+): Promise<EffectiveTreeRespVO> => {
+  return await request.get({
+    url: '/system/grant/effective-tree',
+    params: {
+      subjectType,
+      subjectRefId,
+      includeFieldLevel,
+      includeAllSubject,
+      includeDefaultAllow
+    }
+  })
+}
+
 /**
  * 新增授权行（**upsert 语义**）
  *

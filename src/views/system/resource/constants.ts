@@ -42,6 +42,32 @@ export const resourceTypeTagType = (type: string) =>
     CATEGORY: 'info'
   })[type] ?? ''
 
+/**
+ * 字段显示模式（后端 FieldModeEnum）的中文与配色。
+ *
+ * 收敛之前只有角色资源授权列表页私有一份（`fieldModeLabel` / `fieldModeTagType` 两个函数），
+ * 智能查看那棵树的「字段模式」列与动作 tooltip 也要用同一套词 —— 再抄一份就是第二份副本，
+ * 而 GRANT_ACTION_OPTIONS 收敛之前有【四份】，见上面那段注释里记的代价。
+ *
+ * ⚠️ 认不出的码原样显示、配色回落空串（EP 默认色），与本文件其余 format* 同口径：
+ * 后端加了新模式而前端漏配时，界面上看得见原值，比静默变一条横线好排查
+ */
+export const FIELD_MODE_OPTIONS = [
+  { label: '可编辑', value: 'EDITABLE' },
+  { label: '只读', value: 'READONLY' },
+  { label: '隐藏', value: 'HIDDEN' }
+]
+
+export const fieldModeLabel = (mode: string | undefined) =>
+  FIELD_MODE_OPTIONS.find((item) => item.value === mode)?.label ?? mode
+
+export const fieldModeTagType = (mode: string | undefined) =>
+  ({
+    EDITABLE: 'success',
+    READONLY: 'warning',
+    HIDDEN: 'danger'
+  })[mode ?? ''] ?? ''
+
 export const DEFAULT_EFFECT_OPTIONS = [
   { label: '允许', value: 'ALLOW' },
   { label: '拒绝', value: 'DENY' }

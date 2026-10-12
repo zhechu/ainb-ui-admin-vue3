@@ -17,70 +17,92 @@
     <!-- 搜索工作栏 -->
     <el-form :inline="true" :model="queryParams" class="-mb-15px" label-width="68px">
       <!--
-        🔴 「权限标识」刻意排在第一位，别按「常用度」把它挪回后面去。
+        🔴 智能查看模式下**整组查询条件都要藏起来**，不是只藏表格。
 
-        两个抽屉都是非模态穿透的（见 GrantForm.vue 模板顶部注释），开着的时候这一栏是能点的 ——
-        一边配授权一边回头查「这个权限标识已经授过什么」正是穿透要交付的东西。
-        而这一栏是按 inline 从左往右排的：排在第四位时它落在 x≈1133~1313（1920px 视口），
-        任何合理宽度的抽屉都盖得住它，穿透就等于白做；排在第一位它落在 x≈245~493，
-        连拖到下限 760px 的抽屉都盖不住。
-
-        顺序本身也站得住：权限标识（system:user 这种全串）是这五个条件里**最精确**的一个，
-        精确条件排在模糊条件（资源名称）前面是常见口径
+        这五个条件是 getGrantPage 的**服务端**筛选参数，而树形走的是另一个端点
+        （getEffectiveTree）、一次拿回整棵剪好合并好的树，既没有分页也没有这些筛选项。
+        留着它们，操作者填完点不了、或者以为填了就筛了 —— 两种都比藏起来更坏。
+        参照 DictDataTable.vue 里 `<Pagination v-if="!treeEnabled">` 及其注释
+        「树形下拿到的是完整一棵树，没有分页的概念」
       -->
-      <el-form-item label="权限标识" prop="resourcePermission">
-        <el-input
-          v-model="queryParams.resourcePermission"
-          class="!w-180px"
-          clearable
-          placeholder="如 system:user"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="动作" prop="action">
-        <el-select v-model="queryParams.action" class="!w-200px" clearable placeholder="全部">
-          <el-option
-            v-for="a in GRANT_ACTION_OPTIONS"
-            :key="a.value"
-            :label="a.label"
-            :value="a.value"
+      <template v-if="viewMode === 'list'">
+        <!--
+          🔴 「权限标识」刻意排在第一位，别按「常用度」把它挪回后面去。
+
+          两个抽屉都是非模态穿透的（见 GrantForm.vue 模板顶部注释），开着的时候这一栏是能点的 ——
+          一边配授权一边回头查「这个权限标识已经授过什么」正是穿透要交付的东西。
+          而这一栏是按 inline 从左往右排的：排在第四位时它落在 x≈1133~1313（1920px 视口），
+          任何合理宽度的抽屉都盖得住它，穿透就等于白做；排在第一位它落在 x≈245~493，
+          连拖到下限 760px 的抽屉都盖不住。
+
+          顺序本身也站得住：权限标识（system:user 这种全串）是这五个条件里**最精确**的一个，
+          精确条件排在模糊条件（资源名称）前面是常见口径
+        -->
+        <el-form-item label="权限标识" prop="resourcePermission">
+          <el-input
+            v-model="queryParams.resourcePermission"
+            class="!w-180px"
+            clearable
+            placeholder="如 system:user"
+            @keyup.enter="handleQuery"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="效果" prop="effect">
-        <el-select v-model="queryParams.effect" class="!w-160px" clearable placeholder="全部">
-          <el-option label="允许 ALLOW" value="ALLOW" />
-          <el-option label="拒绝 DENY" value="DENY" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="资源名称" prop="resourceName">
-        <el-input
-          v-model="queryParams.resourceName"
-          class="!w-160px"
-          clearable
-          placeholder="模糊搜索"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="到期时间" prop="expireTime">
-        <el-date-picker
-          v-model="queryParams.expireTime"
-          :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
-          class="!w-240px"
-          type="daterange"
-          start-placeholder="到期日起"
-          end-placeholder="到期日止"
-          value-format="YYYY-MM-DD HH:mm:ss"
-        />
-      </el-form-item>
+        </el-form-item>
+        <el-form-item label="动作" prop="action">
+          <el-select v-model="queryParams.action" class="!w-200px" clearable placeholder="全部">
+            <el-option
+              v-for="a in GRANT_ACTION_OPTIONS"
+              :key="a.value"
+              :label="a.label"
+              :value="a.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="效果" prop="effect">
+          <el-select v-model="queryParams.effect" class="!w-160px" clearable placeholder="全部">
+            <el-option label="允许 ALLOW" value="ALLOW" />
+            <el-option label="拒绝 DENY" value="DENY" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="资源名称" prop="resourceName">
+          <el-input
+            v-model="queryParams.resourceName"
+            class="!w-160px"
+            clearable
+            placeholder="模糊搜索"
+            @keyup.enter="handleQuery"
+          />
+        </el-form-item>
+        <el-form-item label="到期时间" prop="expireTime">
+          <el-date-picker
+            v-model="queryParams.expireTime"
+            :default-time="[new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]"
+            class="!w-240px"
+            type="daterange"
+            start-placeholder="到期日起"
+            end-placeholder="到期日止"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
+        </el-form-item>
+      </template>
       <el-form-item>
-        <el-button @click="handleQuery">
-          <Icon class="mr-5px" icon="ep:search" />
-          搜索
-        </el-button>
-        <el-button @click="resetQuery">
-          <Icon class="mr-5px" icon="ep:refresh" />
-          重置
+        <template v-if="viewMode === 'list'">
+          <el-button @click="handleQuery">
+            <Icon class="mr-5px" icon="ep:search" />
+            搜索
+          </el-button>
+          <el-button @click="resetQuery">
+            <Icon class="mr-5px" icon="ep:refresh" />
+            重置
+          </el-button>
+        </template>
+        <!--
+          🔴 切换按钮**两种模式下都必须在**，且位置固定在「重置」之后、「新增授权」之前
+          （用户原话「在【新增授权】按钮前面」）。树形模式下搜索表单整组被藏起来，
+          它就成了这一栏唯一的按钮 —— 藏了它就没人能切回列表
+        -->
+        <el-button :disabled="!roleId" plain type="primary" @click="toggleViewMode">
+          <Icon class="mr-5px" :icon="viewMode === 'list' ? 'ep:share' : 'ep:list'" />
+          {{ viewMode === 'list' ? '切换智能查看' : '切换编辑列表' }}
         </el-button>
         <!--
           🔴 这三个按钮（外加下面表格里的「编辑」「删除」）在抽屉开着期间必须禁用。
@@ -95,41 +117,49 @@
           一边配授权一边回头查列表，就是穿透存在的全部理由，把它们一起禁掉等于把功能退回遮罩模式。
           勾选框留着也无害：批量删除已经禁用，而抽屉提交成功后 getList() 会自然清掉勾选
         -->
-        <el-button
-          v-hasPermi="['system:grant:create']"
-          :disabled="!roleId || drawerOpen"
-          plain
-          type="primary"
-          @click="openForm('create')"
-        >
-          <Icon class="mr-5px" icon="ep:plus" />
-          新增授权
-        </el-button>
-        <el-button
-          v-hasPermi="['system:grant:create']"
-          :disabled="!roleId || drawerOpen"
-          plain
-          type="primary"
-          @click="openBatchForm"
-        >
-          <Icon class="mr-5px" icon="ep:copy-document" />
-          批量授权
-        </el-button>
-        <el-button
-          v-hasPermi="['system:grant:delete']"
-          :disabled="!checkedIds.length || drawerOpen"
-          plain
-          type="danger"
-          @click="handleDeleteBatch"
-        >
-          <Icon class="mr-5px" icon="ep:delete" />
-          批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
-        </el-button>
+        <template v-if="viewMode === 'list'">
+          <el-button
+            v-hasPermi="['system:grant:create']"
+            :disabled="!roleId || drawerOpen"
+            plain
+            type="primary"
+            @click="openForm('create')"
+          >
+            <Icon class="mr-5px" icon="ep:plus" />
+            新增授权
+          </el-button>
+          <el-button
+            v-hasPermi="['system:grant:create']"
+            :disabled="!roleId || drawerOpen"
+            plain
+            type="primary"
+            @click="openBatchForm"
+          >
+            <Icon class="mr-5px" icon="ep:copy-document" />
+            批量授权
+          </el-button>
+          <el-button
+            v-hasPermi="['system:grant:delete']"
+            :disabled="!checkedIds.length || drawerOpen"
+            plain
+            type="danger"
+            @click="handleDeleteBatch"
+          >
+            <Icon class="mr-5px" icon="ep:delete" />
+            批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
+          </el-button>
+        </template>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
-  <ContentWrap>
+  <!--
+    🔴 两个视图是**两个互斥的 v-if 块、两个组件实例**，不是在同一个 <el-table> 上来回切树形 props。
+    src/views/system/resource/index.vue 的脚本注释记着后者的代价：切 lazy / 树形 props 会让
+    渲染器直接崩（「Page crashed」），而且**没有任何 JS 错误**，:key 强制重建也救不回来。
+    智能查看用的是 el-table-v2（完全不同的组件），天然就是两个实例，风险为零
+  -->
+  <ContentWrap v-if="viewMode === 'list'">
     <el-empty
       v-if="!roleId"
       description="缺少角色参数，请从角色管理页的「资源授权」进入"
@@ -264,6 +294,15 @@
     </template>
   </ContentWrap>
 
+  <!--
+    智能查看（树形权限地图）。**只读**：没有勾选列、没有操作列、没有分页，
+    所以列表页那条「刻意不加 row-key / reserve-selection」的注释不受影响、继续成立，
+    没有去「顺手统一」。判定全在后端 GrantDecisionEngine#explain，这里一行判定逻辑都没有
+  -->
+  <ContentWrap v-else>
+    <GrantEffectiveTree :role-id="roleId" />
+  </ContentWrap>
+
   <!-- 新增/编辑授权抽屉。@closed 用来解禁那五个按钮，见上面搜索栏前的注释 -->
   <GrantForm ref="formRef" @closed="drawerOpen = false" @success="getList" />
   <!-- 批量授权抽屉：资源多选 × 动作多选，提交笛卡尔积 -->
@@ -276,11 +315,14 @@ import type { GrantVO } from '@/api/system/grant'
 import * as RoleApi from '@/api/system/role'
 import {
   GRANT_ACTION_OPTIONS,
+  fieldModeLabel,
+  fieldModeTagType,
   formatGrantAction,
   isRowFilterableResource
 } from '@/views/system/resource/constants'
 import GrantForm from './GrantForm.vue'
 import GrantBatchForm from './GrantBatchForm.vue'
+import GrantEffectiveTree from './GrantEffectiveTree.vue'
 
 defineOptions({ name: 'SystemRoleGrantPage' })
 
@@ -321,6 +363,22 @@ const checkedIds = ref<number[]>([])
 const handleSelectionChange = (rows: GrantVO[]) => {
   checkedIds.value = rows.map((row) => row.id)
 }
+
+/**
+ * 列表模式（可编辑、服务端分页筛选）与智能查看（只读树形权限地图）二选一。
+ *
+ * 🔴 两个视图是**两个组件实例**，切换时互不干扰：列表侧的 queryParams / list / total
+ * 一律原样留着，所以切回来时搜索条件与页码都还在 —— 这是「切换」而不是「重进页面」该有的样子。
+ * 唯一必须清的是勾选：树形模式下 <el-table> 被 v-if 卸载，行首勾选框的视觉状态一并消失，
+ * 而 checkedIds 是个普通 ref、不会跟着清 —— 攥着一批界面上已经看不见的 id，
+ * 正是上面那条「刻意不加 row-key / reserve-selection」注释要防的东西
+ */
+const viewMode = ref<'list' | 'tree'>('list')
+const toggleViewMode = () => {
+  checkedIds.value = []
+  viewMode.value = viewMode.value === 'list' ? 'tree' : 'list'
+}
+
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
@@ -443,13 +501,6 @@ const handleDeleteBatch = async () => {
     queryParams.pageNo--
   }
   await getList()
-}
-
-const fieldModeLabel = (mode: string) => {
-  return { EDITABLE: '可编辑', READONLY: '只读', HIDDEN: '隐藏' }[mode] ?? mode
-}
-const fieldModeTagType = (mode: string) => {
-  return { EDITABLE: 'success', READONLY: 'warning', HIDDEN: 'danger' }[mode] ?? ''
 }
 
 const handleBack = () => {
