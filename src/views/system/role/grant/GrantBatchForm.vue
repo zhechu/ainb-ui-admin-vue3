@@ -9,12 +9,25 @@
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
-    size="min(1120px, 94vw)"
+    size="min(1480px, 96vw)"
     title="批量授权"
   >
-    <el-form v-loading="formLoading" class="flex min-h-0 flex-1 gap-16px" label-width="96px">
-      <!-- 左列：资源多选 + 已选清单。比单条那侧宽，行尾那个「取消下级（123）」按钮要约 90px -->
-      <div class="flex min-h-0 w-460px shrink-0 flex-col">
+    <!--
+      🔴 class 里的 h-full 是承重的，别当成与 flex-1 重复而删掉。
+      理由与 GrantForm.vue 里那段完全相同：这个 <form> 是 .el-drawer__body 的直接子元素，
+      body 的高度由 EP 自己确定（.el-drawer 是 height: 100% 的纵向 flex、body 是它 flex: 1 的子项），
+      所以 height: 100% 一跳就解析成功，不依赖下面那条 :deep(.el-drawer__body)。
+      那条覆盖一旦没生效，body 保持 display: block，它下面所有 flex-1 全变成空操作，
+      树会停在 ResourceTreePicker#treeHeight 的 160px 下限 —— 而这件事不报错
+    -->
+    <el-form v-loading="formLoading" class="flex h-full min-h-0 flex-1 gap-16px" label-width="96px">
+      <!--
+        左列：资源多选 + 已选清单。它才是这个抽屉的主体，吃掉全部剩余宽度；
+        min-w-0 是必需的 —— 树行里的 permission 串很长，没有它 flex-1 会被内容顶开。
+        这一侧整体比单条那个抽屉宽 120px，为的是行尾那个两态按钮
+        （「全选下级（N）」/「取消下级（N）」，约 90px）不至于把 permission 挤没
+      -->
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <ResourceTreePicker
           ref="pickerRef"
           :include-field-level="includeFieldLevel"
@@ -47,8 +60,11 @@
         </div>
       </div>
 
-      <!-- 右列：批量参数 -->
-      <div class="min-w-0 flex-1 overflow-y-auto pr-4px">
+      <!--
+        右列：批量参数。三个短控件加一段行数提示，给固定宽，
+        把剩余宽度全留给左边那棵树 —— 与 GrantForm.vue 同口径
+      -->
+      <div class="w-460px shrink-0 overflow-y-auto pr-4px">
         <el-form-item>
           <template #label>
             <span class="inline-flex items-center">动作<GrantActionHelp /></span>
@@ -320,12 +336,14 @@ const submitForm = async () => {
 }
 </script>
 <style lang="scss" scoped>
-// 🔴 下面三条 :deep() 只在**没有** append-to-body 时生效，理由与 GrantForm 那份完全相同。
+// 🔴 这三条 :deep() 只在**没有** append-to-body 时生效，理由与 GrantForm 那份完全相同。
 // 两份 CSS 是重复的，但抽成共用文件意味着要么放进全局样式（污染所有抽屉），
 // 要么用 modal-class 走非 scoped 的路子 —— 两个调用点还不值当
 //
-// 正文默认 flex:1 + overflow:auto，改成纵向 flex 且 overflow:hidden 之后，
-// 滚动分别交给右列与树自己，抽屉正文整体不再出现滚动条
+// 这三条都**不承重**：树高由模板里 el-form 的 h-full 保证，
+// 失效了只是少两条分隔线、正文可能多一层滚动条。
+// overflow: hidden 是一道保险 —— 滚动只该发生在右列与树自己内部，
+// 而滚动条一出现就会改 body 的内容宽度，整块布局跟着抖一下
 :deep(.el-drawer__body) {
   display: flex;
   flex-direction: column;

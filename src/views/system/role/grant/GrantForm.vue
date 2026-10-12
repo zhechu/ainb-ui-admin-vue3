@@ -2,14 +2,16 @@
   <!--
     🔴 不加 append-to-body：EP 的 el-drawer 默认 appendToBody=false，
     加了之后抽屉会被 teleport 出本组件的 scoped 边界，下面那几条 :deep(.el-drawer__*)
-    会**静默失效**（不报错，只是不生效）——正文整体滚、树缩回 200px。
-    真的需要挂到 body 上时，改用 ConversationGroupSide.vue 那套 modal-class + 全局 CSS
+    会**静默失效**（不报错，只是不生效）——header 那条 32px 下边距和两条分隔线都会回来。
+    树高不受影响（它由 el-form 上的 h-full 保证，见下面那段注释）。
+    真的需要挂到 body 上时，改用 ConversationGroupSide.vue 那套 modal-class + 全局 CSS，
+    或者用 el-drawer 自带的 bodyClass / headerClass / footerClass 三个 prop
   -->
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
     :title="drawerTitle"
-    size="min(1000px, 92vw)"
+    size="min(1360px, 96vw)"
   >
     <!--
       🔴 <el-form> 必须包住**两列**，包括左列那个资源选择器。
@@ -19,16 +21,35 @@
       buildEmptyForm 里那句「必须是 undefined 而不是 0」的注释正是为这个坑写的，
       规则一丢就白修了
     -->
+    <!--
+      🔴 class 里的 h-full 是承重的，别当成与 flex-1 重复而删掉。
+
+      这个 <form> 是 .el-drawer__body 的**直接子元素**，而 body 的高度由 EP 自己确定
+      （.el-drawer 是 height: 100% 的纵向 flex，body 是它 flex: 1 的子项），
+      所以 height: 100% 一跳就解析成功 —— 不依赖下面那条 :deep(.el-drawer__body)。
+
+      那条覆盖要生效，得让本组件的 scopeId 穿过 ElTeleport → Transition → ElOverlay
+      三层落到 div.el-overlay 上；一旦没落上，body 保持 display: block，
+      它下面所有 flex-1 全部变成空操作，高度一路退化成「由内容决定」，
+      树最终停在 ResourceTreePicker#treeHeight 的 160px 下限
+      —— 132 个根节点里只露约 6 个，而这件事**不报错**。
+      反过来，那条 :deep() 真生效时（body 变成 flex column）起作用的是 flex-1，
+      两者互不冲突，各覆盖一种可能
+    -->
     <el-form
       ref="formRef"
       v-loading="formLoading"
       :model="formData"
       :rules="formRules"
-      class="flex min-h-0 flex-1 gap-16px"
+      class="flex h-full min-h-0 flex-1 gap-16px"
       label-width="96px"
     >
-      <!-- 左列：资源树 -->
-      <div class="flex min-h-0 w-420px shrink-0 flex-col">
+      <!--
+        左列：资源树。它才是这个抽屉的主体，所以由它吃掉全部剩余宽度。
+        min-w-0 是必需的 —— 树行里的 permission 串很长，没有它 flex-1 会被内容顶开，
+        右列那个固定宽就被挤走了
+      -->
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <el-form-item class="picker-item" label="资源" label-position="top" prop="resourceId">
           <ResourceTreePicker
             ref="pickerRef"
@@ -65,8 +86,12 @@
         </div>
       </div>
 
-      <!-- 右列：授权参数 -->
-      <div class="min-w-0 flex-1 overflow-y-auto pr-4px">
+      <!--
+        右列：授权参数。五个短控件，给固定宽，把剩余宽度全留给左边那棵树 ——
+        树才是这个抽屉的主体，反过来让字段列吃 flex-1 会使比例与内容体量倒挂。
+        460px 的来源：日期选择器约 220px + label-width 96px，再留一点余量
+      -->
+      <div class="w-460px shrink-0 overflow-y-auto pr-4px">
         <el-form-item prop="action">
           <template #label>
             <span class="inline-flex items-center">动作<GrantActionHelp /></span>
@@ -373,12 +398,14 @@ const submitForm = async () => {
 }
 </script>
 <style lang="scss" scoped>
-// 🔴 下面三条 :deep() 只在**没有** append-to-body 时生效。
-// 加了 append-to-body，抽屉被 teleport 出 scoped 边界，这三条会静默失效（不报错）
+// 🔴 这三条 :deep() 只在**没有** append-to-body 时生效（加了会被 teleport 出 scoped 边界，
+// 静默失效、不报错）。但它们都**不承重**：树高由模板里 el-form 的 h-full 保证，
+// 这三条失效了只是少两条分隔线、正文可能多一层滚动条
 //
-// 正文默认是 flex:1 + overflow:auto：整块会跟着内容一起滚，滚动条一出现，
-// 虚拟化树量到的高度就跟着漂。改成纵向 flex 且 overflow:hidden，
-// 滚动分别交给右列（overflow-y-auto）与树自己（el-tree-v2 内部那个虚拟列表）
+// overflow: hidden 是一道保险 —— 滚动应该只发生在右列（overflow-y-auto）与树自己
+// （el-tree-v2 内部那个虚拟列表）里。body 再叠一层滚动没有意义，
+// 而且滚动条一出现就会改 body 的内容宽度，整块布局跟着抖一下。
+// display: flex 那两行是给 el-form 上那个 flex-1 兜底的，理由见模板里那段注释
 :deep(.el-drawer__body) {
   display: flex;
   flex-direction: column;
