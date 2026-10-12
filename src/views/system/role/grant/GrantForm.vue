@@ -2,16 +2,54 @@
   <!--
     🔴 不加 append-to-body：EP 的 el-drawer 默认 appendToBody=false，
     加了之后抽屉会被 teleport 出本组件的 scoped 边界，下面那几条 :deep(.el-drawer__*)
-    会**静默失效**（不报错，只是不生效）——header 那条 32px 下边距和两条分隔线都会回来。
-    树高不受影响（它由 el-form 上的 h-full 保证，见下面那段注释）。
-    真的需要挂到 body 上时，改用 ConversationGroupSide.vue 那套 modal-class + 全局 CSS，
-    或者用 el-drawer 自带的 bodyClass / headerClass / footerClass 三个 prop
+    会**静默失效**（不报错，只是不生效）——header 那条 32px 下边距和两条分隔线都会回来，
+    正文也会多一层滚动条。树高不受影响（它由 el-form 上的 h-full 保证，见下面那段注释）。
+
+    ⚠️ 换成下面那个穿透模式（modal=false + modal-penetrable）也**不需要** append-to-body ——
+    ElTeleport 的 disabled 只看 appendToBody，与 modal 无关。所以那几条 :deep() 一条没失效。
+    （穿透通常要配 body 挂载，那种写法才会踩上面这个坑；EP 自带的
+    `.el-modal-drawer.is-penetrable` 那两条 CSS 让这里不必如此。
+    真需要挂到 body 上时，改用 ConversationGroupSide.vue 那套 modal-class + 全局 CSS，
+    或者用 el-drawer 自带的 bodyClass / headerClass / footerClass 三个 prop）
+  -->
+  <!--
+    🔴 非模态穿透：`:modal="false"` 与 `modal-penetrable` **必须成对**，少一个都不生效 ——
+    EP 那边是 `penetrable = modalPenetrable && !modal`，成立才给 overlay 加上 is-penetrable，
+    而 theme-chalk 里正是 `.el-modal-drawer.is-penetrable { pointer-events: none }` 配
+    `.el-modal-drawer.is-penetrable .el-drawer { pointer-events: auto }` 这两条。
+
+    效果是：后面的授权列表页**不变暗**（mask=false 时 overlay 不铺背景色）、**可以点**。
+    一边配授权、一边回头查这个权限标识已经授过什么，是遮罩模式下做不到的 ——
+    那时候抽屉盖住的地方一个事件都进不去。
+
+    ⚠️ 代价在 index.vue 那边付：列表页可点之后，「编辑」「新增授权」「批量授权」
+    会静默替换掉这里正在填的内容，「删除」「批量删除」会在授权进行中删行。
+    那五个按钮由 index.vue 的 drawerOpen 在本抽屉开着期间禁用；
+    搜索、重置、五个查询条件、翻页**保持可用**，那才是要够到的东西。
+
+    ⚠️ 已知边界，不是 bug：抽屉仍被 EP 的 focus-trap 包着（`loop` + `trapped: visible`），
+    所以鼠标能点后面的页面，**Tab 键不能** —— 键盘焦点仍锁在抽屉内。改它要动 EP 内部，不值当。
+
+    ⚠️ 下面那个 `:close-on-click-modal="false"` 在穿透模式下**是惰性的**：
+    它由绑在 overlay 上的 onModalClick 触发，而 overlay 已经 pointer-events: none，
+    永远收不到点击。留着它是为了哪天把 modal 打开时，不会退回「误点遮罩毁掉一整份表单」。
+  -->
+  <!--
+    `resizable` 让 EP 在抽屉左缘渲染一个 8px 宽的拖拽柄（hover 亮 3px 主题色条，cursor 是 ew-resize）。
+    为什么必须有它：宽度写死是个常数，而它该是个变量 —— 同一块面板，
+    资源多的时候嫌窄（树里 permission 串被截断）、要回头看列表的时候嫌宽（把列表全盖住）。
+    下限由下面的 onDrawerResizeEnd 夹，EP 的 useResizable 只夹到 [4, 窗口宽]，没有下限。
   -->
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
+    :modal="false"
+    :size="drawerSize"
     :title="drawerTitle"
-    size="min(1360px, 96vw)"
+    modal-penetrable
+    resizable
+    @closed="emit('closed')"
+    @resize-end="onDrawerResizeEnd"
   >
     <!--
       🔴 <el-form> 必须包住**两列**，包括左列那个资源选择器。
@@ -47,7 +85,10 @@
       <!--
         左列：资源树。它才是这个抽屉的主体，所以由它吃掉全部剩余宽度。
         min-w-0 是必需的 —— 树行里的 permission 串很长，没有它 flex-1 会被内容顶开，
-        右列那个固定宽就被挤走了
+        右列那个固定宽就被挤走了。
+
+        默认宽度下这一列约 604px（抽屉 1120 − body 左右内边距 40 − 两列间距 16 − 右列 460），
+        拖到下限 760px 时约 244px。改抽屉宽度或右列宽度时这两个数要重新算一遍
       -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <el-form-item class="picker-item" label="资源" label-position="top" prop="resourceId">
@@ -240,6 +281,18 @@ import { computeRuleSlotCoverage, confirmPastExpireTime } from './batchGrant'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
 
+/**
+ * `success` = 提交成功，index.vue 拿去刷新列表。
+ *
+ * `closed` = 抽屉收起动画**结束**，index.vue 拿去解禁那五个按钮
+ * （穿透模式下列表页是可点的，见模板顶部那段注释）。
+ * 🔴 转发的是 el-drawer 的 `closed` 而不是 `close`：后者在收起动画**开始**时就触发，
+ * 那一刻抽屉还盖在列表页上，按钮提前活过来会让人点到看不见的东西。
+ *
+ * 声明放在最上面而不是「提交」那一段里，是因为模板里就引用了它
+ */
+const emit = defineEmits<{ success: []; closed: [] }>()
+
 const message = useMessage()
 
 /** 只选日期不选时间时，默认到当天 23:59:59 —— 「有效期到某天」的直觉是含当天全天 */
@@ -250,6 +303,37 @@ const drawerTitle = ref('')
 const formLoading = ref(false)
 const formRef = ref()
 const pickerRef = ref()
+
+/**
+ * 抽屉宽度。初值是响应式表达式，一旦被拖过就变成固定的 px（那是操作者自己挑的宽度，
+ * 不该再跟着窗口变）。抽屉不加 destroy-on-close，所以拖出来的宽度会在一次页面停留内
+ * 跨开关存活 —— 这是刻意的（记住偏好），刷新页面才回到初值
+ */
+const drawerSize = ref('min(1120px, 86vw)')
+
+/**
+ * 拖拽柄的宽度下限：右列 460 + 两列间距 16 + body 左右内边距 40 + 树至少 244。
+ *
+ * 🔴 EP 的 useResizable 只把尺寸夹在 [4, 窗口宽]，**没有下限** —— 一路往右拖能把抽屉收成
+ * 4px 的一条线：header 的关闭按钮与 footer 的「取消」都点不到，右列那个 w-460px shrink-0
+ * 还会让整块横向溢出。剩下能救自己的只有 ESC 与那个 8px 的拖拽柄。
+ *
+ * 🔴 为什么在 resize-end 里夹、而不是写一条 CSS min-width：min-width 得打在 .el-drawer 上，
+ * 而 scoped 样式的 scopeId 只保证落到子组件的**根节点** —— 这里是 ElTeleport → Transition →
+ * ElOverlay 三层之后的 div.el-overlay，还能不能再穿到 .el-drawer 取决于 EP 的内部结构
+ * （模板顶部那段注释正是在为这件事兜底）。宽度下限是拖拽的安全网，不该建在那个不确定性上。
+ *
+ * ⚠️ 副作用：拖动过程中能拖到下限以下，**松手才弹回** 760px。
+ * 改 props.size 会让 useResizable 复位它自己的拖拽状态（hasStartedDragging / startSize / offset），
+ * 所以下一次拖动是从弹回后的真实宽度起算的，不会累积漂移。
+ *
+ * 上限那道 `window.innerWidth` 不是防御性冗余：EP 夹的是它自己算出来的尺寸，
+ * 而这里写回的是 props.size，在比 760px 还窄的窗口上不做这道就会写出一个比视口还宽的抽屉
+ */
+const DRAWER_MIN_WIDTH = 760
+const onDrawerResizeEnd = (_evt: MouseEvent, size: number) => {
+  drawerSize.value = `${Math.max(Math.min(DRAWER_MIN_WIDTH, window.innerWidth), size)}px`
+}
 
 /** 主体固定由打开方传入（角色授权页 = ROLE + roleId） */
 const subject = ref({ subjectType: 'ROLE', subjectRefId: undefined as number | undefined })
@@ -522,8 +606,6 @@ const ruleWarning = computed<{ type: 'warning' | 'error'; text: string } | undef
 })
 
 // -------- 提交 --------
-
-const emit = defineEmits<{ success: [] }>()
 
 const submitForm = async () => {
   const valid = await formRef.value?.validate().catch(() => false)

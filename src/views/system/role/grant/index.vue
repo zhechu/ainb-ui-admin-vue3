@@ -16,6 +16,27 @@
 
     <!-- 搜索工作栏 -->
     <el-form :inline="true" :model="queryParams" class="-mb-15px" label-width="68px">
+      <!--
+        🔴 「权限标识」刻意排在第一位，别按「常用度」把它挪回后面去。
+
+        两个抽屉都是非模态穿透的（见 GrantForm.vue 模板顶部注释），开着的时候这一栏是能点的 ——
+        一边配授权一边回头查「这个权限标识已经授过什么」正是穿透要交付的东西。
+        而这一栏是按 inline 从左往右排的：排在第四位时它落在 x≈1133~1313（1920px 视口），
+        任何合理宽度的抽屉都盖得住它，穿透就等于白做；排在第一位它落在 x≈245~493，
+        连拖到下限 760px 的抽屉都盖不住。
+
+        顺序本身也站得住：权限标识（system:user 这种全串）是这五个条件里**最精确**的一个，
+        精确条件排在模糊条件（资源名称）前面是常见口径
+      -->
+      <el-form-item label="权限标识" prop="resourcePermission">
+        <el-input
+          v-model="queryParams.resourcePermission"
+          class="!w-180px"
+          clearable
+          placeholder="如 system:user"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
       <el-form-item label="动作" prop="action">
         <el-select v-model="queryParams.action" class="!w-200px" clearable placeholder="全部">
           <el-option
@@ -41,15 +62,6 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="权限标识" prop="resourcePermission">
-        <el-input
-          v-model="queryParams.resourcePermission"
-          class="!w-180px"
-          clearable
-          placeholder="如 system:user"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
       <el-form-item label="到期时间" prop="expireTime">
         <el-date-picker
           v-model="queryParams.expireTime"
@@ -70,9 +82,22 @@
           <Icon class="mr-5px" icon="ep:refresh" />
           重置
         </el-button>
+        <!--
+          🔴 这三个按钮（外加下面表格里的「编辑」「删除」）在抽屉开着期间必须禁用。
+
+          两个抽屉都是非模态穿透的，所以抽屉开着的时候这一栏与表格**是可以点的** ——
+          这正是穿透要交付的能力。但可点不等于点什么都安全：
+          「新增授权」「批量授权」「编辑」都会调 open() 重填同一个抽屉实例，
+          于是把操作者正在填的内容**静默替换**掉（批量抽屉里那可能是几百个已勾资源
+          加上一整套「保留 / 覆盖」选择）；「删除」「批量删除」则会在授权进行中删掉授权行。
+
+          🔴 反过来，**搜索、重置、五个查询条件、翻页、行首勾选框一个都不许禁** ——
+          一边配授权一边回头查列表，就是穿透存在的全部理由，把它们一起禁掉等于把功能退回遮罩模式。
+          勾选框留着也无害：批量删除已经禁用，而抽屉提交成功后 getList() 会自然清掉勾选
+        -->
         <el-button
           v-hasPermi="['system:grant:create']"
-          :disabled="!roleId"
+          :disabled="!roleId || drawerOpen"
           plain
           type="primary"
           @click="openForm('create')"
@@ -82,7 +107,7 @@
         </el-button>
         <el-button
           v-hasPermi="['system:grant:create']"
-          :disabled="!roleId"
+          :disabled="!roleId || drawerOpen"
           plain
           type="primary"
           @click="openBatchForm"
@@ -92,7 +117,7 @@
         </el-button>
         <el-button
           v-hasPermi="['system:grant:delete']"
-          :disabled="!checkedIds.length"
+          :disabled="!checkedIds.length || drawerOpen"
           plain
           type="danger"
           @click="handleDeleteBatch"
@@ -208,8 +233,10 @@
         </el-table-column>
         <el-table-column align="center" fixed="right" label="操作" width="120">
           <template #default="scope">
+            <!-- 抽屉开着时禁用，理由见上面搜索栏那三个按钮前的注释 -->
             <el-button
               v-hasPermi="['system:grant:update']"
+              :disabled="drawerOpen"
               link
               type="primary"
               @click="openForm('update', scope.row)"
@@ -218,6 +245,7 @@
             </el-button>
             <el-button
               v-hasPermi="['system:grant:delete']"
+              :disabled="drawerOpen"
               link
               type="danger"
               @click="handleDelete(scope.row.id)"
@@ -236,10 +264,10 @@
     </template>
   </ContentWrap>
 
-  <!-- 新增/编辑授权抽屉 -->
-  <GrantForm ref="formRef" @success="getList" />
+  <!-- 新增/编辑授权抽屉。@closed 用来解禁那五个按钮，见上面搜索栏前的注释 -->
+  <GrantForm ref="formRef" @closed="drawerOpen = false" @success="getList" />
   <!-- 批量授权抽屉：资源多选 × 动作多选，提交笛卡尔积 -->
-  <GrantBatchForm ref="batchFormRef" @success="getList" />
+  <GrantBatchForm ref="batchFormRef" @closed="drawerOpen = false" @success="getList" />
 </template>
 <script lang="ts" setup>
 import { formatDate } from '@/utils/formatTime'
@@ -346,15 +374,30 @@ const resetQuery = () => {
   handleQuery()
 }
 
+/**
+ * 有没有抽屉正开着。
+ *
+ * 🔴 两个抽屉都是非模态穿透的，开着的时候这一页是可点的，于是「点行内编辑」会静默替换掉
+ * 抽屉里正在填的内容、「点批量删除」会在授权进行中删行。这个 ref 就是用来在那期间
+ * 禁掉这五个会毁数据的按钮的（新增授权 / 批量授权 / 批量删除 / 行内编辑 / 行内删除）。
+ * 禁哪些、以及**为什么搜索与翻页一个都不许禁**，见模板里搜索栏前那段注释。
+ *
+ * 置回 false 走抽屉 emit 的 `closed`（收起动画结束）而不是 `close`（动画开始）——
+ * 后者会让按钮在抽屉还盖在页面上时就活过来，点到的东西是看不见的
+ */
+const drawerOpen = ref(false)
+
 /** 新增/编辑授权 */
 const formRef = ref()
 const openForm = (type: 'create' | 'update', row?: GrantVO) => {
+  drawerOpen.value = true
   formRef.value.open(type, roleId.value, row)
 }
 
 /** 批量授权 */
 const batchFormRef = ref()
 const openBatchForm = () => {
+  drawerOpen.value = true
   batchFormRef.value.open(roleId.value)
 }
 

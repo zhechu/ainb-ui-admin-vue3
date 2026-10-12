@@ -3,14 +3,32 @@
     🔴 不加 append-to-body：EP 的 el-drawer 默认 appendToBody=false，
     加了之后抽屉被 teleport 出本组件的 scoped 边界，下面那几条 :deep(.el-drawer__*)
     会**静默失效**（不报错，只是不生效）。
-    :close-on-click-modal 必须显式关掉 —— 它默认是 true，
-    而批量抽屉正是一次误点遮罩就毁掉几百个勾选的地方
+    换成下面那个穿透模式也**不需要** append-to-body —— ElTeleport 的 disabled 只看 appendToBody，
+    与 modal 无关。理由与其余全部细节见 GrantForm.vue 模板顶部那三段注释，这里不重复
+  -->
+  <!--
+    🔴 非模态穿透 + 可拖宽，与 GrantForm.vue 同口径（`:modal="false"` 与 `modal-penetrable`
+    必须成对，少了任一个 is-penetrable 都不会加上，那两条 pointer-events 规则也就不生效）。
+
+    ⚠️ 批量抽屉是这两个入口里**代价更大的一个**：后面列表页可点之后，
+    一次「行内编辑」就能把这里已经勾好的几百个资源与那套「保留 / 覆盖」选择整个换掉，
+    一次「批量删除」能在授权进行中删掉授权行。那五个按钮由 index.vue 的 drawerOpen 禁用；
+    搜索、重置、五个查询条件、翻页保持可用 —— 那才是要够到的东西。
+
+    ⚠️ 下面那个 `:close-on-click-modal="false"` 在穿透模式下是惰性的（overlay 已经
+    pointer-events: none，永远收不到点击）。留着是为了哪天把 modal 打开时，
+    不会退回「一次误点遮罩就毁掉几百个勾选」
   -->
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
-    size="min(1480px, 96vw)"
+    :modal="false"
+    :size="drawerSize"
+    modal-penetrable
+    resizable
     title="批量授权"
+    @closed="emit('closed')"
+    @resize-end="onDrawerResizeEnd"
   >
     <!--
       🔴 class 里的 h-full 是承重的，别当成与 flex-1 重复而删掉。
@@ -25,7 +43,10 @@
         左列：资源多选 + 已选清单。它才是这个抽屉的主体，吃掉全部剩余宽度；
         min-w-0 是必需的 —— 树行里的 permission 串很长，没有它 flex-1 会被内容顶开。
         这一侧整体比单条那个抽屉宽 120px，为的是行尾那个两态按钮
-        （「全选下级（N）」/「取消下级（N）」，约 90px）不至于把 permission 挤没
+        （「全选下级（N）」/「取消下级（N）」，约 90px）不至于把 permission 挤没。
+
+        默认宽度下这一列约 724px（抽屉 1240 − body 左右内边距 40 − 两列间距 16 − 右列 460），
+        拖到下限 760px 时约 244px。改抽屉宽度或右列宽度时这两个数要重新算一遍
       -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <ResourceTreePicker
@@ -237,6 +258,13 @@ import {
 
 defineOptions({ name: 'SystemRoleGrantBatchForm' })
 
+/**
+ * `success` = 提交成功，index.vue 拿去刷新列表；`closed` = 抽屉收起动画**结束**，
+ * index.vue 拿去解禁那五个按钮。两条的语义与「为什么是 closed 不是 close」
+ * 见 GrantForm.vue 里同一处声明的注释。声明放在最上面是因为模板里就引用了它
+ */
+const emit = defineEmits<{ success: []; closed: [] }>()
+
 const message = useMessage()
 
 /** 只选日期不选时间时默认到当天 23:59:59 —— 与单条表单同口径 */
@@ -245,6 +273,21 @@ const defaultExpireTime = new Date(2000, 0, 1, 23, 59, 59)
 const drawerVisible = ref(false)
 const formLoading = ref(false)
 const pickerRef = ref()
+
+/**
+ * 抽屉宽度与它的拖拽下限，与 GrantForm.vue 同一套机制，只差默认值：
+ * 这里比单条那个宽 120px，理由见模板里左列那段注释（行尾那个两态按钮约 90px）。
+ *
+ * 🔴 下限为什么夹在 resize-end 里而不是写一条 CSS min-width、以及「拖到下限以下松手才弹回」
+ * 这个副作用为什么是正确行为，GrantForm.vue#onDrawerResizeEnd 上那段注释已经写全了，
+ * 这里不重复 —— 两份注释各说一半，是下一个人踩坑的标准起点
+ */
+const DRAWER_MIN_WIDTH = 760
+const drawerSize = ref('min(1240px, 86vw)')
+const onDrawerResizeEnd = (_evt: MouseEvent, size: number) => {
+  drawerSize.value = `${Math.max(Math.min(DRAWER_MIN_WIDTH, window.innerWidth), size)}px`
+}
+
 /** 主体固定由打开方传入（角色授权页 = ROLE + roleId），批量抽屉不提供主体选择 */
 const subjectRefId = ref<number>()
 
@@ -502,8 +545,6 @@ const canSubmit = computed(
     // 提交会静默走成「覆盖」，把已配好的规则/字段模式抹成 NULL
     !existingLoadFailed.value
 )
-
-const emit = defineEmits<{ success: [] }>()
 
 const open = async (refId: number) => {
   subjectRefId.value = refId
