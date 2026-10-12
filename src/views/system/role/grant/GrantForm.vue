@@ -168,7 +168,6 @@
 <script lang="ts" setup>
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO, GrantSaveReqVO, RuleVO } from '@/api/system/grant'
-import { handleTree } from '@/utils/tree'
 import {
   GRANT_ACTION_GROUP_LABELS,
   grantActionGroupsFor,
@@ -176,6 +175,8 @@ import {
   reservedActionWarning
 } from '@/views/system/resource/constants'
 import GrantActionHelp from '@/views/system/resource/components/GrantActionHelp.vue'
+import { useResourceTreePicker } from './useResourceTreePicker'
+import { confirmPastExpireTime } from './batchGrant'
 import dayjs from 'dayjs'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
@@ -235,7 +236,7 @@ const open = async (type: 'create' | 'update', subjectRefId: number, row?: Grant
         expireTime: row.expireTime ? dayjs(row.expireTime).format('YYYY-MM-DD HH:mm:ss') : undefined
       }
     }
-    await loadStatic()
+    await Promise.all([ensureLoaded(), loadRules()])
     // 编辑时如果绑的是字段级资源，自动把字段级资源加载进来，否则树里找不到、回显不了
     if (formData.value.resourceId && !resourceById.value.has(formData.value.resourceId)) {
       includeFieldLevel.value = true
@@ -250,42 +251,29 @@ defineExpose({ open })
 
 // -------- 资源树 / 规则列表（与主体无关，弹窗生命周期内只拉一次） --------
 
-const resourceTree = ref<any[]>([])
+const resourceTreeRef = ref()
+// 树的数据层与批量授权弹窗共用一份，见 useResourceTreePicker 的注释
+const {
+  resourceTree,
+  includeFieldLevel,
+  ensureLoaded,
+  reloadResourceTree,
+  resourceById,
+  treeFilterMethod,
+  onResourceFilter,
+  resetTreeFilter
+} = useResourceTreePicker(resourceTreeRef)
+
 const ruleList = ref<RuleVO[]>([])
-const staticLoaded = ref(false)
-/** 资源树是否包含 COLUMN/FIELD 级资源。默认关，打开才加载 */
-const includeFieldLevel = ref(false)
-
-const loadStatic = async () => {
-  if (staticLoaded.value) return
-  const [resources, rules] = await Promise.all([
-    GrantApi.getResourceList(undefined, includeFieldLevel.value),
-    GrantApi.getSimpleRuleList()
-  ])
-  resourceTree.value = handleTree(resources, 'id', 'parentId')
-  ruleList.value = rules
-  staticLoaded.value = true
-}
-
-const reloadResourceTree = async () => {
-  const resources = await GrantApi.getResourceList(undefined, includeFieldLevel.value)
-  resourceTree.value = handleTree(resources, 'id', 'parentId')
-  nextTick(() => resourceTreeRef.value?.filter(''))
+const rulesLoaded = ref(false)
+const loadRules = async () => {
+  if (rulesLoaded.value) return
+  ruleList.value = await GrantApi.getSimpleRuleList()
+  rulesLoaded.value = true
 }
 
 // -------- 资源选择（虚拟化树） --------
 
-const resourceTreeRef = ref()
-const resourceById = computed(() => {
-  const map = new Map<number, any>()
-  const walk = (ns: any[]) =>
-    ns.forEach((n) => {
-      map.set(n.id, n)
-      if (n.children?.length) walk(n.children)
-    })
-  walk(resourceTree.value)
-  return map
-})
 const selectedResource = computed(() =>
   formData.value.resourceId ? resourceById.value.get(formData.value.resourceId) : undefined
 )
@@ -306,23 +294,8 @@ const selectedResourceLabel = computed(() => {
   return r.permission ? `${r.name}（${r.permission}）` : r.name
 })
 
-const treeFilterMethod = (value: string, data: any) => {
-  if (!value) return true
-  const kw = value.toLowerCase()
-  return (
-    (data.name ?? '').toLowerCase().includes(kw) ||
-    (data.permission ?? '').toLowerCase().includes(kw)
-  )
-}
-
-// el-select 输入转发给树过滤，150ms 防抖：不防抖每敲一个字符都触发全量重算
-let filterTimer: any = null
-const onResourceFilter = (value: string) => {
-  if (filterTimer) clearTimeout(filterTimer)
-  filterTimer = setTimeout(() => resourceTreeRef.value?.filter(value), 150)
-}
 const onResourceDropdownToggle = (visible: boolean) => {
-  if (visible) nextTick(() => resourceTreeRef.value?.filter(''))
+  if (visible) resetTreeFilter()
 }
 const onResourceNodeClick = (data: any) => {
   // 换到非字段级资源时清掉 fieldMode，避免上次的残留被提交上去
@@ -345,12 +318,7 @@ const submitForm = async () => {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   // 到期时间填了过去的时间 = 保存即「已过期」，几乎一定是手误，先问一句
-  if (formData.value.expireTime && dayjs(formData.value.expireTime).isBefore(dayjs())) {
-    const ok = await message
-      .confirm('到期时间早于当前时间，保存后该授权会立即处于「已过期」状态。是否继续？')
-      .catch(() => false)
-    if (!ok) return
-  }
+  if (!(await confirmPastExpireTime(formData.value.expireTime))) return
   formLoading.value = true
   try {
     if (formData.value.id) {
@@ -358,7 +326,9 @@ const submitForm = async () => {
       message.success('修改成功')
     } else {
       await GrantApi.createGrant(formData.value)
-      message.success('新增成功')
+      // ⚠️ 不写「新增成功」：/create 已经是 upsert 语义，撞上同「主体+资源+动作+上下文」
+      // 的既有行时会覆盖它而不是插新行，说「新增」是在对操作者撒谎
+      message.success('保存成功')
     }
     dialogVisible.value = false
     emit('success')
