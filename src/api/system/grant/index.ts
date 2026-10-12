@@ -25,6 +25,13 @@ export interface GrantVO {
   resourceId: number
   resourcePermission?: string
   resourceName?: string
+  /**
+   * 资源类型：MENU/ACTION/PROCESS/CATEGORY/DATASET/COLUMN/FIELD
+   *
+   * 用来判「这一行上的 ruleId / fieldMode 有没有意义」——行过滤规则只在 DATASET 上会被读到，
+   * 绑在菜单上是死字段。没有它，列表页只能对所有行一律显示「不受限（全部行）」，那句话对死字段是假的
+   */
+  resourceType?: string
   contextResourceId?: number
   action: string
   effect: string // ALLOW | DENY
@@ -273,6 +280,16 @@ export interface SlotMappingVO {
 /** 查询某资源的全部槽位映射 */
 export const getSlotMappingList = async (resourceId: number): Promise<SlotMappingVO[]> => {
   return await request.get({ url: '/system/slot-mapping/list-by-resource', params: { resourceId } })
+}
+
+/**
+ * 查询全部槽位映射（批量授权前核对规则覆盖度用）
+ *
+ * 后端是 @TenantIgnore 全局表，量级两百来行，一次拉全量比按资源逐个查简单 ——
+ * 结果与「当前选了哪个规则」无关，于是懒加载、请求序号、AbortController 那一整套都不需要
+ */
+export const getSlotMappingListAll = async (): Promise<SlotMappingVO[]> => {
+  return await request.get({ url: '/system/slot-mapping/list' })
 }
 
 /** 新增槽位映射 */

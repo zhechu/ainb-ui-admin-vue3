@@ -155,6 +155,24 @@ export const GRANT_ACTION_OPTIONS: GrantActionOption[] = [
 const PROCESS_RESOURCE_TYPES = ['PROCESS', 'CATEGORY']
 
 /**
+ * 行过滤规则（GrantVO#ruleId）只可能落在哪一类资源上。
+ *
+ * 后端的真实判据是三连条件（见 ResourceMapper#selectListByDatasetTable）：
+ * type=DATASET 且 dataset_table 非空 且 status=ENABLE —— 行过滤是拿物理表名反查数据集资源的。
+ * 前端 ResourceVO 不含 dataset_table，所以这里只能判 type，这是一个**会漂移的近似**。
+ * 接受它的理由是失效方向：漏判只会「少写一个 ruleId」（规则在那张表上不生效），不会越权；
+ * 而 dataset_table 一旦进 RespVO 就成了对全前端的公开契约，本轮只有一个消费点。
+ * status 那一半本来就安全 —— getResourceList 只返启用资源。
+ *
+ * 🔴 绑在非数据集资源上的 ruleId 是**死字段**：GrantDecisionEngine#isAllowed 与
+ * #resolveFieldMode 从不读它，行过滤也**不沿资源树上溯**（功能权限才上溯，
+ * 见 GrantDecisionService#buildResourceChain），所以绑在 CATEGORY 父节点上也不会下发给子数据集。
+ * 死字段不只是噪声：列表页会把它渲染成一个其实不存在的限制，比留空更误导人
+ */
+export const isRowFilterableResource = (resourceType: string | undefined) =>
+  resourceType === 'DATASET'
+
+/**
  * 按资源类型取「这个资源上配了有意义」的动作。
  *
  * 收窄的只有 processOnly 那几项，不收窄 effective=false 的预留项 ——

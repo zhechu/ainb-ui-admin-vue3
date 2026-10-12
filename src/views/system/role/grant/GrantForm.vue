@@ -139,17 +139,36 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="行过滤规则">
+          <!--
+            🔴 :disabled 必须带 && !formData.ruleId：编辑一条 ruleId 挂在非 DATASET 资源上的
+            历史行时，纯 !isDatasetResource 会让用户看得到却清不掉 —— 而列表页一直显示那个
+            ruleName，看着像「配了个限制」，其实是死字段。
+            与下面 fieldMode 那处的差别就在于此：fieldMode 是「无效值本就不该存在」，
+            这里要留一条把既有的无效值摘掉的路
+          -->
           <el-select
             v-model="formData.ruleId"
+            :disabled="!isDatasetResource && !formData.ruleId"
+            :placeholder="
+              isDatasetResource ? '不绑定（该主体不受行限制）' : '仅对「数据集」类资源有效'
+            "
             class="w-full"
             clearable
-            placeholder="不绑定（该主体不受行限制）"
           >
-            <el-option v-for="r in ruleList" :key="r.id" :label="r.name" :value="r.id">
+            <el-option v-for="r in ruleOptions" :key="r.id" :label="r.name" :value="r.id">
               <span>{{ r.name }}</span>
               <span class="ml-8px text-11px text-gray-400">{{ r.description }}</span>
             </el-option>
           </el-select>
+          <el-alert
+            v-if="ruleWarning"
+            :closable="false"
+            :type="ruleWarning.type"
+            class="mt-4px w-full !py-4px"
+            show-icon
+          >
+            <div class="text-12px leading-snug">{{ ruleWarning.text }}</div>
+          </el-alert>
         </el-form-item>
         <el-form-item label="字段显示模式">
           <el-select
@@ -177,9 +196,13 @@
             value-format="YYYY-MM-DD HH:mm:ss"
           />
         </el-form-item>
-        <!-- 不绑规则时说清楚它的含义，这一条直接决定多角色合并的结果 -->
+        <!--
+          不绑规则时说清楚它的含义，这一条直接决定多角色合并的结果。
+          加 isDatasetResource 是因为「这张表」只有数据集才有 ——
+          对着一个菜单资源说「可以看到这张表的全部行」是把行过滤的适用范围讲错了
+        -->
         <el-alert
-          v-if="!formData.ruleId && formData.effect === 'ALLOW'"
+          v-if="!formData.ruleId && isDatasetResource && formData.effect === 'ALLOW'"
           :closable="false"
           show-icon
           type="info"
@@ -204,13 +227,16 @@ import {
   formatResourceType,
   grantActionGroupsFor,
   isGrantActionAllowed,
+  isRowFilterableResource,
   reservedActionWarning
 } from '@/views/system/resource/constants'
 import GrantActionHelp from '@/views/system/resource/components/GrantActionHelp.vue'
+import { useRuleTemplateMeta } from '@/views/system/rule/useRuleTemplateMeta'
 import ResourceTreePicker from './ResourceTreePicker.vue'
 import { useResourceCatalog } from './useResourceCatalog'
+import { useSlotCoverage } from './useSlotCoverage'
 import { resourceBreadcrumb } from './resourceTree'
-import { confirmPastExpireTime } from './batchGrant'
+import { computeRuleSlotCoverage, confirmPastExpireTime } from './batchGrant'
 
 defineOptions({ name: 'SystemRoleGrantForm' })
 
@@ -252,9 +278,13 @@ const open = async (type: 'create' | 'update', subjectRefId: number, row?: Grant
   drawerVisible.value = true
   formLoading.value = true
   try {
+    // 每次打开都归位：抽屉不加 destroy-on-close，这个 ref 跨开关存活，
+    // 上一次编辑的规则名会被下一次带过去（见 editingRuleName 的注释）
+    editingRuleName.value = undefined
     if (type === 'create') {
       formData.value = buildEmptyForm()
     } else if (row) {
+      editingRuleName.value = row.ruleName
       formData.value = {
         id: row.id,
         subjectType: row.subjectType,
@@ -270,7 +300,11 @@ const open = async (type: 'create' | 'update', subjectRefId: number, row?: Grant
         expireTime: row.expireTime ? dayjs(row.expireTime).format('YYYY-MM-DD HH:mm:ss') : undefined
       }
     }
-    await Promise.all([ensureLoaded(), loadRules()])
+    // 四件事并行，彼此无依赖：资源树、启用规则列表、槽位映射全量、规则模板元数据。
+    // 槽位与模板都是「一次页面停留只拉一次」（见 useSlotCoverage / useRuleTemplateMeta），
+    // 且**与选了哪个规则无关** —— 放在这里而不是 watch(ruleId) 里，
+    // 快速切换规则时的请求竞态就从「要处理」变成「结构上不存在」
+    await Promise.all([ensureLoaded(), loadRules(), ensureSlotsLoaded(), loadRuleTemplateMeta()])
     // ⚠️ 抽屉不加 destroy-on-close（见 useResourceCatalog 的注释），useResourceCatalog
     // 与它那份 includeFieldLevel 常驻在 setup 里，跨开关存活。
     // 上一次编辑字段级资源会把开关打开，新增时得复位，否则树里全是列/字段噪声
@@ -313,6 +347,32 @@ const loadRules = async () => {
   rulesLoaded.value = true
 }
 
+/**
+ * 编辑态回显用的规则名，来自 GrantVO#ruleName（后端在 enrichment 时填的快照）。
+ *
+ * 存在的原因：getSimpleRuleList 只返**启用**规则（后端 RuleAdminController#getSimpleRuleList
+ * 带 .eq(RuleDO::getStatus, 0)），所以一条授权行绑的规则一旦被停用或被删，
+ * 它就不在 ruleList 里，而 el-select 找不到匹配 option 时会把 value **原样渲染成裸数字 id**，
+ * 看着像控件坏了。先例与理由同 constants.ts#grantActionGroupsFor 的「补选项而不是改成 VIEW」：
+ * 静默改值等于篡改一条已存在的授权
+ */
+const editingRuleName = ref<string>()
+
+const ruleOptions = computed<RuleVO[]>(() => {
+  const id = formData.value.ruleId
+  if (id == null || ruleList.value.some((item) => item.id === id)) return ruleList.value
+  return [
+    ...ruleList.value,
+    {
+      id,
+      name: `${editingRuleName.value ?? `规则 #${id}`}（已停用或已删除）`,
+      // template / status 只是补满 RuleVO 的必填字段；这个占位项永远选不中（下拉里点它等于没变）
+      template: '',
+      status: 1
+    }
+  ]
+})
+
 const onIncludeFieldLevelChange = async (value: boolean) => {
   includeFieldLevel.value = value
   await reloadResourceTree()
@@ -354,6 +414,14 @@ const onResourceSelected = (value: number | number[] | undefined) => {
   if (!['COLUMN', 'FIELD'].includes(node.type)) {
     formData.value.fieldMode = undefined
   }
+  // 行过滤规则同理，而且这里的残留**更危险**：绑在非数据集资源上的 ruleId 是死字段，
+  // 但列表页照样把它渲染成 ruleName，等于给操作者看了一个其实不存在的限制。
+  //
+  // 🔴 这段不会在 open('update') 回显时误触发：ResourceTreePicker#onNodeClick 开头是
+  // if (props.multiple || props.disabled) return，而编辑态下 picker 是 :disabled="!!formData.id"
+  if (!isRowFilterableResource(node.type)) {
+    formData.value.ruleId = undefined
+  }
   // 动作同理：换资源之后原来那个动作可能在新资源上不开放（从流程切到菜单，START 就没意义了）。
   // 这里重置是安全的 —— 是用户主动换的资源，不是在回显一条既有授权行
   if (!isGrantActionAllowed(formData.value.action, node.type)) {
@@ -369,6 +437,89 @@ const onResourceSelected = (value: number | number[] | undefined) => {
   // 先例见 ChannelMessageSendForm#handleReceiverUserChange
   formRef.value?.validateField('resourceId')
 }
+
+// -------- 行过滤规则：适用性 + 槽位覆盖度 --------
+
+/** 行过滤规则只对 DATASET 资源有意义，判据与失效方向见 isRowFilterableResource */
+const isDatasetResource = computed(() => isRowFilterableResource(selectedResource.value?.type))
+
+const selectedRule = computed(() =>
+  formData.value.ruleId == null
+    ? undefined
+    : ruleList.value.find((item) => item.id === formData.value.ruleId)
+)
+
+// 数据层与批量授权抽屉同一套，但**不共用实例** —— 两个抽屉各自 setup 一份，
+// 与 useResourceCatalog 的口径一致（一次页面停留只拉一次，不做模块级缓存）
+const { slotMappings, state: slotState, ensureLoaded: ensureSlotsLoaded } = useSlotCoverage()
+const { templateMap, load: loadRuleTemplateMeta } = useRuleTemplateMeta()
+
+const coverage = computed(() =>
+  computeRuleSlotCoverage({
+    slotState: slotState.value,
+    slotMappings: slotMappings.value,
+    resourceIds: formData.value.resourceId ? [formData.value.resourceId] : [],
+    resourceById: resourceById.value,
+    rule: selectedRule.value,
+    templateMeta: templateMap.value
+  })
+)
+
+/**
+ * 规则下拉底下那一条警告。与批量抽屉那份 ruleHint 同一套判据，
+ * 但少了「已勾 N 个资源里没有数据集」「将作用于 D 个数据集」这类只在多选下成立的分支，
+ * 也**不弹二次确认** —— 单条只影响一行，代价与批量差三个数量级，
+ * 为它拦一道弹窗换来的确定性不值这个摩擦。缺槽位照样报 error，红字本身就是告知。
+ *
+ * 返回 undefined 时那条 alert 整体不渲染，此时底下那条「未绑定 = 全部行可见」的 info
+ * 才可能出现（它的 v-if 里有 !formData.ruleId，两者天然互斥，不会叠成两条）
+ */
+const ruleWarning = computed<{ type: 'warning' | 'error'; text: string } | undefined>(() => {
+  if (formData.value.ruleId == null) return undefined
+  if (!isDatasetResource.value) {
+    const typeName = selectedResource.value ? formatResourceType(selectedResource.value.type) : ''
+    return {
+      type: 'warning',
+      text:
+        `行过滤规则绑在${typeName ? `「${typeName}」类` : '非数据集类'}资源上不会被任何查询读到 —— ` +
+        '后端是按物理表名反查 DATASET 资源的（见 ResourceMapper#selectListByDatasetTable），' +
+        '也不沿资源树上溯。这一行能存进去，但它只是个死字段，列表页却会把它显示成一个其实不存在的限制。'
+    }
+  }
+  const c = coverage.value
+  if (c.state === 'loading') return undefined
+  if (c.state === 'failed') {
+    return {
+      type: 'warning',
+      text:
+        '无法核对槽位覆盖度（当前账号可能没有 system:slot-mapping:query 权限）。' +
+        '缺槽位的数据集绑上规则后会一行都查不出来，请自行确认后再保存。'
+    }
+  }
+  if (!selectedRule.value) {
+    return {
+      type: 'warning',
+      text: '该规则不在启用规则列表里（已停用或已删除），拿不到它的模板，无法核对槽位覆盖度。'
+    }
+  }
+  if (c.undecidable) {
+    return {
+      type: 'warning',
+      text:
+        '该规则依赖的槽位写在它自己的参数里，无法预先核对。' +
+        '请确认这个数据集配了对应槽位 —— 缺槽位不是「规则不生效」，是整张表一行都查不出来。'
+    }
+  }
+  if (c.uncoveredIds.length) {
+    return {
+      type: 'error',
+      text:
+        `这个数据集没配「${c.missingSlots.join('、')}」槽位。绑上该规则后条件求不出来，` +
+        '后端按恒假处理 —— 整张业务表一行都查不出来，而且不报错，比不绑规则更严。'
+    }
+  }
+  return undefined
+})
 
 // -------- 提交 --------
 

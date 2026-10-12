@@ -166,6 +166,18 @@
         <el-table-column label="行过滤规则" min-width="140" show-overflow-tooltip>
           <template #default="scope">
             <span v-if="scope.row.ruleName">{{ scope.row.ruleName }}</span>
+            <!--
+              🔴 三态而不是两态。原先非数据集行也显示「不受限（全部行）」，
+              那是句假话 —— 菜单/按钮上压根没有「行」这个概念，行过滤是按物理表名
+              反查 DATASET 资源的（见 ResourceMapper#selectListByDatasetTable）。
+              现在改用后端新加的 resourceType 判，与相邻「字段模式」列的 `-` 同口径
+            -->
+            <span
+              v-else-if="!isRowFilterableResource(scope.row.resourceType)"
+              class="text-gray-400"
+            >
+              -
+            </span>
             <span v-else class="text-gray-400">不受限（全部行）</span>
           </template>
         </el-table-column>
@@ -234,7 +246,11 @@ import { formatDate } from '@/utils/formatTime'
 import * as GrantApi from '@/api/system/grant'
 import type { GrantVO } from '@/api/system/grant'
 import * as RoleApi from '@/api/system/role'
-import { GRANT_ACTION_OPTIONS, formatGrantAction } from '@/views/system/resource/constants'
+import {
+  GRANT_ACTION_OPTIONS,
+  formatGrantAction,
+  isRowFilterableResource
+} from '@/views/system/resource/constants'
 import GrantForm from './GrantForm.vue'
 import GrantBatchForm from './GrantBatchForm.vue'
 
