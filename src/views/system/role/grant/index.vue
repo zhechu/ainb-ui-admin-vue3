@@ -80,6 +80,26 @@
           <Icon class="mr-5px" icon="ep:plus" />
           新增授权
         </el-button>
+        <el-button
+          v-hasPermi="['system:grant:create']"
+          :disabled="!roleId"
+          plain
+          type="primary"
+          @click="openBatchForm"
+        >
+          <Icon class="mr-5px" icon="ep:copy-document" />
+          批量添加
+        </el-button>
+        <el-button
+          v-hasPermi="['system:grant:delete']"
+          :disabled="!checkedIds.length"
+          plain
+          type="danger"
+          @click="handleDeleteBatch"
+        >
+          <Icon class="mr-5px" icon="ep:delete" />
+          批量删除{{ checkedIds.length ? `（${checkedIds.length}）` : '' }}
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -91,7 +111,18 @@
       :image-size="80"
     />
     <template v-else>
-      <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table
+        v-loading="loading"
+        :data="list"
+        class="xpy-list-table"
+        stripe
+        @selection-change="handleSelectionChange"
+      >
+        <!--
+          ⚠️ 刻意不加 row-key / reserve-selection：翻页或搜索重载即重置勾选。
+          跨页攒住用户已经看不见的 id，正是批量删除最危险的输入
+        -->
+        <el-table-column type="selection" width="46" align="center" />
         <el-table-column
           label="序号"
           type="index"
@@ -195,6 +226,8 @@
 
   <!-- 新增/编辑授权弹窗 -->
   <GrantForm ref="formRef" @success="getList" />
+  <!-- 批量添加授权弹窗：资源多选 × 动作多选，提交笛卡尔积 -->
+  <GrantBatchForm ref="batchFormRef" @success="getList" />
 </template>
 <script lang="ts" setup>
 import { formatDate } from '@/utils/formatTime'
@@ -203,6 +236,7 @@ import type { GrantVO } from '@/api/system/grant'
 import * as RoleApi from '@/api/system/role'
 import { GRANT_ACTION_OPTIONS, formatGrantAction } from '@/views/system/resource/constants'
 import GrantForm from './GrantForm.vue'
+import GrantBatchForm from './GrantBatchForm.vue'
 
 defineOptions({ name: 'SystemRoleGrantPage' })
 
@@ -233,6 +267,16 @@ const loadRole = async () => {
 const loading = ref(false)
 const list = ref<GrantVO[]>([])
 const total = ref(0)
+/**
+ * 勾选的行 id。
+ *
+ * ⚠️ 不用 reserve-selection，也不跨页保留：翻页/搜索重载后行对象全换一批，
+ * 攥着上一批已经不在视图里的 id 去批量删除，是最难事后追查的一类误删
+ */
+const checkedIds = ref<number[]>([])
+const handleSelectionChange = (rows: GrantVO[]) => {
+  checkedIds.value = rows.map((row) => row.id)
+}
 const queryParams = reactive({
   pageNo: 1,
   pageSize: 20,
@@ -245,6 +289,8 @@ const queryParams = reactive({
 
 /** 查询授权列表（走后端分页接口，避免全量拉取卡死页面） */
 const getList = async () => {
+  // 表格重载后行对象全换一批，先把上一批的勾选扔掉（理由见 checkedIds 的注释）
+  checkedIds.value = []
   if (!roleId.value) {
     list.value = []
     total.value = 0
@@ -290,6 +336,12 @@ const openForm = (type: 'create' | 'update', row?: GrantVO) => {
   formRef.value.open(type, roleId.value, row)
 }
 
+/** 批量添加授权 */
+const batchFormRef = ref()
+const openBatchForm = () => {
+  batchFormRef.value.open(roleId.value)
+}
+
 /** 删除授权行 */
 const handleDelete = async (id: number) => {
   try {
@@ -301,6 +353,34 @@ const handleDelete = async (id: number) => {
   message.success('删除成功')
   // 当前页只剩这一条时往前翻一页，否则会停在一个空页上
   if (list.value.length === 1 && queryParams.pageNo > 1) {
+    queryParams.pageNo--
+  }
+  await getList()
+}
+
+/**
+ * 批量删除授权行。
+ *
+ * 后端是**全有或全无**：勾里的 id 只要有一个已不存在（另一个管理员刚删掉、
+ * 或另一个标签页操作过），整批都不删并报错 —— 静默部分成功会让操作者以为整批都删了。
+ * 所以这里失败时不清空勾选，让人看清是哪一批没删掉
+ */
+const handleDeleteBatch = async () => {
+  const ids = [...checkedIds.value]
+  if (!ids.length) return
+  try {
+    await message.delConfirm(
+      `确认删除勾选的 ${ids.length} 条授权？删除后立即生效，该角色将立刻失去对应权限。`
+    )
+  } catch {
+    return
+  }
+  await GrantApi.deleteGrantList(ids)
+  message.success(`已删除 ${ids.length} 条授权`)
+  checkedIds.value = []
+  // 本页被删空时往前翻一页。单条删除那个 `length === 1` 就是本条件的特例；
+  // 勾选不跨页，删掉的条数至多等于本页行数，回退一页必然落在有数据的页上
+  if (ids.length >= list.value.length && queryParams.pageNo > 1) {
     queryParams.pageNo--
   }
   await getList()

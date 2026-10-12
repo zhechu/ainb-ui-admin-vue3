@@ -168,9 +168,11 @@ export const grantActionOptionsFor = (resourceType: string | undefined): GrantAc
 
 /**
  * 下拉里分两组展示：生效的排前面，不生效的收进「预留」组。
- * 分成两组而不是隐藏，是为了让「选了不生效」这件事在选的那一刻就看得见
+ * 分成两组而不是隐藏，是为了让「选了不生效」这件事在选的那一刻就看得见。
+ * GrantBatchForm 的动作多选也用它 —— 批量入口一次能配出 N 行预留动作，
+ * 分组展示比单条更需要
  */
-const splitGrantActionOptions = (options: GrantActionOption[]) => ({
+export const splitGrantActionOptions = (options: GrantActionOption[]) => ({
   effective: options.filter((item) => item.effective),
   reserved: options.filter((item) => !item.effective)
 })

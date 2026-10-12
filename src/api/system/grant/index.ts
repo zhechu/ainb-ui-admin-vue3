@@ -151,9 +151,44 @@ export const getGrantListBySubject = async (
   })
 }
 
-/** 新增授权行 */
+/**
+ * 新增授权行（**upsert 语义**）
+ *
+ * 撞上同「主体 + 资源 + 动作 + 上下文」的既有行时会覆盖它，而不是再插一行。
+ * 表上没有唯一索引（软删模型下加了会被已删行占住键），判重全在后端应用层做，
+ * 所以返回值可能是新插入行的 id，也可能是被覆盖那条存活行的 id
+ */
 export const createGrant = async (data: GrantSaveReqVO): Promise<number> => {
   return await request.post({ url: '/system/grant/create', data })
+}
+
+/** 批量新增的计数回执 */
+export interface GrantBatchSaveRespVO {
+  /** 真正插进去的行数 */
+  insertedCount: number
+  /** 命中既有同键行、被覆盖的行数 */
+  updatedCount: number
+  /**
+   * 顺带收敛掉的**历史**同键重复行数（同键多行且内容一致时只留 id 最小的那条）。
+   * 大于 0 说明库里本来就有重复行，值得看一眼
+   */
+  convergedCount: number
+}
+
+/**
+ * 批量新增授权行。
+ *
+ * 笛卡尔展开在**前端**做（见 `views/system/role/grant/batchGrant.ts` 的 expandGrantBatch），
+ * 后端只收一个扁平的 `List<GrantSaveReqVO>` —— 这样「单条新增」就是 size=1 的批量，
+ * 两个入口共用同一份校验与同一条 upsert 路径。
+ *
+ * ⚠️ body 是 `{ items }` 包装而不是裸数组：Spring 对 `@RequestBody @Valid List<T>`
+ * 不会级联校验元素，包一层 VO 才能让每一项都吃到 GrantSaveReqVO 上的全套注解
+ *
+ * @param items 上限 500 条，与后端 `@Size(max = 500)` 同步
+ */
+export const createGrantList = async (items: GrantSaveReqVO[]): Promise<GrantBatchSaveRespVO> => {
+  return await request.post({ url: '/system/grant/create-list', data: { items } })
 }
 
 /** 修改授权行 */
@@ -169,6 +204,17 @@ export const getGrantListByResource = async (resourceId: number): Promise<GrantV
 /** 删除授权行 */
 export const deleteGrant = async (id: number): Promise<boolean> => {
   return await request.delete({ url: '/system/grant/delete', params: { id } })
+}
+
+/**
+ * 批量删除授权行。全有或全无：只要有一个 id 在库里不存在（另一个管理员刚删掉、
+ * 或另一个标签页操作过），整批都不删 —— 静默部分成功会让操作者以为整批都删了。
+ *
+ * ⚠️ ids 必须逗号拼接：axios 的 paramsSerializer 用的是 qs allowDots，
+ * `ids[]=` 绑不上后端的 `@RequestParam List<Long>`
+ */
+export const deleteGrantList = async (ids: number[]): Promise<boolean> => {
+  return await request.delete({ url: '/system/grant/delete-list', params: { ids: ids.join(',') } })
 }
 
 // ========== 行过滤规则（S8b 补全）==========
