@@ -224,9 +224,9 @@
     </template>
   </ContentWrap>
 
-  <!-- 新增/编辑授权弹窗 -->
+  <!-- 新增/编辑授权抽屉 -->
   <GrantForm ref="formRef" @success="getList" />
-  <!-- 批量授权弹窗：资源多选 × 动作多选，提交笛卡尔积 -->
+  <!-- 批量授权抽屉：资源多选 × 动作多选，提交笛卡尔积 -->
   <GrantBatchForm ref="batchFormRef" @success="getList" />
 </template>
 <script lang="ts" setup>
