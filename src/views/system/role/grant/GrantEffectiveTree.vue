@@ -514,4 +514,13 @@ onMounted(async () => {
   await nextTick()
   measure()
 })
+
+/**
+ * 父页面在抽屉提交成功后要能就地刷新这棵树 —— 那时人还停在树形页，组件**没有**重新挂载，
+ * 靠 onMounted 是等不来的。
+ *
+ * 对外叫 reload 而不是 load：对调用方来说这是「重新拉一次」，
+ * 而 load 在本组件内部还兼着首次加载与两个勾选框变更时的重载
+ */
+defineExpose({ reload: load })
 </script>

@@ -98,46 +98,68 @@
         <!--
           🔴 切换按钮**两种模式下都必须在**，且位置固定在「重置」之后、「新增授权」之前
           （用户原话「在【新增授权】按钮前面」）。树形模式下搜索表单整组被藏起来，
-          它就成了这一栏唯一的按钮 —— 藏了它就没人能切回列表
+          这一栏只剩它和后面两个写按钮 —— 藏了它就没人能切回列表
         -->
         <el-button :disabled="!roleId" plain type="primary" @click="toggleViewMode">
           <Icon class="mr-5px" :icon="viewMode === 'list' ? 'ep:share' : 'ep:list'" />
           {{ viewMode === 'list' ? '切换智能查看' : '切换编辑列表' }}
         </el-button>
         <!--
-          🔴 这三个按钮（外加下面表格里的「编辑」「删除」）在抽屉开着期间必须禁用。
+          🔴 下面这几个写按钮（外加列表表格里的「编辑」「删除」）在抽屉开着期间必须禁用。
 
           两个抽屉都是非模态穿透的，所以抽屉开着的时候这一栏与表格**是可以点的** ——
           这正是穿透要交付的能力。但可点不等于点什么都安全：
           「新增授权」「批量授权」「编辑」都会调 open() 重填同一个抽屉实例，
           于是把操作者正在填的内容**静默替换**掉（批量抽屉里那可能是几百个已勾资源
           加上一整套「保留 / 覆盖」选择）；「删除」「批量删除」则会在授权进行中删掉授权行。
+          🔴 这条理由在树形模式下一字不差地同样适用，所以那两个写按钮的 :disabled 原样带着 drawerOpen。
 
-          🔴 反过来，**搜索、重置、五个查询条件、翻页、行首勾选框一个都不许禁** ——
-          一边配授权一边回头查列表，就是穿透存在的全部理由，把它们一起禁掉等于把功能退回遮罩模式。
-          勾选框留着也无害：批量删除已经禁用，而抽屉提交成功后 getList() 会自然清掉勾选
+          🔴 反过来，**搜索、重置、五个查询条件、翻页、行首勾选框、切换按钮、
+          树里的展开箭头与两个显示开关一个都不许禁** ——
+          一边配授权一边回头看这一页，就是穿透存在的全部理由，把它们一起禁掉等于把功能退回遮罩模式。
+          勾选框留着也无害：批量删除已经禁用，而抽屉提交成功后 handleGrantSuccess() 里的
+          getList() 会自然清掉勾选
+        -->
+        <!--
+          🔴 【新增授权】【批量授权】**两种模式下都必须在**，别因为它们原先躲在 v-if="list"
+          里就以为树形模式不该有（上一轮就是这么错的，本轮是把它改回来）。
+
+          权限地图的价值恰恰在于「看出缺什么，然后就地补上」：
+          看着树发现某个子树整片没权限，就该能当场点开抽屉配掉，
+          而不是先切回列表、配完再切回来。而抽屉是非模态穿透的，配的时候这棵树还看得见 ——
+          树的「资源名称」列是 fixed: LEFT，右侧滑出的抽屉盖不住它，
+          所以「一边看地图一边配授权」是真的能一边看一边配。
+
+          ⚠️ 【批量删除】不一样，它**只属于列表模式**，理由见下面那个 template 前的注释
+        -->
+        <el-button
+          v-hasPermi="['system:grant:create']"
+          :disabled="!roleId || drawerOpen"
+          plain
+          type="primary"
+          @click="openForm('create')"
+        >
+          <Icon class="mr-5px" icon="ep:plus" />
+          新增授权
+        </el-button>
+        <el-button
+          v-hasPermi="['system:grant:create']"
+          :disabled="!roleId || drawerOpen"
+          plain
+          type="primary"
+          @click="openBatchForm"
+        >
+          <Icon class="mr-5px" icon="ep:copy-document" />
+          批量授权
+        </el-button>
+        <!--
+          🔴 【批量删除】没跟着放进常驻段，不是漏了：它的 :disabled 依赖 checkedIds，
+          而勾选来自 <el-table type="selection">。树形用的是 el-table-v2，
+          **压根不支持 type="selection"**，而且用户明确要求树只读。
+          放进树形模式就是一个永远灰着的按钮 —— 比不放更坏，
+          因为它会让人以为「批量删除坏了」，而不是「这里本来就没有可勾的行」
         -->
         <template v-if="viewMode === 'list'">
-          <el-button
-            v-hasPermi="['system:grant:create']"
-            :disabled="!roleId || drawerOpen"
-            plain
-            type="primary"
-            @click="openForm('create')"
-          >
-            <Icon class="mr-5px" icon="ep:plus" />
-            新增授权
-          </el-button>
-          <el-button
-            v-hasPermi="['system:grant:create']"
-            :disabled="!roleId || drawerOpen"
-            plain
-            type="primary"
-            @click="openBatchForm"
-          >
-            <Icon class="mr-5px" icon="ep:copy-document" />
-            批量授权
-          </el-button>
           <el-button
             v-hasPermi="['system:grant:delete']"
             :disabled="!checkedIds.length || drawerOpen"
@@ -295,18 +317,24 @@
   </ContentWrap>
 
   <!--
-    智能查看（树形权限地图）。**只读**：没有勾选列、没有操作列、没有分页，
+    智能查看（树形权限地图）。**树本身只读**：没有勾选列、没有操作列、没有分页，
     所以列表页那条「刻意不加 row-key / reserve-selection」的注释不受影响、继续成立，
-    没有去「顺手统一」。判定全在后端 GrantDecisionEngine#explain，这里一行判定逻辑都没有
+    没有去「顺手统一」。判定全在后端 GrantDecisionEngine#explain，这里一行判定逻辑都没有。
+
+    ⚠️ 「树只读」不等于「树形模式下不能改授权」：工具栏上的【新增授权】【批量授权】
+    是**刻意留着**的 —— 用户那句「只读即可，应该做不了编辑的」针对的是树里的
+    行内编辑 / 删除 / 勾选，不是「这一页不许发起授权」。地图的价值就是看出缺什么、就地补上。
+
+    ref 是给抽屉提交成功后**就地**刷新这棵树用的，见 handleGrantSuccess
   -->
   <ContentWrap v-else>
-    <GrantEffectiveTree :role-id="roleId" />
+    <GrantEffectiveTree ref="treeRef" :role-id="roleId" />
   </ContentWrap>
 
-  <!-- 新增/编辑授权抽屉。@closed 用来解禁那五个按钮，见上面搜索栏前的注释 -->
-  <GrantForm ref="formRef" @closed="drawerOpen = false" @success="getList" />
+  <!-- 新增/编辑授权抽屉。@closed 用来解禁那几个写按钮，见上面搜索栏前的注释 -->
+  <GrantForm ref="formRef" @closed="drawerOpen = false" @success="handleGrantSuccess" />
   <!-- 批量授权抽屉：资源多选 × 动作多选，提交笛卡尔积 -->
-  <GrantBatchForm ref="batchFormRef" @closed="drawerOpen = false" @success="getList" />
+  <GrantBatchForm ref="batchFormRef" @closed="drawerOpen = false" @success="handleGrantSuccess" />
 </template>
 <script lang="ts" setup>
 import { formatDate } from '@/utils/formatTime'
@@ -378,6 +406,18 @@ const toggleViewMode = () => {
   checkedIds.value = []
   viewMode.value = viewMode.value === 'list' ? 'tree' : 'list'
 }
+
+/**
+ * 树形视图的句柄，只用来在抽屉提交成功后**就地**重载（见 handleGrantSuccess）。
+ *
+ * ⚠️ 「切换视图」这条路不需要它：树在 v-else 分支里，每次切进来都会重新挂载，
+ * onMounted 自己就把数据拉新了。需要显式重载的只有「人还停在树形页、抽屉里刚存了一笔」这一种。
+ *
+ * 🔴 上面那句「靠重新挂载保证新鲜」是**隐式**的 —— 将来谁给这两个分支套上 <KeepAlive>
+ * 或把 v-if 换成 v-show，树就会开始返回陈旧权限，而且不报任何错。
+ * 所以 handleGrantSuccess 写成「两个视图都刷」，不依赖这个前提
+ */
+const treeRef = ref()
 
 const queryParams = reactive({
   pageNo: 1,
@@ -457,6 +497,27 @@ const batchFormRef = ref()
 const openBatchForm = () => {
   drawerOpen.value = true
   batchFormRef.value.open(roleId.value)
+}
+
+/**
+ * 抽屉提交成功后**两个视图都要刷**，别只刷当前可见的那一个。
+ *
+ * 🔴 只刷列表（本轮之前就是 `@success="getList"`）：用户在树形页存的，
+ * 眼前那棵树一动不动 —— 第一反应必然是「没存上」，于是再提交一遍。
+ * 而 `/create` 是 upsert，第二遍会**静默覆盖**第一遍，
+ * 用户永远不知道自己刚刚白担心了一场，也没人能从数据上看出这件事发生过。
+ *
+ * 🔴 只刷树也不行：切回列表会看到**存之前**那一页 —— list / queryParams 都是父组件的 ref，
+ * 不会因为 v-if 重新挂载而重新拉取，而树形模式下恰恰可能刚通过抽屉改过授权。
+ *
+ * 两个都刷的代价只是多一次分页查询，而它恰好发生在用户刚点完保存、最不敏感的那一刻。
+ * treeRef 在列表模式下是 undefined（组件被 v-if 卸载），所以 `?.` 天然就是
+ * 「只刷挂载着的那棵树」，不需要再判 viewMode；getList() 则两种模式下都该跑，
+ * 理由见上。两个请求互不依赖，并发发出即可
+ */
+const handleGrantSuccess = () => {
+  getList()
+  treeRef.value?.reload()
 }
 
 /** 删除授权行 */
