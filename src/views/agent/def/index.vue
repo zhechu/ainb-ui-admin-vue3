@@ -109,7 +109,8 @@
         class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="编号" align="center" prop="id" width="80" />
+      <!-- 这里不显示「编号」：智能体是拿编码和名称认的，自增 id 对使用者没有意义。
+           id 本身照旧在行数据里 —— 整页设计器路由（?id=）按它取行 -->
       <el-table-column label="编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
       <el-table-column label="名称" align="center" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column label="版本" align="center" prop="version" width="70" />

@@ -191,14 +191,15 @@
         getLoginUserId() 的字符串形式），直接展示是一串数字，管理员认不出是谁。
         这里换成「昵称（用户名）」，例如 超级管理员（admin）。
 
-        160px 是按最长的现值算的：5 个汉字 + 全角括号 ≈ 98px，admin ≈ 36px，
-        加 .cell 左右内边距 24px ≈ 158px。更长的昵称交给 tooltip
+        180px 是浏览器实测值：现值最长「超级管理员（admin）」在 .cell 里 scrollWidth=164
+        （含左右内边距 24px），原先按 160 写会差 6px 而出省略号；180 留 14px 余量，
+        更长的昵称仍交给 tooltip
       -->
       <el-table-column
         label="更新者"
         align="center"
         prop="updater"
-        width="160"
+        width="180"
         :show-overflow-tooltip="true"
         :formatter="updaterFormatter"
       />

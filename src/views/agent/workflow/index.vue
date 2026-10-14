@@ -172,7 +172,8 @@
           class-name="col-index"
           label-class-name="col-index"
         />
-        <el-table-column label="编号" align="center" prop="id" width="80" />
+        <!-- 这里不显示「编号」：流程是拿流程编码和流程名称认的，自增 id 对使用者没有意义。
+             id 本身照旧在行数据里 —— 设计器路由（?id=）、执行历史、版本抽屉都按它取行 -->
         <el-table-column label="流程编码" align="center" prop="code" min-width="160" show-overflow-tooltip />
         <el-table-column label="流程名称" align="center" prop="name" min-width="160" show-overflow-tooltip />
         <el-table-column label="版本" align="center" prop="version" width="70" />
@@ -198,7 +199,23 @@
             <span>{{ triggerLabel(scope.row.triggerType) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="负责人" align="center" prop="ownerUserId" width="90" />
+        <!--
+          负责人 = 这条流程触发时「以谁的身份跑」（后端 AgentWorkflowDefDO#ownerUserId：
+          权限由 yudao 权限 API 按此 userId 从库实时派生，为 NULL 时 fail-close 跳过）。
+          所以这一格不是普通的审计字段，它回答的是「这个自动化继承了谁的权限」——
+          显示成裸 id 等于没显示。改用与接口管理「更新者」同一套映射（useUserLabel）。
+          宽度 180 是浏览器实测值：现值最长「超级管理员（admin）」在 .cell 里 scrollWidth=164
+          （含左右内边距 24px），160 的列会差 6px 而出省略号；180 留 14px 余量，
+          更长的昵称仍交给 show-overflow-tooltip
+        -->
+        <el-table-column
+          label="负责人"
+          align="center"
+          prop="ownerUserId"
+          width="180"
+          show-overflow-tooltip
+          :formatter="ownerFormatter"
+        />
         <el-table-column
           label="创建时间"
           align="center"
@@ -280,11 +297,15 @@ import WorkflowCopyDialog from './components/WorkflowCopyDialog.vue'
 import { precheckPublish } from './publishGate'
 import { triggerTypeLabel } from './editor/triggerCases'
 import type { TableActionButton } from '@/components/TableActions'
+import { useUserLabel } from '@/hooks/web/useUserLabel'
 
 defineOptions({ name: 'AgentWorkflow' })
 
 const message = useMessage()
 const { push } = useRouter()
+
+// hooks/web 下新建的 hook 不在 build/vite/index.ts 的自动导入白名单里，必须显式 import
+const { userFormatter: ownerFormatter } = useUserLabel('负责人')
 
 const loading = ref(true)
 const total = ref(0)

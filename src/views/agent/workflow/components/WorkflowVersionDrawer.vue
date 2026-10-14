@@ -63,7 +63,17 @@
       <el-table-column label="触发方式" prop="triggerType" width="100" align="center">
         <template #default="scope">{{ triggerLabel(scope.row.triggerType) }}</template>
       </el-table-column>
-      <el-table-column label="负责人" prop="ownerUserId" width="80" align="center" />
+      <!-- 与列表页同一个字段、同一个含义（这一版触发时以谁的身份跑），显示口径必须一致；
+           否则从列表点进来会看到「超级管理员（admin）」变成一串 1。
+           宽度 180 与列表页同值同理由（实测「超级管理员（admin）」需 164px） -->
+      <el-table-column
+        label="负责人"
+        prop="ownerUserId"
+        width="180"
+        align="center"
+        show-overflow-tooltip
+        :formatter="ownerFormatter"
+      />
       <el-table-column label="描述" prop="description" min-width="160" show-overflow-tooltip />
       <el-table-column label="创建时间" prop="createTime" width="170" :formatter="dateFormatter" />
       <el-table-column label="操作" width="200" align="center" fixed="right">
@@ -117,11 +127,15 @@
 <script lang="ts" setup>
 import { dateFormatter } from '@/utils/formatTime'
 import { AgentWorkflowApi, type AgentWorkflowDefVO } from '@/api/agent/workflow'
+import { useUserLabel } from '@/hooks/web/useUserLabel'
 
 defineOptions({ name: 'WorkflowVersionDrawer' })
 
 const message = useMessage()
 const emit = defineEmits<{ success: [] }>()
+
+// hooks/web 下新建的 hook 不在 build/vite/index.ts 的自动导入白名单里，必须显式 import
+const { userFormatter: ownerFormatter } = useUserLabel('负责人')
 
 const visible = ref(false)
 const loading = ref(false)
