@@ -88,6 +88,26 @@
           -->
           <span class="flex items-center gap-6px overflow-hidden" :title="data.permission">
             <span class="shrink-0 text-13px">{{ node.label }}</span>
+            <!--
+              类型标记放在 permission **前面**：它是对后面那串编码的分类说明，
+              排在其后就变成了「一串编码尾巴上挂着个颜色」，读不出归属。
+
+              🔴 文案与配色一律取 `@/views/system/resource/constants` 那一份，
+              与权限资源列表页「类型」列是**同一个表达式**（逐字相同）。
+              本库在这套词表上已经有过四份副本各写一遍的代价（见 constants.ts 里
+              GRANT_ACTION_OPTIONS 那段注释），资源类型不该再长出第五份。
+
+              ⚠️ shrink-0：类型标签只有两三个字，被压扁之后既读不出颜色也读不出字，
+              比让 permission 多截断几个字符更亏 —— 完整权限串本来就在整行的 title 里
+            -->
+            <el-tag
+              v-if="data.type"
+              class="shrink-0"
+              size="small"
+              :type="resourceTypeTagType(data.type) as any"
+            >
+              {{ formatResourceType(data.type) }}
+            </el-tag>
             <span v-if="data.permission" class="min-w-0 flex-1 truncate text-11px text-gray-400">
               {{ data.permission }}
             </span>
@@ -113,6 +133,7 @@
 </template>
 <script lang="ts" setup>
 import { useElementSize } from '@vueuse/core'
+import { formatResourceType, resourceTypeTagType } from '@/views/system/resource/constants'
 import { isSameIdSet, matchResourceNode } from './resourceTree'
 import { buildSubtreeIndex, isSubtreeFullyChecked } from './batchGrant'
 
