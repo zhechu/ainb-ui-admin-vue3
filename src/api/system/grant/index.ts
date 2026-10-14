@@ -22,6 +22,15 @@ export interface GrantVO {
   subjectType: string
   subjectRefId?: number
   subjectCode?: string
+  /**
+   * 主体的展示名，形如 `super_admin（超级管理员）`、`研发部（RD）`
+   *
+   * 🔴 由后端从权威业务表批量解析（`SubjectDisplayNameResolver`），不是 `sys_subject.name`
+   * ——那张表按需登记、USER 维度压根没有行，且 name 列自己就写明「可能过期、判定逻辑不许读」。
+   * 解析不到（跨租户、已删除、被停用）时后端会给 `#123（未找到）`，前端直接展示即可，
+   * 不要再自己拼 simple-list：那需要为每种主体各拉一次全量列表，且拿不到角色标识与部门编码
+   */
+  subjectName?: string
   resourceId: number
   resourcePermission?: string
   resourceName?: string
@@ -395,6 +404,64 @@ export interface SlotMappingVO {
   slot: string
   columnName: string
   description?: string
+}
+
+/** 槽位候选项，来自后端 PermissionSlotEnum 全集 */
+export interface SlotOptionVO {
+  slot: string
+  description: string
+  /**
+   * 该槽位的候选列名，按优先级从高到低
+   *
+   * ⚠️ 这是自动推断「猜」的时候用的名单，不是约定 —— 展示给人当起点，猜错了照样恒假
+   */
+  candidates?: string[]
+  /** 该槽位在本资源上是否已配过映射（重复配会撞唯一索引 uk_resource_slot） */
+  mapped?: boolean
+}
+
+/** 物理表候选项（「先选表」那一级） */
+export interface SlotTableOptionVO {
+  tableName: string
+  /** 表注释，可能为空 */
+  tableComment?: string
+}
+
+/** 物理列候选项（「再选字段」那一级） */
+export interface SlotColumnOptionVO {
+  columnName: string
+  /** 列注释，可能为空 */
+  columnComment?: string
+}
+
+export interface SlotMappingOptionsVO {
+  slots: SlotOptionVO[]
+  /**
+   * 当前库里的物理表
+   *
+   * 🔴 只有表名，没有列：这个库两百多张表、三千多列，一次摊开是几十万字节，
+   * 而一次只配一行。选了表再调 getSlotMappingTableColumns 取列
+   * （不写精确数字：它随建模变动漂移，而「几百 KB vs 一行」这个量级差不会）
+   */
+  tables: SlotTableOptionVO[]
+}
+
+/** 查询槽位映射编辑器的候选项（槽位词表 + 物理表名） */
+export const getSlotMappingOptions = async (resourceId: number): Promise<SlotMappingOptionsVO> => {
+  return await request.get({ url: '/system/slot-mapping/options', params: { resourceId } })
+}
+
+/**
+ * 查询某张物理表的列
+ *
+ * ⚠️ 表不存在时返回空数组而不是报错 —— 此时下拉里没东西可挑，只剩手输。
+ * 两级下拉都必须 allow-create，它们只是提速、不是白名单：
+ * 做成白名单的后果是「查不出来的列永远配不上槽位」，而那是唯一能让规则生效的办法
+ */
+export const getSlotMappingTableColumns = async (
+  tableName: string
+): Promise<SlotColumnOptionVO[]> => {
+  return await request.get({ url: '/system/slot-mapping/table-columns', params: { tableName } })
 }
 
 /** 查询某资源的全部槽位映射 */

@@ -30,6 +30,12 @@ export const formatResourceType = (type: string | undefined) =>
  *   · 分组层 = info —— CATEGORY 与 MENU 同类（ResourceTypeEnum 对 CATEGORY 的注释
  *     说它是 PROCESS 的父资源）
  *   · 可授权的行为 = primary —— PROCESS 与 ACTION 同类
+ *
+ * 🔴 本函数与下面的 fieldModeTagType 的返回类型都是 string，不是 el-tag 那个字面量联合 ——
+ * 因为兜底是 `?? ''`（EP 默认色），而 `''` 不在 el-tag 的 type 取值里，于是整条联合被撑宽。
+ * 后果是每个调用点都得写 `as any`，少写一个就是一条 TS2322。
+ * 别「顺手改成返回 undefined 消掉 as any」：那会把认不出的码从 EP 默认色变成显式 primary 蓝，
+ * 与本文件其余 format* 的「认不出就回落默认、但看得见原值」口径不一致。
  */
 export const resourceTypeTagType = (type: string) =>
   ({
@@ -89,13 +95,23 @@ export const defaultEffectTagType = (effect: string | undefined) =>
   effect === 'ALLOW' ? 'success' : 'info'
 
 /**
- * 授权主体类型的中文。措辞与 ResourceDetailPanel 新增授权表单的下拉项逐字一致，
- * 两处漂移的话会出现「表单里选的是『所有登录用户』、列表里显示另一个词」
+ * 授权主体类型的中文，供 formatSubjectType 把库里的枚举名渲染成人话。
+ *
+ * ⚠️ 必须与后端 SubjectTypeEnum 的七个值一一对应（这里原先漏了 POST，
+ * 于是岗位主体的授权行在列表里显示成裸码 `POST`）。少一项不会报错，
+ * 只会让那一类主体在所有列表里都退回成英文码 —— 而 formatSubjectType 的兜底
+ * 就是「原样返回」，正是为了让漏项不至于崩，代价是漏了没人发现。
+ *
+ * 🔴 这不再是一份「表单下拉的词表」：ResourceDetailPanel 的新增/编辑已经收窄成
+ * 只支持角色（主体那一格直接是角色下拉，没有类型选择），角色侧的资源授权页
+ * 也是把 subjectType 写死成 ROLE、根本没有这个下拉。所以这里现在【只服务于展示】，
+ * 改它不会影响任何表单能选到什么
  */
 export const SUBJECT_TYPE_OPTIONS = [
   { label: '角色', value: 'ROLE' },
   { label: '用户', value: 'USER' },
   { label: '部门', value: 'DEPT' },
+  { label: '岗位', value: 'POST' },
   { label: '用户组', value: 'GROUP' },
   { label: '所有登录用户', value: 'ALL' },
   { label: '系统身份', value: 'SYSTEM' }

@@ -53,13 +53,19 @@
       <span class="text-gray-600">共 {{ total }} 个资源</span>
       <span v-if="isSearching" class="text-12px text-orange-500">搜索结果已展开全部层级</span>
       <!--
-        字段级资源默认不加载：它们按表单数量线性增长，全量拉进来会把要看的 ACTION 淹没，
-        也是这个页面最主要的渲染开销来源。口径与授权页一致
+        🔴 默认【勾上】：字段级资源不显示的话，「明细设计」面板里的字段权限页签是空的，
+        而这个页面存在的意义就是配字段权限 —— 默认藏起来等于让人以为这功能没有。
+        代价是搜索态会多拉几十行（全库 COLUMN + FIELD 两类字段级资源，
+        不写具体行数：它会随建模变动漂移），懒加载态则只在
+        展开数据集节点时才多这几行（根节点 parent_id=0 下面没有字段级资源），
+        所以原先「最主要的渲染开销来源」那句担心在懒加载态下并不成立
       -->
       <el-checkbox v-model="includeFieldLevel" size="small" @change="getList">
         <span class="text-12px">包含列 / 字段级资源</span>
       </el-checkbox>
-      <span class="ml-auto text-12px text-gray-400">点击行展开子资源，点「详情」查看授权与槽位</span>
+      <span class="ml-auto text-12px text-gray-400"
+        >点击行展开子资源，点「明细设计」配置授权、槽位与字段权限</span
+      >
     </div>
 
     <!--
@@ -123,9 +129,9 @@
         </template>
       </el-table-column>
       <el-table-column label="排序" prop="sort" width="70" align="center" />
-      <el-table-column label="操作" width="170" align="center" fixed="right">
+      <el-table-column label="操作" width="190" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click.stop="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click.stop="openDetail(row)">明细设计</el-button>
           <el-button
             v-hasPermi="['system:resource:update']"
             link
@@ -180,9 +186,9 @@
         </template>
       </el-table-column>
       <el-table-column label="排序" prop="sort" width="70" align="center" />
-      <el-table-column label="操作" width="170" align="center" fixed="right">
+      <el-table-column label="操作" width="190" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click.stop="openDetail(row)">详情</el-button>
+          <el-button link type="primary" @click.stop="openDetail(row)">明细设计</el-button>
           <el-button
             v-hasPermi="['system:resource:update']"
             link
@@ -288,7 +294,7 @@ const tableKey = ref(0)
  */
 const mode = ref<'search' | 'lazy'>('lazy')
 const isSearching = computed(() => mode.value === 'search')
-const includeFieldLevel = ref(false)
+const includeFieldLevel = ref(true)
 const queryParams = reactive({ permission: '', name: '', type: '' })
 
 /**
