@@ -33,8 +33,8 @@
     <el-alert type="info" :closable="false" show-icon class="mb-16px max-w-900px mx-auto">
       <template #title>
         <span class="text-12px">
-          自定义工具 = 把一个<b>数据接口</b>包装成 AI 能直接调用的工具。接口的地址/SQL/鉴权/租户隔离
-          在「基础设施 → 数据接口」里维护，这里只决定<b>用哪个接口、怎么执行、需要什么权限</b>。
+          自定义工具 = 把一个<b>接口</b>包装成 AI 能直接调用的工具。接口的地址/SQL/鉴权/租户隔离
+          在「基础设施 → 数据管理 → 接口管理」里维护，这里只决定<b>用哪个接口、怎么执行、需要什么权限</b>。
         </span>
       </template>
     </el-alert>
@@ -136,10 +136,15 @@
           </el-option>
         </el-select>
         <div v-if="!interfaceLoading && !interfaceOptions.length" class="form-tip text-[var(--el-color-warning)]">
-          目录里没有可选接口：请先在「基础设施 → 数据接口」建好并启用，再回来关联。
+          目录里没有可选接口：请先在「基础设施 → 数据管理 → 接口管理」建好并启用，再回来关联。
         </div>
         <div v-else-if="boundInterface" class="form-tip">
-          {{ boundInterface.typeName || '接口' }} · {{ boundInterface.category || '未分类' }}
+          <!--
+            分类走字典翻译。后端下发的是字典值（internal / external），直接渲染会让用户
+            看到一串英文；而分类字典曾经存过自由文本（「表单设计示例」这类），
+            那种值在字典里查不到 —— 所以查不到时原样兜底，而不是显示空白
+          -->
+          {{ boundInterface.typeName || '接口' }} · {{ categoryLabel(boundInterface.category) }}
           <span v-if="boundInterface.writeOperation" class="text-[var(--el-color-danger)]"> · 含写操作</span>
           <span v-if="boundInterface.remark"> · {{ boundInterface.remark }}</span>
         </div>
@@ -216,6 +221,7 @@
 
 <script lang="ts" setup>
 import type { FormInstance, FormRules } from 'element-plus'
+import { getDictLabel } from '@/utils/dict'
 import {
   AgentToolDefApi,
   type AgentToolDefSaveVO,
@@ -241,6 +247,15 @@ const RISK_OPTIONS = [
 ]
 const riskLabel = (risk?: string) => RISK_OPTIONS.find((r) => r.value === risk)?.label ?? risk ?? ''
 
+/**
+ * 分组下拉的候选值，与后端 @AgentTool(groupName=...) 的代码声明保持一致
+ *
+ * 🔴 里面的「数据建模」「数据接口」<b>刻意没有</b>跟着 2026-10 的菜单改名一起变成
+ *    「数据模型」「接口管理」。分组描述的是<b>一类工具在做什么</b>，不是<b>用户从哪个菜单进去</b>；
+ *    而且 agent_tool_override.group_name 里存着已生效的覆盖值，改一处漏一处就会让
+ *    同一组工具在管理页被拆成两半。完整理由见后端 AgentTool#groupName 的注释，
+ *    读到这里的不要「顺手统一」
+ */
 const GROUP_OPTIONS = [
   '数据建模',
   '表单设计',
@@ -313,6 +328,10 @@ const boundInterface = computed(() =>
 const boundParams = computed(() => boundInterface.value?.params ?? [])
 /** 后端权威的「含写操作」——它分析脚本得出，比表单上填的可信 */
 const boundIsWrite = computed(() => boundInterface.value?.writeOperation === true)
+
+/** 接口分类的展示文案：字典值翻译成中文，字典里查不到就原样显示，都没有才是「未分类」 */
+const categoryLabel = (category?: string) =>
+  (category && (getDictLabel(DICT_TYPE.INFRA_FORM_TYPE, category) || category)) || '未分类'
 
 const isModeMismatch = computed(() => boundIsWrite.value && form.value.mode === 'QUERY')
 const isRiskUnderstated = computed(() => boundIsWrite.value && form.value.riskLevel === 'READ_ONLY')

@@ -3,7 +3,7 @@
     <!-- 模型选择 + 展示模式切换：所有操作都以选中的模型为上下文 -->
     <div class="flex items-center justify-between">
       <el-form :inline="true" class="-mb-15px">
-        <el-form-item label="业务模型">
+        <el-form-item label="数据模型">
           <el-select
             v-model="modelId"
             placeholder="请选择模型"
@@ -192,7 +192,7 @@
     </ContentWrap>
   </template>
 
-  <el-empty v-else description="请先选择一个业务模型" />
+  <el-empty v-else description="请先选择一个数据模型" />
 
   <!-- 动态表单 -->
   <DataForm ref="formRef" @success="getList" />
@@ -216,12 +216,12 @@ import {
 import DataForm from './DataForm.vue'
 import RowDetailDialog from './RowDetailDialog.vue'
 
-/** 业务数据管理（免代码生成的动态 CRUD） */
+/** 数据查看（菜单原名「业务数据」）：免代码生成的动态 CRUD */
 defineOptions({ name: 'InfraDataModelData' })
 
 const message = useMessage()
 const { t } = useI18n()
-const route = useRoute() // 用于接收数据建模页跳转带来的 modelId
+const route = useRoute() // 用于接收数据模型页跳转带来的 modelId
 
 /**
  * 展示模式：raw=原始数据（默认，列=物理字段名、值不格式化），
@@ -381,7 +381,7 @@ const handleDelete = async (id: string | number) => {
 /**
  * 初始化
  *
- * 支持从数据建模页跳转过来时带 modelId，直接定位到该模型并加载数据，
+ * 支持从数据模型页跳转过来时带 modelId，直接定位到该模型并加载数据，
  * 省掉「进来还要再选一次模型」的多余一步。
  */
 onMounted(async () => {

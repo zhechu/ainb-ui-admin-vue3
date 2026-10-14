@@ -85,6 +85,35 @@
           </el-form-item>
         </el-col>
         <el-col :span="8">
+          <!--
+            标签必填，且只能从字典里选（不给 allow-create）：
+            自由输入的标签会长出「报表」「报表统计」「统计报表」这种同义词，
+            到时候按标签筛等于没筛。要加新标签请到「系统管理 - 字典管理 - 接口标签」里加
+          -->
+          <el-form-item label="标签" prop="tags">
+            <el-select
+              v-model="formData.tags"
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              :multiple-limit="20"
+              placeholder="请选择标签（可多选）"
+              clearable
+              style="width: 100%"
+            >
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.INFRA_DATA_INTERFACE_TAG)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <!-- 记录日志独占一行：它的说明文字较长，塞在 span=8 里会折成两三行，反而更占地方 -->
+      <el-row :gutter="16">
+        <el-col :span="24">
           <el-form-item label="记录日志" prop="logEnabled">
             <el-switch v-model="formData.logEnabled" :active-value="1" :inactive-value="0" />
             <span class="ml-8px text-12px text-[var(--el-text-color-secondary)]">
@@ -222,7 +251,7 @@ import ScriptConfig from './components/ScriptConfig.vue'
 import ParamTable from './components/ParamTable.vue'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 
-/** 数据接口配置表单（页内视图） */
+/** 接口配置表单（页内视图）。菜单原名「数据接口」，现名「接口管理」 */
 defineOptions({ name: 'DataInterfaceForm' })
 
 const message = useMessage()
@@ -245,7 +274,9 @@ const previewMeta = ref<{ version?: number; interfaceName?: string }>({})
 
 const formData = ref<DataInterfaceApi.DataInterfaceSaveReqVO>(emptyForm())
 
-const formTitle = computed(() => (formType.value === 'create' ? '新建数据接口' : '配置数据接口'))
+// 标题里的「数据接口」跟着菜单一起改成了「接口」：菜单现在叫「接口管理」，
+// 页面上还写「新建数据接口」会让人以为进了另一个模块
+const formTitle = computed(() => (formType.value === 'create' ? '新建接口' : '配置接口'))
 
 const previewTitle = computed(() => {
   const v = previewMeta.value.version
@@ -264,6 +295,14 @@ const formRules = reactive({
     }
   ],
   type: [{ required: true, message: '类型不能为空', trigger: 'change' }],
+  /**
+   * type: 'array' 不能省
+   *
+   * async-validator 在规则没写 type 时按 string 判空，而它的 isEmptyValue 只在
+   * 「type 是 array 且数组长度为 0」时才认为空 —— 传进去一个 [] 走 string 判据是不算空的。
+   * 少了这个 type，一个标签都不选也能通过前端校验，只能等后端 @NotEmpty 报错，白跑一趟请求
+   */
+  tags: [{ required: true, type: 'array', message: '标签不能为空', trigger: 'change' }],
   // 动作类型只在 SQL 类型下必填，用 validator 而不是 required 来表达这个条件
   sqlStatementType: [
     {
@@ -324,6 +363,7 @@ function emptyForm(): DataInterfaceApi.DataInterfaceSaveReqVO {
     code: '',
     owner: '',
     category: '',
+    tags: [],
     type: 1,
     status: 0,
     dataSourceConfigId: 0,
@@ -371,9 +411,12 @@ const open = async (type: string, id?: number) => {
         ...data,
         // 后端存的是 JSON 字符串，前端要数组
         params: parseParams(data.params),
+        // tags 在库里可空（存量行还没补录），el-select 的 multiple 拿到 null 会直接不渲染，
+        // 必须兜成空数组 —— 兜成空数组也正好让必填校验把「这条接口还没打标签」暴露出来
+        tags: data.tags ?? [],
         // 历史数据可能没有动作类型，兜底成查询，让用户显式确认一次
         sqlStatementType: data.sqlStatementType || 'SELECT',
-        // 历史数据没有日志开关字段，兜底为开启
+        // 历史数据没有日志开关字段，兜底为关闭（与新建时的默认值一致）
         logEnabled: data.logEnabled ?? 0,
         changeSummary: '',
         riskConfirmed: false
@@ -428,6 +471,9 @@ const openPreview = async (payload: {
     ...snap,
     // 快照里 params 可能是数组，也可能是 JSON 字符串，两种都兜住
     params: Array.isArray(snap.params) ? snap.params : parseParams(snap.params),
+    // 加 tags 之前存的快照里没有这个字段，展示成空 —— 那一版确实没有标签，
+    // 拿当前值填进去反而是伪造历史。预览态不跑校验，空着不会标红
+    tags: Array.isArray(snap.tags) ? snap.tags : [],
     sqlStatementType: snap.sqlStatementType || 'SELECT',
     logEnabled: snap.logEnabled ?? 0,
     riskConfirmed: false

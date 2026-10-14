@@ -20,7 +20,7 @@ import type { DataModelColumnVO } from '@/api/infra/dataModel'
 import type { DataRowVO } from '@/api/infra/dataModel/data'
 
 /**
- * 业务数据行详情弹窗
+ * 数据查看页的行详情弹窗
  *
  * 直接展示点击行的内存数据（原始值，不格式化），不发请求；
  * 全量列（含系统列）逐行罗列，方便核对数据库里的真实内容。

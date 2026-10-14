@@ -1,6 +1,6 @@
 <template>
   <ContentWrap>
-    <!-- 顶部操作栏：页内展示，从列表行点「取号日志」进来，锁定单个模板 -->
+    <!-- 顶部操作栏：页内展示，从列表行点「日志」进来，锁定单个模板 -->
     <div class="bt-panel-header mb-15px flex items-center justify-between">
       <div class="flex items-center">
         <el-button link @click="emit('back')">
@@ -126,7 +126,7 @@ import { dateFormatter, formatDate } from '@/utils/formatTime'
 import * as BillTemplateApi from '@/api/infra/billTemplate'
 import { GEN_TYPE_OPTIONS } from './constants'
 
-/** 单据模板取号日志（页内展示，锁定单个模板） */
+/** 取号日志（页内展示，锁定单个模板） */
 defineOptions({ name: 'BillTemplateLogList' })
 
 const emit = defineEmits(['back'])

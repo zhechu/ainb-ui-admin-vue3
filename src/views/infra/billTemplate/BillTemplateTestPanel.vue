@@ -114,7 +114,7 @@ import { formatDate } from '@/utils/formatTime'
 import * as BillTemplateApi from '@/api/infra/billTemplate'
 import { GEN_TYPE, GEN_TYPE_OPTIONS } from './constants'
 
-/** 单据模板取号测试面板：模拟（默认）不烧号，真实与业务出号同路径 */
+/** 取号测试面板：模拟（默认）不烧号，真实与业务出号同路径 */
 defineOptions({ name: 'BillTemplateTestPanel' })
 
 const emit = defineEmits<{ back: [] }>()

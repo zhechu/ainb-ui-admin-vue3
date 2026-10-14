@@ -5,6 +5,12 @@ import request from '@/config/axios'
  *
  * 可视化配置的单据编号规则。表单设计的「单据组件」与其它业务模块通过 code 引用它，
  * 保存数据时由后端自动生成单号。
+ *
+ * 🔴 术语对照：菜单叫【取号管理】（在「基础设施 → 数据管理」下），而表名与实体名仍是
+ *    bill_template / BillTemplateDO，API 路径是 /infra/bill-template/*，权限串是
+ *    infra:bill-template:*。本文件里出现的「单据模板」一律指后者（实体概念），
+ *    不改名是为了不让 API 层与后端 VO 的 @Schema 描述脱节；
+ *    需要指引用户去点菜单的地方，必须写【取号管理】。
  */
 export type BillTemplateVO = {
   id: number

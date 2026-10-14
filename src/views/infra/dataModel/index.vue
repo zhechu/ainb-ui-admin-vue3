@@ -37,7 +37,7 @@
             @click="openForm('create')"
             v-hasPermi="['infra:data-model:create']"
           >
-            <Icon icon="ep:plus" class="mr-5px" /> 新建模型
+            <Icon icon="ep:plus" class="mr-5px" /> 新建
           </el-button>
           <el-button
             type="success"
@@ -104,8 +104,15 @@
           width="165"
           :formatter="dateFormatter"
         />
-        <!-- 实测：设计 数据 DDL日志 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
-        <el-table-column label="操作" align="center" width="230" fixed="right">
+        <!--
+          「数据」按钮改叫「数据查看」之后这一列变宽了，宽度是推算的，没有复测：
+          改之前实测「设计 数据 DDL日志 删除」= 224px（含 .cell 左右内边距）。
+          拿它与接口管理页那次实测（「配置 预览 版本 更多」= 214px，8 个汉字 + 一个下拉箭头）
+          对解，得到每个汉字连按钮内边距约 17px；「数据」→「数据查看」多 2 个汉字 ≈ +34px，
+          224 + 34 = 258，取 264 留出余量。
+          ⚠️ 这个数是算出来的不是量出来的，改动按钮文案后请实际看一眼有没有折行
+        -->
+        <el-table-column label="操作" align="center" width="264" fixed="right">
           <template #default="scope">
             <TableActions :row="scope.row" :buttons="rowButtons" />
           </template>
@@ -138,7 +145,7 @@ import DataModelImportForm from './DataModelImportForm.vue'
 import DataModelLogList from './DataModelLogList.vue'
 import type { TableActionButton } from '@/components/TableActions'
 
-/** 数据建模列表 */
+/** 数据模型列表（菜单原名「数据建模」） */
 defineOptions({ name: 'InfraDataModel' })
 
 const message = useMessage()
@@ -233,7 +240,7 @@ const openImport = () => {
   importFormRef.value.open()
 }
 
-/** 跳转到业务数据页，并直接定位到该模型 */
+/** 跳转到数据查看页（菜单原名「业务数据」），并直接定位到该模型 */
 const openPreview = (row: DataModelApi.DataModelVO) => {
   push({ name: 'InfraDataModelData', query: { modelId: row.id } })
 }
@@ -309,8 +316,11 @@ const rowButtons: TableActionButton[] = [
     onClick: (row) => openForm('update', row.id)
   },
   {
+    // key 仍是 data：稳定标识不跟着文案改。
+    // 文案叫「数据查看」与目标菜单同名 —— 点过去就是那个页面，名字对得上，
+    // 用户不会以为进了别处。原来叫「数据」，在四个按钮里最看不出它会跳页
     key: 'data',
-    label: '数据',
+    label: '数据查看',
     permission: ['infra:data-model-data:query'],
     onClick: (row) => openPreview(row)
   },

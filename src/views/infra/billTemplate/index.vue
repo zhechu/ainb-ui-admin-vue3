@@ -1,5 +1,5 @@
 <template>
-  <!-- 页内视图切换：列表 / 新建编辑表单 / 取号日志，参照数据接口页的做法 -->
+  <!-- 页内视图切换：列表 / 新建编辑表单 / 取号日志，参照接口管理页的做法 -->
   <template v-if="viewMode === 'list'">
   <ContentWrap>
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true">
@@ -56,7 +56,7 @@
           @click="openForm('create')"
           v-hasPermi="['infra:bill-template:create']"
         >
-          <Icon icon="ep:plus" class="mr-5px" /> 新建模板
+          <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
     </el-form>
@@ -125,8 +125,14 @@
         width="170"
         :formatter="dateFormatter"
       />
-      <!-- 实测：测试 取号日志 编辑 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
-      <el-table-column label="操作" align="center" width="230" fixed="right">
+      <!--
+        「取号日志」改叫「日志」之后这一列变窄了，宽度是推算的，没有复测：
+        改之前实测「测试 取号日志 编辑 删除」= 224px（含 .cell 左右内边距）。
+        拿它与接口管理页那次实测（「配置 预览 版本 更多」= 214px，8 个汉字 + 一个下拉箭头）
+        对解，得到每个汉字连按钮内边距约 17px；少 2 个汉字 ≈ -34px，224 - 34 = 190，取 200。
+        ⚠️ 这个数是算出来的不是量出来的，改动按钮文案后请实际看一眼有没有折行
+      -->
+      <el-table-column label="操作" align="center" width="200" fixed="right">
         <template #default="{ row }">
           <TableActions :row="row" :buttons="rowButtons" />
         </template>
@@ -165,7 +171,7 @@ import BillTemplateTestPanel from './BillTemplateTestPanel.vue'
 import { GEN_TYPE, GEN_TYPE_OPTIONS, RESET_CYCLE_OPTIONS } from './constants'
 import type { TableActionButton } from '@/components/TableActions'
 
-/** 单据模板列表 */
+/** 取号管理列表（菜单原名「单据模板」） */
 defineOptions({ name: 'InfraBillTemplate' })
 
 const message = useMessage()
@@ -282,7 +288,7 @@ const handleDelete = async (row: BillTemplateApi.BillTemplateVO) => {
     return
   }
   try {
-    await ElMessageBox.confirm(`确认删除单据模板「${row.name}」吗？此操作不可恢复。`, '删除确认', {
+    await ElMessageBox.confirm(`确认删除模板「${row.name}」吗？此操作不可恢复。`, '删除确认', {
       confirmButtonText: t('common.ok'),
       cancelButtonText: t('common.cancel'),
       type: 'warning'
@@ -305,8 +311,10 @@ const rowButtons: TableActionButton[] = [
     onClick: (row) => openTest(row)
   },
   {
+    // key 仍是 log。文案从「取号日志」缩成「日志」：整页都在讲取号，
+    // 前缀是重复信息，而操作列宽度是按字数算的（见上面那条列宽注释）
     key: 'log',
-    label: '取号日志',
+    label: '日志',
     permission: ['infra:bill-template:query'],
     onClick: (row) => openLog(row)
   },

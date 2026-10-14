@@ -6,12 +6,25 @@
         <el-button link @click="emit('back')">
           <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
         </el-button>
-        <span class="di-panel-title ml-8px">在线预览 - {{ interfaceName }}</span>
+        <span class="di-panel-title ml-8px">在线测试 - {{ interfaceName }}</span>
       </div>
       <el-button type="primary" :loading="loading" @click="doPreview">
         <Icon icon="ep:video-play" class="mr-5px" /> 执行
       </el-button>
     </div>
+
+    <!--
+      写操作的常驻警示。必须在执行前就看得见 —— 等到点了「执行」才弹确认框，
+      用户已经被「测试」这个词骗进来一次了
+    -->
+    <el-alert v-if="willWriteData" type="warning" :closable="false" show-icon class="mb-8px">
+      <template #title>
+        <span class="text-13px">
+          该接口含写操作，点「执行」会<b>真的改动数据</b>，不是干跑。
+          执行成功即提交，不会回滚；HTTP 类型的请求发出去更收不回来。
+        </span>
+      </template>
+    </el-alert>
 
     <!-- 参数录入区：按入参定义动态渲染 -->
     <template v-if="paramList.length > 0">
@@ -71,7 +84,7 @@
       </el-form>
     </template>
 
-    <span class="text-12px text-[var(--el-text-color-secondary)]">预览最多返回 100 条</span>
+    <span class="text-12px text-[var(--el-text-color-secondary)]">测试最多返回 100 条</span>
 
     <!-- 实际执行的 SQL：核对租户条件是否按预期注入 -->
     <template v-if="executeSql">
@@ -111,10 +124,15 @@
 <script lang="ts" setup>
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
 
-/** 在线预览面板
+/** 在线测试面板（菜单按钮叫「测试」，文件名与组件名仍叫 Preview —— 理由见 index.vue 的 viewMode 注释）
  *
- * 与正式调用走同一个后端执行逻辑，所以「预览能跑通」等于「正式调用也能跑通」。
+ * 与正式调用走同一个后端执行逻辑，所以「测试能跑通」等于「正式调用也能跑通」。
  * 页内展示（非弹窗），内容较多时体验更好。
+ *
+ * 🔴 正因为走的是同一套逻辑，含写操作的接口在这里点「执行」是真的会改库 ——
+ * 后端的 preview 只在抛异常时回滚，成功就提交。所以本面板对写操作既常驻警示、
+ * 又在执行前二次确认；后端 DataInterfaceServiceImpl#validatePreviewWritePermission
+ * 还会再校验一次「配置写操作SQL」权限（前端拦不住直接调接口的人）
  */
 defineOptions({ name: 'PreviewPanel' })
 
@@ -134,6 +152,8 @@ const args = ref<Record<string, any>>({})
 const executeSql = ref('')
 const errorMsg = ref('')
 const resultRows = ref<any>(null)
+/** HTTP 类型接口配置里的请求方法，用来判断这次测试会不会写数据 */
+const httpMethod = ref('')
 
 // 分页参数
 const pageNo = ref(1)
@@ -143,6 +163,28 @@ const pageSize = ref(20)
 const isWriteAction = computed(
   () => sqlStatementType.value && sqlStatementType.value !== 'SELECT'
 )
+
+/**
+ * 这次测试会不会真的动数据
+ *
+ * 三种类型分开判，判据逐条对齐后端 DataInterfaceServiceImpl#isReadOnly ——
+ * 两边各写一套规则迟早会漂，漂了以后就是「前端说安全、后端拒绝执行」或者反过来。
+ * 后端的 hasWriteOperation 字段只在 SQL 解析时写入，HTTP 的 POST 不体现在上面，
+ * 所以这里不能图省事只看那一个字段
+ */
+const willWriteData = computed(() => {
+  // 静态 JSON：没有副作用
+  if (interfaceType.value === 2) {
+    return false
+  }
+  // HTTP 转发：GET / HEAD 之外都算写
+  if (interfaceType.value === 3) {
+    const method = (httpMethod.value || 'GET').toUpperCase()
+    return method !== 'GET' && method !== 'HEAD'
+  }
+  // SQL：动作类型不是 SELECT 就算写
+  return !!isWriteAction.value
+})
 
 const jsonResultText = computed(() => {
   if (resultRows.value === null || resultRows.value === undefined) {
@@ -161,6 +203,7 @@ const open = (row: DataInterfaceApi.DataInterfaceVO) => {
   baseUrl.value = row.baseUrl || ''
   allowInternalUrl.value = row.allowInternalUrl
   hasPage.value = row.hasPage ?? 0
+  httpMethod.value = parseHttpMethod(row.config)
   paramList.value = parseParams(row.params)
   // 用默认值预填，减少手工输入
   const initial: Record<string, any> = {}
@@ -190,9 +233,41 @@ const parseParams = (raw?: string): DataInterfaceApi.ParamDefinitionVO[] => {
   }
 }
 
+/**
+ * 从 HTTP 配置里取请求方法
+ *
+ * 配置解析不出来时返回空串，由 willWriteData 兜底成 GET（与后端 isReadOnly 的默认值一致）。
+ * 这里刻意不因为解析失败就假定「是写操作」：一个配置坏掉的 HTTP 接口本来就跑不通，
+ * 报红条只会让人以为权限出了问题，反而盖住真正的错因
+ */
+const parseHttpMethod = (config?: string): string => {
+  if (!config) {
+    return ''
+  }
+  try {
+    const parsed = JSON.parse(config)
+    const method = parsed?.method
+    return method == null ? '' : String(method)
+  } catch {
+    return ''
+  }
+}
+
 const doPreview = async () => {
   if (!interfaceId.value) {
     return
+  }
+  // 写操作二次确认。常驻警示条已经说明过后果，这里只需要一个明确的「我真的要执行」
+  if (willWriteData.value) {
+    try {
+      await ElMessageBox.confirm(
+        `接口「${interfaceName.value}」含写操作，执行后会真实改动数据且不可回滚。确认执行？`,
+        '写操作确认',
+        { confirmButtonText: '确认执行', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      return
+    }
   }
   loading.value = true
   errorMsg.value = ''
@@ -207,7 +282,7 @@ const doPreview = async () => {
     resultRows.value = res?.data ?? null
     executeSql.value = res?.executeSql ?? ''
   } catch (e: any) {
-    // 执行失败也要展示原因，这是预览最有价值的场景之一
+    // 执行失败也要展示原因，这是测试最有价值的场景之一
     errorMsg.value = e?.msg ?? e?.message ?? '执行失败'
     resultRows.value = null
   } finally {

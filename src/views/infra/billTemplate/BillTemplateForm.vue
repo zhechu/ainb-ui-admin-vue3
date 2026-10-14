@@ -338,7 +338,9 @@ watch(
 
 const open = async (type: string, id?: number) => {
   opened.value = true
-  formTitle.value = type === 'create' ? '新建单据模板' : '编辑单据模板'
+  // 标题不再带「单据」：菜单已改名「取号管理」，页面上的列也叫模板名称/模板编码，
+  // 「单据模板」这个旧名留着只会让人以为还有另一个模块
+  formTitle.value = type === 'create' ? '新建模板' : '编辑模板'
   formType.value = type
   resetForm()
   if (id) {

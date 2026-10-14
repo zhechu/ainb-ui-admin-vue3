@@ -63,7 +63,7 @@ import type { DataModelColumnVO } from '@/api/infra/dataModel'
 import * as DataApi from '@/api/infra/dataModel/data'
 import { isEditable, resolveFormWidget } from './columnMeta'
 
-/** 动态业务数据表单 */
+/** 数据查看页的动态数据表单 */
 defineOptions({ name: 'DataModelDataForm' })
 
 const message = useMessage()
