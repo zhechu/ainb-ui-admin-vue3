@@ -50,13 +50,34 @@
 
       <!-- 工具条 -->
       <div class="flex flex-wrap items-center gap-12px">
+        <!--
+          🔴 筛选是**客户端**的，不重新求值：这棵树本来就是一次性整棵拿回来的，
+          再加一个服务端关键词参数就得把「命中节点要连带保留哪些祖先」这条规则
+          在后端重实现一遍，两处口径一漂移就是「列表页搜得到、这里搜不到」。
+          判据与代价写在 effectiveTree.ts 的 filterEffectiveTree 注释里。
+
+          ⚠️ 不做防抖（ResourceTreePicker 那个搜索框做了 150ms）：那边防的是 EP `filter()`
+          对 1086 个节点的全树游走 + 展开态改写；这里只是一次 computed 剪枝，
+          输入 700 个节点量级、虚拟化表格只画可见行，逐字符重算比等 150ms 更像「跟手」
+        -->
+        <el-input
+          v-model="keyword"
+          class="!w-240px"
+          clearable
+          placeholder="按资源名称或权限标识筛选"
+          size="small"
+        >
+          <template #prefix>
+            <Icon icon="ep:search" />
+          </template>
+        </el-input>
         <el-checkbox v-model="includeDefaultAllow" size="small">
           <span class="text-12px">显示默认放行（未配置）</span>
         </el-checkbox>
         <el-checkbox v-model="includeFieldLevel" size="small">
           <span class="text-12px">显示字段级资源（列 / 字段）</span>
         </el-checkbox>
-        <el-button :disabled="!tree.length" size="small" @click="toggleExpandAll">
+        <el-button :disabled="!filteredTree.length" size="small" @click="toggleExpandAll">
           <Icon class="mr-5px" :icon="isExpandAll ? 'ep:fold' : 'ep:expand'" />
           {{ isExpandAll ? '收起全部' : '展开全部' }}
         </el-button>
@@ -64,8 +85,19 @@
           <Icon class="mr-5px" icon="ep:refresh" />
           刷新
         </el-button>
+        <!--
+          🔴 筛选中必须同时报「命中几个」和「全量几个」。只报命中的那个，
+          管理员会把「筛完剩 3 行」读成「这个角色只有 3 项权限」——
+          与顶部 summaryText 那段「把藏了什么说出来」是同一类误读，同一个防线
+        -->
         <span class="ml-auto text-12px text-gray-400">
-          共 {{ summary?.nodeCount ?? 0 }} 个资源 · {{ summary?.actionCount ?? 0 }} 项生效动作
+          <template v-if="isFiltering">
+            命中 {{ filteredNodeCount }} 个资源（全量 {{ summary?.nodeCount ?? 0 }} 个 ·
+            {{ summary?.actionCount ?? 0 }} 项生效动作）
+          </template>
+          <template v-else>
+            共 {{ summary?.nodeCount ?? 0 }} 个资源 · {{ summary?.actionCount ?? 0 }} 项生效动作
+          </template>
         </span>
       </div>
     </div>
@@ -90,7 +122,7 @@
           <el-table-v2
             v-model:expanded-row-keys="expandedRowKeys"
             :columns="columns"
-            :data="tree"
+            :data="filteredTree"
             expand-column-key="name"
             fixed
             :height="tableHeight"
@@ -99,12 +131,7 @@
             :width="width"
           >
             <template #empty>
-              <el-empty
-                :description="
-                  roleId ? '该角色在角色维度上没有任何生效权限' : '缺少角色参数，请从角色管理页进入'
-                "
-                :image-size="80"
-              />
+              <el-empty :description="emptyText" :image-size="80" />
             </template>
           </el-table-v2>
         </template>
@@ -127,8 +154,10 @@ import {
 import {
   actionDetailLines,
   collectKeysUpToDepth,
+  countTreeNodes,
   expireCell,
   fieldModeCell,
+  filterEffectiveTree,
   nodeStatus,
   rowFilterCell,
   sourceLabel,
@@ -170,6 +199,27 @@ const summary = computed(() => resp.value?.summary)
 const subjectLabels = computed(() =>
   (resp.value?.subjects ?? []).map((subject) => subjectLabel(subject, props.roleId))
 )
+
+// -------- 客户端筛选 --------
+
+const keyword = ref('')
+/** 判据用 trim 之后的串：只敲了几个空格不算在筛，否则空态与计数会一起切到「筛选中」 */
+const isFiltering = computed(() => !!keyword.value.trim())
+const filteredTree = computed(() => filterEffectiveTree(tree.value, keyword.value))
+const filteredNodeCount = computed(() => countTreeNodes(filteredTree.value))
+
+/**
+ * 空态文案三态。
+ *
+ * 🔴 筛选无命中必须**自己说一句**，不能沿用「该角色在角色维度上没有任何生效权限」：
+ * 那句话在筛选中是**假话** —— 权限明明有，只是没匹配上这个词。
+ * 把「搜不到」显示成「没有」，管理员下一步就是去列表页查这个角色是不是配错了
+ */
+const emptyText = computed(() => {
+  if (!props.roleId) return '缺少角色参数，请从角色管理页进入'
+  if (isFiltering.value) return `没有匹配「${keyword.value.trim()}」的资源，换个词或清空筛选`
+  return '该角色在角色维度上没有任何生效权限'
+})
 
 /**
  * 顶部那句汇总。
@@ -253,6 +303,27 @@ const { width: windowWidth, height: windowHeight } = useWindowSize()
 watch([windowWidth, windowHeight], () => nextTick(measure))
 useResizeObserver(infoRef, () => measure())
 
+/**
+ * 重算展开态。**唯一**一处写 expandedRowKeys 的地方（除了「收起全部」那一下），
+ * load 与关键词变更都走它，免得两处各写一份、日后漂成两种展开口径。
+ *
+ * 🔴 筛选中一律全展开：命中项可能落在很深的位置，而它的祖先是被剪枝后**新造**的副本，
+ * 沿用「默认展开两层」会让用户搜到东西却只看见几行折叠的父级 ——
+ * 「搜了没反应」和「搜不到」在体感上是同一件事。
+ * 全展开的规模由命中数兜住，不是整棵 702 个节点的树
+ *
+ * ⚠️ isExpandAll 必须跟着置位：它是「展开全部 / 收起全部」那个按钮的文案与图标来源，
+ * 只改 key 不改它，按钮会写着「展开全部」而树其实已经全开了 —— 点下去变成收起，
+ * 用户读到的是「按钮坏了」
+ */
+const applyExpansion = () => {
+  isExpandAll.value = isFiltering.value
+  expandedRowKeys.value = collectKeysUpToDepth(
+    filteredTree.value,
+    isFiltering.value ? Infinity : DEFAULT_VISIBLE_LEVELS
+  )
+}
+
 const load = async () => {
   if (!props.roleId) {
     resp.value = undefined
@@ -271,8 +342,7 @@ const load = async () => {
     )
     // 重新求值后展开态必须重算：换一个开关树的形状就变了，
     // 攥着上一批 key 会让新树里同 id 的节点莫名其妙是展开的
-    isExpandAll.value = false
-    expandedRowKeys.value = collectKeysUpToDepth(tree.value, DEFAULT_VISIBLE_LEVELS)
+    applyExpansion()
   } finally {
     loading.value = false
     // 汇总文案与超管提示都可能在这次数据回来后**换行/出现**，把 host 往下推 ⟹ 必须重量一次。
@@ -284,7 +354,9 @@ const load = async () => {
 
 const toggleExpandAll = () => {
   isExpandAll.value = !isExpandAll.value
-  expandedRowKeys.value = isExpandAll.value ? collectKeysUpToDepth(tree.value, Infinity) : []
+  expandedRowKeys.value = isExpandAll.value
+    ? collectKeysUpToDepth(filteredTree.value, Infinity)
+    : []
 }
 
 // 隔行浅色按真实行号取模：v2 只渲染可视窗口的行，CSS nth-child 会让条纹跟着滚动手抖
@@ -507,6 +579,13 @@ watch(
   () => props.roleId,
   () => load()
 )
+/**
+ * 关键词变更**只重算展开态**，不重新求值：剪枝本身是 filteredTree 那个 computed 在做。
+ *
+ * ⚠️ 换角色、切「显示字段级 / 默认放行」两个开关时**都不清关键词** ——
+ * 用户搜着词切视野，把搜索框清空是抢他的输入（与 ResourceTreePicker 同一条口径）
+ */
+watch(keyword, () => applyExpansion())
 onMounted(async () => {
   await load()
   // 兜一次首屏：roleId 缺失时 load 会提前 return，那里不会重量，

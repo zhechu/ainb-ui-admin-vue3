@@ -3,8 +3,10 @@ import type { EffectiveActionVO, EffectiveResourceNodeVO } from '@/api/system/gr
 import {
   actionDetailLines,
   collectKeysUpToDepth,
+  countTreeNodes,
   expireCell,
   fieldModeCell,
+  filterEffectiveTree,
   isUniformActions,
   isUniformNode,
   nodeStatus,
@@ -100,6 +102,124 @@ describe('collectKeysUpToDepth', () => {
       { id: 1, depth: 9, children: [{ id: 2, depth: 9 }] }
     ] as unknown as EffectiveResourceNodeVO[]
     expect(collectKeysUpToDepth(deep, 2)).toEqual([1])
+  })
+})
+
+describe('filterEffectiveTree', () => {
+  /**
+   * 两根的森林：「系统管理」下挂「角色管理」（两个叶子）与「部门管理」（一个叶子），
+   * 「基础设施」是个光杆根。刻意让 name 与 permission **都能命中**，
+   * 两条判据必须分别测到 —— 权限地图最常见的搜法恰恰是粘一个权限串进去
+   */
+  const TREE = [
+    {
+      id: 1,
+      name: '系统管理',
+      permission: 'system',
+      children: [
+        {
+          id: 11,
+          name: '角色管理',
+          permission: 'system:role',
+          children: [
+            { id: 111, name: '角色查询', permission: 'system:role:query' },
+            { id: 112, name: '角色删除', permission: 'system:role:delete' }
+          ]
+        },
+        {
+          id: 12,
+          name: '部门管理',
+          permission: 'system:dept',
+          children: [{ id: 121, name: '部门查询', permission: 'system:dept:query' }]
+        }
+      ]
+    },
+    { id: 2, name: '基础设施', permission: 'infra' }
+  ] as unknown as EffectiveResourceNodeVO[]
+
+  const ids = (nodes: EffectiveResourceNodeVO[]): number[] => nodes.map((n) => n.id)
+
+  it('🔴 空关键词（含只有空格）返回**同一个引用**，不是副本', () => {
+    // 调用方把它放进 computed 当 el-table-v2 的 :data。返回新数组等于每次输入都换一次 data，
+    // 表格整表重建、滚动位置归零 —— 而没在筛的时候压根不该有这件事
+    expect(filterEffectiveTree(TREE, '')).toBe(TREE)
+    expect(filterEffectiveTree(TREE, '   ')).toBe(TREE)
+    expect(filterEffectiveTree(undefined as unknown as EffectiveResourceNodeVO[], '')).toEqual([])
+  })
+
+  it('🔴 命中一个父节点 → 保留它的**整棵子树**（含旁支后代），不再往下筛', () => {
+    const result = filterEffectiveTree(TREE, '角色管理')
+    expect(ids(result)).toEqual([1])
+    // 11 命中之所以要看的就是它下面授了什么；只留一行光杆等于把搜索的目的剪掉了
+    expect(ids(result[0].children!)).toEqual([11])
+    expect(ids(result[0].children![0].children!)).toEqual([111, 112])
+    // 旁支的「部门管理」被剪掉：它既没命中，也没有后代命中
+    expect(JSON.stringify(result)).not.toContain('部门管理')
+  })
+
+  it('🔴 命中一个叶子 → 只保留那条祖先路径，兄弟一律剪掉', () => {
+    const result = filterEffectiveTree(TREE, 'system:role:delete')
+    expect(ids(result)).toEqual([1])
+    expect(ids(result[0].children!)).toEqual([11])
+    // 111（角色查询）是 112 的兄弟，没命中也没后代命中，必须掉
+    expect(ids(result[0].children![0].children!)).toEqual([112])
+  })
+
+  it('name 与 permission 两条判据都算，且大小写不敏感、前后空格被 trim', () => {
+    expect(ids(filterEffectiveTree(TREE, '部门'))).toEqual([1])
+    expect(ids(filterEffectiveTree(TREE, 'SYSTEM:DEPT'))).toEqual([1])
+    expect(ids(filterEffectiveTree(TREE, '  infra  '))).toEqual([2])
+    // 命中 permission 前缀时，命中的是 11 这一层 ⟹ 它的两个叶子都要在
+    const byPrefix = filterEffectiveTree(TREE, 'System:Role')
+    expect(ids(byPrefix[0].children![0].children!)).toEqual([111, 112])
+  })
+
+  it('无命中 → 空数组（调用方据此显示「没有匹配「x」的资源」，不是「没有任何生效权限」）', () => {
+    expect(filterEffectiveTree(TREE, '不存在的资源')).toEqual([])
+    expect(filterEffectiveTree([], '角色')).toEqual([])
+  })
+
+  it('🔴 祖先一律是**副本**，源树不被就地改；命中节点保留原身份', () => {
+    const result = filterEffectiveTree(TREE, '角色删除')
+    // 就地改的话：清空关键词还原不回原样，而且 watch(() => props.tree) 会被自己触发一次
+    const srcRoot = TREE[0] as any
+    expect(result[0]).not.toBe(TREE[0])
+    expect(result[0].children![0]).not.toBe(srcRoot.children[0])
+    expect(srcRoot.children).toHaveLength(2)
+    expect(srcRoot.children[0].children).toHaveLength(2)
+    // 命中的那个叶子是原对象本身 ⟹ row-key 稳定，el-table-v2 不会因为换了对象而重建行
+    expect(result[0].children![0].children![0]).toBe(srcRoot.children[0].children[1])
+  })
+
+  it('⚠️ 存活节点不会带 children: [] —— 空数组会让 v2 画出一个点开是空的展开箭头', () => {
+    const result = filterEffectiveTree(TREE, '角色删除')
+    const walk = (nodes: EffectiveResourceNodeVO[]) => {
+      nodes.forEach((n) => {
+        // 🔴 判据必须是「键存在但为空」，不是「长度不为 0」：后端对叶子压根不给 children 这个键，
+        //    拿 `?? 0` 去比会把每一个叶子都误判成缺陷（这条用例第一次跑就是这么红的）
+        if (n.children !== undefined) {
+          expect(n.children!.length, `节点 ${n.id} 带了空 children`).toBeGreaterThan(0)
+        }
+        walk(n.children ?? [])
+      })
+    }
+    walk(result)
+  })
+})
+
+describe('countTreeNodes', () => {
+  it('递归数全部层级', () => {
+    const tree = [
+      { id: 1, children: [{ id: 11, children: [{ id: 111 }, { id: 112 }] }, { id: 12 }] },
+      { id: 2 }
+    ] as unknown as EffectiveResourceNodeVO[]
+    expect(countTreeNodes(tree)).toBe(6)
+  })
+
+  it('空树 / undefined / 没有 children 键的叶子都不炸', () => {
+    expect(countTreeNodes([])).toBe(0)
+    expect(countTreeNodes(undefined as unknown as EffectiveResourceNodeVO[])).toBe(0)
+    expect(countTreeNodes([{ id: 1 } as unknown as EffectiveResourceNodeVO])).toBe(1)
   })
 })
 

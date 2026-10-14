@@ -57,6 +57,68 @@ export const collectKeysUpToDepth = (
 }
 
 /**
+ * 客户端筛树：按关键词剪枝，只留下「自己命中」或「后代命中」的节点。
+ *
+ * **为什么在前端剪、不加一个后端筛选参数**：这棵树是后端一次性求值、剪枝、合并之后
+ * 整棵送过来的（`getEffectiveTree`），既没有分页也没有服务端筛选口径。
+ * 再加一个服务端关键词参数就得把「命中一个节点要连带保留哪些祖先」这条规则
+ * 在后端重实现一遍 —— 而祖先链的计算已经在 `GrantDecisionService#buildResourceChain` 里了，
+ * 两处口径一漂移，就会出现「列表页搜得到、智能查看搜不到」这种最难解释的分歧。
+ * 前端剪的输入就是屏幕上这棵树，所见即所筛，不存在第二套口径。
+ *
+ * 🔴 **命中一个节点就保留它的整棵子树**，不继续往下筛。这是权限地图，
+ * 搜到一个父资源之后要看的恰恰是「它下面都授了什么」——
+ * 只留命中节点本身的话，搜「角色管理」得到一行光杆，
+ * 而它放行的那二十个子按钮正是搜索的目的。
+ * 反过来「后代命中」时只保留那条路径上的祖先，旁支一律剪掉，
+ * 否则搜一个叶子权限串会带回它整棵兄弟树。
+ *
+ * ⚠️ 祖先一律用 `{ ...node, children }` **复制**再挂新 children：
+ * `tree` 是后端响应对象的引用，就地改它会让「清空关键词」还原不回原样，
+ * 而且 `watch(() => props.tree)` 那条依赖会被自己触发一次
+ *
+ * ⚠️ 空关键词返回原数组（同一个引用，不是副本）：调用方把它放进 computed，
+ * 返回新数组会让每次输入都产出一个新的 `:data`，el-table-v2 因此整表重建、
+ * 滚动位置归零 —— 而没在筛的时候压根不该有这件事
+ */
+export const filterEffectiveTree = (
+  tree: EffectiveResourceNodeVO[],
+  keyword: string
+): EffectiveResourceNodeVO[] => {
+  const kw = (keyword ?? '').trim().toLowerCase()
+  if (!kw) return tree ?? []
+  const hit = (node: EffectiveResourceNodeVO) =>
+    (node.name ?? '').toLowerCase().includes(kw) ||
+    (node.permission ?? '').toLowerCase().includes(kw)
+  const walk = (nodes: EffectiveResourceNodeVO[]): EffectiveResourceNodeVO[] => {
+    const kept: EffectiveResourceNodeVO[] = []
+    for (const node of nodes ?? []) {
+      if (hit(node)) {
+        kept.push(node)
+        continue
+      }
+      const children = walk(node.children ?? [])
+      // 只在真的有存活后代时才造副本：children 为空数组的节点会让 el-table-v2
+      // 画出一个展开箭头、点开是空的，与后端「叶子不给 children 这个键」的形状不一致
+      if (children.length) kept.push({ ...node, children })
+    }
+    return kept
+  }
+  return walk(tree)
+}
+
+/**
+ * 数一棵树里有多少个节点（含所有层级）。
+ *
+ * 存在的理由：筛过之后顶部那句「共 N 个资源」是后端 `summary.nodeCount`，
+ * 说的是**全量**，而屏幕上只有命中的那几行。不报两个数，
+ * 管理员会把「筛完只剩 3 行」读成「这个角色只有 3 项权限」——
+ * 这正是 summaryText 那段注释里「🔴 把藏了什么说出来」要防的同一类误读
+ */
+export const countTreeNodes = (tree: EffectiveResourceNodeVO[]): number =>
+  (tree ?? []).reduce((sum, node) => sum + 1 + countTreeNodes(node.children ?? []), 0)
+
+/**
  * 一个节点上的全部生效动作，在 `field` 这一项上是不是同一个值。
  *
  * 存在的理由：**行过滤规则 / 字段模式 / 到期时间是「每动作」的属性，而树上一行是一个资源节点。**
