@@ -56,7 +56,7 @@
           <div class="text-12px leading-snug">{{ actionWarning }}</div>
         </el-alert>
         <el-table :data="grantRows" border size="small" v-loading="grantLoading">
-          <el-table-column label="授权主体" min-width="200">
+          <el-table-column label="授权主体（角色）" min-width="200">
             <template #default="{ row }">
               <el-select
                 v-if="row.__editing"
