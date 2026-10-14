@@ -1,130 +1,138 @@
 <template>
-  <ContentWrap>
-    <!-- 搜索工作栏 -->
-    <el-form
-      class="-mb-15px"
-      :model="queryParams"
-      ref="queryFormRef"
-      :inline="true"
-      label-width="68px"
-    >
-      <el-form-item label="表名" prop="tableName">
-        <el-input
-          v-model="queryParams.tableName"
-          placeholder="请输入表名"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item label="模型名称" prop="modelName">
-        <el-input
-          v-model="queryParams.modelName"
-          placeholder="请输入模型名称"
-          clearable
-          @keyup.enter="handleQuery"
-          class="!w-240px"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
-        <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
-        <el-button
-          type="primary"
-          plain
-          @click="openForm('create')"
-          v-hasPermi="['infra:data-model:create']"
-        >
-          <Icon icon="ep:plus" class="mr-5px" /> 新建模型
-        </el-button>
-        <el-button
-          type="success"
-          plain
-          @click="openImport"
-          v-hasPermi="['infra:data-model:create']"
-        >
-          <Icon icon="ep:download" class="mr-5px" /> 导入已有表
-        </el-button>
-        <el-button plain @click="openLog"
-          ><Icon icon="ep:document" class="mr-5px" /> DDL 日志</el-button
-        >
-      </el-form-item>
-    </el-form>
-  </ContentWrap>
-
-  <!-- 列表 -->
-  <ContentWrap>
-    <el-alert type="warning" :closable="false" show-icon class="mb-10px">
-      <template #title>
-        数据建模会<b>直接修改数据库真实表结构</b>，且数据库 的 DDL <b>无法回滚</b>。
-        改表前请先点「预览 DDL」确认将要执行的语句。
-      </template>
-    </el-alert>
-    <el-table v-loading="loading" :data="list">
-      <el-table-column label="编号" align="center" prop="id" width="80" />
-      <el-table-column
-        label="模型名称"
-        align="center"
-        prop="modelName"
-        :show-overflow-tooltip="true"
-      />
-      <el-table-column label="表名" align="center" prop="tableName" :show-overflow-tooltip="true" />
-      <el-table-column
-        label="表描述"
-        align="center"
-        prop="tableComment"
-        :show-overflow-tooltip="true"
-      />
-      <el-table-column label="备注" align="center" prop="remark" :show-overflow-tooltip="true" />
-      <el-table-column
-        label="创建时间"
-        align="center"
-        prop="createTime"
-        width="180"
-        :formatter="dateFormatter"
-      />
-      <el-table-column label="操作" align="center" width="240" fixed="right">
-        <template #default="scope">
+  <!-- 列表视图 -->
+  <template v-if="viewMode === 'list'">
+    <ContentWrap>
+      <!-- 搜索工作栏 -->
+      <el-form
+        class="-mb-15px"
+        :model="queryParams"
+        ref="queryFormRef"
+        :inline="true"
+        label-width="68px"
+      >
+        <el-form-item label="表名" prop="tableName">
+          <el-input
+            v-model="queryParams.tableName"
+            placeholder="请输入表名"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
+          />
+        </el-form-item>
+        <el-form-item label="模型名称" prop="modelName">
+          <el-input
+            v-model="queryParams.modelName"
+            placeholder="请输入模型名称"
+            clearable
+            @keyup.enter="handleQuery"
+            class="!w-240px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
+          <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
           <el-button
-            link
             type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['infra:data-model:update']"
+            plain
+            @click="openForm('create')"
+            v-hasPermi="['infra:data-model:create']"
           >
-            设计
+            <Icon icon="ep:plus" class="mr-5px" /> 新建
           </el-button>
           <el-button
-            link
-            type="primary"
-            @click="openPreview(scope.row)"
-            v-hasPermi="['infra:data-model-data:query']"
+            type="success"
+            plain
+            @click="openImport"
+            v-hasPermi="['infra:data-model:create']"
           >
-            数据
+            <Icon icon="ep:download" class="mr-5px" /> 导入已有表
           </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row)"
-            v-hasPermi="['infra:data-model:delete']"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <Pagination
-      :total="total"
-      v-model:page="queryParams.pageNo"
-      v-model:limit="queryParams.pageSize"
-      @pagination="getList"
-    />
-  </ContentWrap>
+        </el-form-item>
+      </el-form>
+    </ContentWrap>
 
-  <!-- 弹窗：模型设计（表结构编辑） -->
-  <DataModelForm ref="formRef" @success="getList" />
+    <!-- 列表 -->
+    <ContentWrap>
+      <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+        <el-table-column
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod(queryParams)"
+          class-name="col-index"
+          label-class-name="col-index"
+        />
+        <!-- 这里不显示「编号」（自增 id）：模型是拿表名认的，id 对使用者没有意义，序号列已足够定位行 -->
+        <!--
+        列宽分配：文本列（模型名称/表名/表描述/备注）用 min-width 弹性伸展，
+        吃掉操作列、时间列让出来的空间；创建时间、操作给固定宽，
+        避免时间列比模型名称还宽、操作列三个链接按钮却占三百多像素
+      -->
+        <el-table-column
+          label="模型名称"
+          align="center"
+          prop="modelName"
+          min-width="150"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="表名"
+          align="center"
+          prop="tableName"
+          min-width="150"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="表描述"
+          align="center"
+          prop="tableComment"
+          min-width="130"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="备注"
+          align="center"
+          prop="remark"
+          min-width="100"
+          :show-overflow-tooltip="true"
+        />
+        <el-table-column
+          label="创建时间"
+          align="center"
+          prop="createTime"
+          width="165"
+          :formatter="dateFormatter"
+        />
+        <!--
+          「数据」按钮改叫「数据查看」之后这一列变宽了，宽度是推算的，没有复测：
+          改之前实测「设计 数据 DDL日志 删除」= 224px（含 .cell 左右内边距）。
+          拿它与接口管理页那次实测（「配置 预览 版本 更多」= 214px，8 个汉字 + 一个下拉箭头）
+          对解，得到每个汉字连按钮内边距约 17px；「数据」→「数据查看」多 2 个汉字 ≈ +34px，
+          224 + 34 = 258，取 264 留出余量。
+          ⚠️ 这个数是算出来的不是量出来的，改动按钮文案后请实际看一眼有没有折行
+        -->
+        <el-table-column label="操作" align="center" width="264" fixed="right">
+          <template #default="scope">
+            <TableActions :row="scope.row" :buttons="rowButtons" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <Pagination
+        :total="total"
+        v-model:page="queryParams.pageNo"
+        v-model:limit="queryParams.pageSize"
+        @pagination="getList"
+      />
+    </ContentWrap>
+  </template>
+
+  <!-- 页内视图：模型设计 / 新建（内容较多，不用弹窗） -->
+  <DataModelForm v-else ref="formRef" @success="handleFormDone" @cancel="handleFormDone" />
+
   <!-- 弹窗：导入已有表 -->
   <DataModelImportForm ref="importFormRef" @success="getList" />
-  <!-- 弹窗：DDL 日志 -->
+  <!-- 弹窗：DDL 日志（按模型查看） -->
   <DataModelLogList ref="logRef" />
 </template>
 
@@ -135,13 +143,29 @@ import * as DataModelApi from '@/api/infra/dataModel'
 import DataModelForm from './DataModelForm.vue'
 import DataModelImportForm from './DataModelImportForm.vue'
 import DataModelLogList from './DataModelLogList.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
-/** 数据建模列表 */
+/** 数据模型列表（菜单原名「数据建模」） */
 defineOptions({ name: 'InfraDataModel' })
 
 const message = useMessage()
 const { t } = useI18n()
 const { push } = useRouter() // 路由跳转
+
+/**
+ * 系统内置表前缀，页面初始化时从后端拉取（`/infra/data-model/list-system-table-prefix`）。
+ *
+ * 此前这里硬编码了一份，与后端 SqlSafeGuard 的名单两处维护 —— 后端新增 qrtz_/flw_ 时
+ * 前端漏跟就会出现「按钮能点、点了报错」。现在唯一来源是后端的 SystemTablePolicy。
+ *
+ * 前端仅用于「禁用删除按钮 + 提示」，后端 deleteDataModel 仍会二次拦截，双保险。
+ * 拉取失败时按空数组处理：不误禁按钮，真正的拦截交给后端。
+ */
+const frameworkTablePrefixes = ref<string[]>([])
+const isFrameworkTable = (tableName?: string) => {
+  const name = (tableName || '').toLowerCase()
+  return frameworkTablePrefixes.value.some((prefix) => name.startsWith(prefix))
+}
 
 /**
  * 支持 HTML 的确认框
@@ -192,10 +216,22 @@ const resetQuery = () => {
   handleQuery()
 }
 
-/** 打开模型设计弹窗 */
+/** 视图切换：列表 / 页内设计表单 */
+const viewMode = ref<'list' | 'form'>('list')
+
+/** 打开模型设计（页内视图，内容较多不用弹窗） */
 const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+const openForm = async (type: string, id?: number) => {
+  viewMode.value = 'form'
+  // 等表单组件挂载后再灌数据
+  await nextTick()
+  formRef.value?.open(type, id)
+}
+
+/** 表单保存成功或取消：回到列表并刷新 */
+const handleFormDone = () => {
+  viewMode.value = 'list'
+  getList()
 }
 
 /** 打开导入弹窗 */
@@ -204,15 +240,15 @@ const openImport = () => {
   importFormRef.value.open()
 }
 
-/** 跳转到业务数据页，并直接定位到该模型 */
+/** 跳转到数据查看页（菜单原名「业务数据」），并直接定位到该模型 */
 const openPreview = (row: DataModelApi.DataModelVO) => {
   push({ name: 'InfraDataModelData', query: { modelId: row.id } })
 }
 
-/** 打开 DDL 日志 */
+/** 打开某个模型的 DDL 日志（按表名过滤） */
 const logRef = ref()
-const openLog = () => {
-  logRef.value.open()
+const openLog = (row: DataModelApi.DataModelVO) => {
+  logRef.value.open(row.tableName)
 }
 
 /** 删除模型
@@ -249,7 +285,16 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
 
   try {
     await DataModelApi.deleteDataModel(row.id, dropTable, false)
-    message.success(t('common.delSuccess'))
+    // 只删登记时把「表还在」说清楚。不说的话它就成了一张孤儿表：
+    // 列表上再也看不到，下次建同名表才会撞上，而那时已经很难想起它是怎么来的
+    if (dropTable) {
+      message.success(t('common.delSuccess'))
+    } else {
+      message.success(
+        `模型登记已删除。数据库中的表 ${row.tableName} 仍然保留 —— ` +
+          `需要再次使用时，用「导入已有表」把它登记回来即可，不要新建同名表`
+      )
+    }
     await getList()
   } catch (error: any) {
     // 后端在表中有数据时会要求二次确认风险，这里承接该提示
@@ -263,7 +308,46 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
   }
 }
 
-onMounted(() => {
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'design',
+    label: '设计',
+    permission: ['infra:data-model:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    // key 仍是 data：稳定标识不跟着文案改。
+    // 文案叫「数据查看」与目标菜单同名 —— 点过去就是那个页面，名字对得上，
+    // 用户不会以为进了别处。原来叫「数据」，在四个按钮里最看不出它会跳页
+    key: 'data',
+    label: '数据查看',
+    permission: ['infra:data-model-data:query'],
+    onClick: (row) => openPreview(row)
+  },
+  {
+    key: 'log',
+    label: 'DDL日志',
+    permission: ['infra:data-model:query'],
+    onClick: (row) => openLog(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:data-model:delete'],
+    disabled: (row) => isFrameworkTable(row.tableName),
+    onClick: (row) => handleDelete(row)
+  }
+]
+
+onMounted(async () => {
+  // 前缀名单拉取失败不应拖垮列表页 —— 失败时按空数组走，拦截交给后端
+  try {
+    frameworkTablePrefixes.value = await DataModelApi.getSystemTablePrefixes()
+  } catch {
+    frameworkTablePrefixes.value = []
+  }
   getList()
 })
 </script>

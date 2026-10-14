@@ -9,14 +9,19 @@
     >
       <el-row>
         <el-col :span="12">
-          <el-form-item label="用户昵称" prop="nickname">
-            <el-input v-model="formData.nickname" placeholder="请输入用户昵称" />
+          <el-form-item v-if="isVisible('nickname')" label="用户昵称" prop="nickname">
+            <el-input
+              v-model="formData.nickname"
+              :disabled="isReadonly('nickname')"
+              :placeholder="isReadonly('nickname') ? '无修改权限' : '请输入用户昵称'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="归属部门" prop="deptId">
+          <el-form-item v-if="isVisible('deptName')" label="归属部门" prop="deptId">
             <el-tree-select
               v-model="formData.deptId"
+              :disabled="isReadonly('deptName')"
               :data="deptList"
               :props="defaultProps"
               check-strictly
@@ -28,13 +33,23 @@
       </el-row>
       <el-row>
         <el-col :span="12">
-          <el-form-item label="手机号码" prop="mobile">
-            <el-input v-model="formData.mobile" maxlength="11" placeholder="请输入手机号码" />
+          <el-form-item v-if="isVisible('mobile')" label="手机号码" prop="mobile">
+            <el-input
+              v-model="formData.mobile"
+              maxlength="11"
+              :disabled="isReadonly('mobile')"
+              :placeholder="isReadonly('mobile') ? '无修改权限' : '请输入手机号码'"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="邮箱" prop="email">
-            <el-input v-model="formData.email" maxlength="50" placeholder="请输入邮箱" />
+          <el-form-item v-if="isVisible('email')" label="邮箱" prop="email">
+            <el-input
+              v-model="formData.email"
+              maxlength="50"
+              :disabled="isReadonly('email')"
+              :placeholder="isReadonly('email') ? '无修改权限' : '请输入邮箱'"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -57,8 +72,8 @@
       </el-row>
       <el-row>
         <el-col :span="12">
-          <el-form-item label="用户性别">
-            <el-select v-model="formData.sex" placeholder="请选择">
+          <el-form-item v-if="isVisible('sex')" label="用户性别">
+            <el-select v-model="formData.sex" :disabled="isReadonly('sex')" placeholder="请选择">
               <el-option
                 v-for="dict in getIntDictOptions(DICT_TYPE.SYSTEM_USER_SEX)"
                 :key="dict.value"
@@ -69,8 +84,13 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="岗位">
-            <el-select v-model="formData.postIds" multiple placeholder="请选择">
+          <el-form-item v-if="isVisible('postIds')" label="岗位">
+            <el-select
+              v-model="formData.postIds"
+              multiple
+              :disabled="isReadonly('postIds')"
+              placeholder="请选择"
+            >
               <el-option
                 v-for="item in postList"
                 :key="item.id"
@@ -83,8 +103,13 @@
       </el-row>
       <el-row>
         <el-col :span="24">
-          <el-form-item label="备注">
-            <el-input v-model="formData.remark" placeholder="请输入内容" type="textarea" />
+          <el-form-item v-if="isVisible('remark')" label="备注">
+            <el-input
+              v-model="formData.remark"
+              :disabled="isReadonly('remark')"
+              :placeholder="isReadonly('remark') ? '无修改权限' : '请输入内容'"
+              type="textarea"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -97,6 +122,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { useFieldPermission } from '@/hooks/web/useFieldPermission'
 import { CommonStatusEnum } from '@/utils/constants'
 import { defaultProps, handleTree } from '@/utils/tree'
 import * as PostApi from '@/api/system/post'
@@ -105,6 +131,18 @@ import * as UserApi from '@/api/system/user'
 import { FormRules } from 'element-plus'
 
 defineOptions({ name: 'SystemUserForm' })
+
+/**
+ * 字段级权限：控制编辑表单里各项的「可见 / 可编辑」
+ *
+ * ⚠️ 第二个参数是 false（字段级 :fld:），不是列级 :col: ——
+ * 编辑表单属于「详情」场景。列级管的是列表里那一列显不显示，两者是分开配的。
+ *
+ * 为什么必须在前端也做一遍：后端 stripNonWritable 只保证「改了也不生效」，
+ * 界面上该字段仍是可输入的，用户改完保存、提示成功、值却没变 ——
+ * 这正是本项目最常见的那类「配了但看不出来」的体验问题
+ */
+const { isVisible, isReadonly } = useFieldPermission('system:user')
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗

@@ -67,7 +67,7 @@
         show-icon
       >
         有 {{ unavailableOnlineFormCount }} 个表单暂不可用于流程（已置灰），鼠标悬停可查看原因。
-        业务表需预先具备 process_instance_id（varchar 64）与 status（整数型）两列。
+        业务表需预先具备 process_instance_id（varchar 64）与 process_status（整数型）两列。
       </el-alert>
     </el-form-item>
     <el-form-item

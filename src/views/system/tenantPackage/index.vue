@@ -67,13 +67,21 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="套餐编号" align="center" prop="id" width="120" />
       <el-table-column label="套餐名" align="center" prop="name" />
       <el-table-column label="状态" align="center" prop="status" width="100">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:tenant-package:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" />
@@ -84,7 +92,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" min-width="110" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -92,7 +100,7 @@
             @click="openForm('update', scope.row.id)"
             v-hasPermi="['system:tenant-package:update']"
           >
-            修改
+            编辑
           </el-button>
           <el-button
             link
@@ -119,6 +127,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { CommonStatusEnum } from '@/utils/constants'
 import { dateFormatter } from '@/utils/formatTime'
 import * as TenantPackageApi from '@/api/system/tenantPackage'
 import TenantPackageForm from './TenantPackageForm.vue'
@@ -162,13 +171,29 @@ const handleQuery = () => {
 /** 重置按钮操作 */
 const resetQuery = () => {
   queryFormRef.value?.resetFields()
-  getList()
+  handleQuery()
 }
 
 /** 添加/修改操作 */
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 状态列快捷开关：走专用的 update-status 接口，不做整行更新（陈旧行的 menuIds 会被误判为菜单变更，进而传播到该套餐下所有租户） */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: TenantPackageApi.TenantPackageVO, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await TenantPackageApi.updateTenantPackageStatus(
+      row.id,
+      next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    )
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

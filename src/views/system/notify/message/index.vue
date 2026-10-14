@@ -78,7 +78,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="编号" align="center" prop="id" />
       <el-table-column label="用户类型" align="center" prop="userType">
         <template #default="scope">
@@ -128,16 +137,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" fixed="right">
+      <el-table-column label="操作" align="center" width="80" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openDetail(scope.row)"
-            v-hasPermi="['system:notify-message:query']"
-          >
-            详情
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -158,6 +160,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as NotifyMessageApi from '@/api/system/notify/message'
 import NotifyMessageDetail from './NotifyMessageDetail.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemNotifyMessage' })
 
@@ -204,6 +207,15 @@ const detailRef = ref()
 const openDetail = (data: NotifyMessageApi.NotifyMessageVO) => {
   detailRef.value.open(data)
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'detail',
+    label: '详情',
+    permission: ['system:notify-message:query'],
+    onClick: (row) => openDetail(row)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

@@ -54,11 +54,14 @@
         :tree-props="{ children: 'children' }"
         height="100%"
         row-key="id"
+        class="xpy-list-table"
       >
         <el-table-column label="分类名称" min-width="210" prop="name" show-overflow-tooltip>
           <template #default="{ row }">
             <Icon class="mr-4px align-middle" :icon="nodeIcon(row)" :size="14" />
-            <span class="align-middle">{{ row.name }}</span>
+            <!-- 文字不能带 align-middle：vertical-align:middle 会把 19px 的字体盒压到基线以下，
+                 行盒从 23px 涨到 25px（实测行高 42 而不是 41）。图标带 align-middle 不会，它只有 14px -->
+            <span>{{ row.name }}</span>
           </template>
         </el-table-column>
         <el-table-column label="编码" min-width="180" prop="type" show-overflow-tooltip />
@@ -70,9 +73,14 @@
             <el-tag v-if="row.treeEnable" class="ml-4px" size="small" type="success">树形</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <DictTag :type="DICT_TYPE.COMMON_STATUS" :value="row.status" />
+            <StatusSwitch
+              :model-value="row.status === CommonStatusEnum.ENABLE"
+              :loading="statusLoadingId === row.id"
+              :permission="['system:dict:update']"
+              @change="(next) => handleUpdateStatus(row, next)"
+            />
           </template>
         </el-table-column>
         <el-table-column fixed="right" label="操作" width="235">
@@ -135,10 +143,10 @@
 </template>
 
 <script lang="ts" setup>
-import { DICT_TYPE } from '@/utils/dict'
 import { handleTree } from '@/utils/tree'
 import download from '@/utils/download'
 import * as DictTypeApi from '@/api/system/dict/dict.type'
+import { CommonStatusEnum } from '@/utils/constants'
 import { DictTypeNodeEnum } from '@/api/system/dict/dict.type'
 
 defineOptions({ name: 'DictTypeManageDrawer' })
@@ -224,6 +232,22 @@ const handleExport = async (row: DictTypeApi.DictTypeVO) => {
     download.json(res, `${row.name}.json`)
   } finally {
     exportingId.value = undefined
+  }
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await DictTypeApi.updateDictType({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await loadList()
+  } finally {
+    statusLoadingId.value = null
   }
 }
 

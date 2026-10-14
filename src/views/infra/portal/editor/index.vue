@@ -85,7 +85,27 @@
 
     <div v-loading="loading" class="portal-editor__body">
       <main class="portal-editor__main">
-        <PortalPalette @add="handleAdd" />
+        <div class="portal-editor__toolbar">
+          <PortalPalette @add="handleAdd" />
+          <div class="portal-editor__settings">
+            <span>画布背景</span>
+            <el-color-picker v-model="config.background" show-alpha />
+            <span class="portal-editor__settings-label">网格间距</span>
+            <el-input-number
+              v-model="config.gap"
+              :min="0"
+              :max="64"
+              controls-position="right"
+            />
+            <span class="portal-editor__settings-label">行高</span>
+            <el-input-number
+              v-model="config.rowHeight"
+              :min="4"
+              :max="32"
+              controls-position="right"
+            />
+          </div>
+        </div>
         <PortalDesigner
           v-model="config"
           :selected-id="selectedId"
@@ -97,19 +117,6 @@
           @remove="handleRemove"
           @duplicate="handleDuplicate"
         />
-        <div class="portal-editor__settings">
-          <span>画布背景</span>
-          <el-color-picker v-model="config.background" show-alpha />
-          <span class="portal-editor__settings-label">网格间距</span>
-          <el-input-number v-model="config.gap" :min="0" :max="64" controls-position="right" />
-          <span class="portal-editor__settings-label">行高</span>
-          <el-input-number
-            v-model="config.rowHeight"
-            :min="4"
-            :max="32"
-            controls-position="right"
-          />
-        </div>
       </main>
       <PortalPropertyPanel
         :item="selectedItem"
@@ -745,9 +752,18 @@ onMounted(async () => {
   flex-direction: column;
 }
 
+.portal-editor__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  background: var(--portal-surface);
+  border-bottom: 1px solid var(--portal-border-light);
+}
+
 .portal-editor__settings {
   display: flex;
-  padding: 0 16px 14px;
+  flex: 0 0 auto;
+  padding: 0 16px 0 0;
   font-size: 12px;
   color: var(--portal-text-secondary);
   align-items: center;
@@ -805,6 +821,15 @@ onMounted(async () => {
   .portal-editor__body {
     display: block;
     overflow: visible;
+  }
+
+  .portal-editor__toolbar {
+    flex-wrap: wrap;
+  }
+
+  .portal-editor__settings {
+    width: 100%;
+    padding: 0 16px 8px;
   }
 
   .portal-editor__actions {

@@ -52,6 +52,19 @@ export interface BuiltinButton {
 export const BUILTIN_BUTTONS: BuiltinButton[] = [
   // 工具栏
   { key: 'create', position: 'toolbar', label: '新增', icon: 'ep:plus', defaultShow: true },
+  {
+    // 导入：从 Excel 批量写入列表数据。
+    //
+    // 与「导出」是一对，但**不配对出现**：导入要先把文件解析出来给用户预览、
+    // 确认，再落库；导出是一次动作。所以两者在界面上是两个独立入口而不是一个菜单。
+    //
+    // 出厂不显示 —— 它是一条能批量改数据的通道，不该凭空出现在所有已发布的列表上
+    key: 'import',
+    position: 'toolbar',
+    label: '导入',
+    icon: 'ep:upload',
+    defaultShow: false
+  },
   { key: 'export', position: 'toolbar', label: '导出', icon: 'ep:download', defaultShow: false },
   {
     key: 'batchDelete',

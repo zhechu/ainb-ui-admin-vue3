@@ -94,6 +94,21 @@
 
       <!-- 主体内容 -->
       <div v-loading="loading" class="mt-50px">
+        <!--
+          步骤懒挂载 + 挂载后常驻
+
+          改造前四个步骤都用 v-show，一进来就同时挂载 StepTableBinding/StepFormDesign/
+          StepListDesign 三个重组件（StepListDesign 单文件 2500+ 行，还静态拉入
+          PrintTemplateEditor/CustomButtonEditor/DetailTabEditor），主线程被占住数百毫秒。
+          改成 v-if 之后，用户不进那一步就永远不下载/不实例化。
+
+          ⚠️ 挂载后不再卸载（v-show 保留）：
+          - 各步骤组件在 onMounted 里做的初始化（loadWritableTables、字典/单据模板请求、
+            sortable 初始化）只应发生一次，反复挂载会重复请求 + 状态漂移。
+          - collectAll() 依赖组件实例的 ref，用户配完第 4 步切回第 3 步保存时，
+            第 4 步的 ref 必须还在才能收回 listConf。
+          - 与 HIDDEN_STEP_KEYS 的原语义等价：那些 key 初始就在 mountedSteps 里。
+        -->
         <!-- 基础设置 -->
         <div v-show="activeStepKey === 'basic'" class="mx-auto w-680px">
           <StepBasicInfo ref="stepBasicRef" v-model="formData" />
@@ -108,26 +123,39 @@
           表单项本身仍限宽在 680px（见 StepTableBinding 内部的 .binding-form），
           只有关联表那一块铺满，避免整页的输入框被拉成一条长线。
         -->
-        <div v-show="activeStepKey === 'binding'" class="mx-auto w-1080px max-w-full">
+        <div v-if="mountedSteps.has('binding')" v-show="activeStepKey === 'binding'" class="mx-auto w-1080px max-w-full">
           <StepTableBinding ref="stepBindingRef" v-model="formData" />
         </div>
 
         <!-- 表单设计。设计器需要铺满宽度，不加 mx-auto 限制 -->
-        <div v-show="activeStepKey === 'form'">
-          <StepFormDesign ref="stepFormRef" v-model="formData" />
-        </div>
-
-        <!-- 逻辑与扩展：联动规则、跨字段校验、扩展方式 -->
-        <div v-show="activeStepKey === 'logic'">
-          <StepLogic ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
+        <div v-if="mountedSteps.has('form')" v-show="activeStepKey === 'form'">
+          <StepFormDesign
+            ref="stepFormRef"
+            v-model="formData"
+            :logic-problems="logicProblems"
+            @open-logic="openLogicDialog"
+          />
         </div>
 
         <!-- 列表设计。仅表单+列表类型出现 -->
-        <div v-show="activeStepKey === 'list'">
+        <div v-if="mountedSteps.has('list')" v-show="activeStepKey === 'list'">
           <StepListDesign ref="stepListRef" :model-data="formData" :form-fields="designerFields" />
         </div>
       </div>
     </div>
+
+    <!--
+      逻辑与扩展。入口在设计器的「表单配置」面板里（见 StepFormDesign 的 onOpenLogic）。
+
+      ⚠️ 弹窗内容是懒渲染的：没打开过时 stepLogicRef 为 null，collect() / validate()
+      都会静默跳过。所以保存前的拦截不能只靠它 —— 见 validateLogicBeforeSave()。
+    -->
+    <Dialog v-model="logicDialogVisible" title="逻辑与扩展" width="1080px" max-height="70vh">
+      <StepLogic v-if="logicMounted" ref="stepLogicRef" v-model="formData" :form-fields="designerFields" />
+      <template #footer>
+        <el-button type="primary" @click="handleLogicDialogClose">完成</el-button>
+      </template>
+    </Dialog>
 
     <!-- 发布对话框 -->
     <PublishDialog ref="publishDialogRef" @success="handlePublishSuccess" />
@@ -172,10 +200,23 @@ import * as FormDesignApi from '@/api/infra/formDesign'
 import StepBasicInfo from './StepBasicInfo.vue'
 import StepTableBinding from './StepTableBinding.vue'
 import StepFormDesign from './StepFormDesign.vue'
-import StepListDesign from './StepListDesign.vue'
-import StepLogic from './StepLogic.vue'
 import { decodeFields } from '@/utils/formCreate'
+import { findInvalidFieldRefs } from '@/components/FormLogic/invalidFieldRefs'
+import { parseFormFields } from '@/components/FormCreate/src/utils'
 import PublishDialog from '../components/PublishDialog.vue'
+
+/**
+ * 重组件走异步分包
+ *
+ * StepListDesign 单文件 2500+ 行，静态拉入 PrintTemplateEditor / CustomButtonEditor /
+ * DetailTabEditor / FormWidgets 的一堆子模块；StepLogic 拉入 LogicRuleEditor /
+ * CrossFieldRuleEditor / FormScriptEditor。用户在很多表单里根本不会进第 4 步，
+ * 也很少打开逻辑弹窗，让它们进首包等于每次打开设计器都白下载一遍。
+ *
+ * 结合模板里的 v-if="mountedSteps.has('list')"，不进那一步就永远不发这个请求。
+ */
+const StepListDesign = defineAsyncComponent(() => import('./StepListDesign.vue'))
+const StepLogic = defineAsyncComponent(() => import('./StepLogic.vue'))
 
 defineOptions({ name: 'InfraFormDesignEditor' })
 
@@ -193,8 +234,9 @@ const ALL_STEPS = [
   { key: 'basic', title: '基础设置' },
   { key: 'binding', title: '数据绑定' },
   { key: 'form', title: '表单设计' },
-  // 放在表单设计之后：配联动要先有字段可选
-  { key: 'logic', title: '逻辑与扩展' },
+  // 「逻辑与扩展」原先是这里的一步。独立成步的代价是配联动时看不到刚设计的表单，
+  // 只能靠记；现在改成从设计器的表单配置面板里开弹窗，上下文不丢、向导也少一步。
+  // 见下方 logicDialogVisible
   { key: 'list', title: '列表设计' }
 ]
 
@@ -208,6 +250,26 @@ const ALL_STEPS = [
  * 改成不挂载的话，存量表单只要在设计器里点一次保存，这三份配置就被清空了。
  */
 const HIDDEN_STEP_KEYS: string[] = []
+
+/**
+ * 已挂载的步骤 key 集合
+ *
+ * 首次进入某一步时把 key 加进来，之后即使切走也保留（配合模板上的 v-show）。
+ * 初始值包含第一步与所有 HIDDEN_STEP_KEYS —— 后者不在步骤条上露出，
+ * 但它们的 collect() 仍要在保存时被调用，必须挂载（见上方注释）。
+ */
+const mountedSteps = ref<Set<string>>(
+  new Set([ALL_STEPS[0].key, ...HIDDEN_STEP_KEYS])
+)
+
+/** 逻辑与扩展弹窗的内容是否已挂载（配合 defineAsyncComponent 的 StepLogic） */
+const logicMounted = ref(false)
+
+/** 打开逻辑弹窗：挂载 + 显示。挂载后不再卸载，避免每次打开都重新初始化编辑器 */
+const openLogicDialog = () => {
+  logicMounted.value = true
+  logicDialogVisible.value = true
+}
 
 const loading = ref(false)
 const saveLoading = ref(false)
@@ -247,6 +309,72 @@ const stepBindingRef = ref()
 const stepFormRef = ref()
 const stepListRef = ref()
 const stepLogicRef = ref()
+const logicDialogVisible = ref(false)
+
+/**
+ * 「逻辑与扩展」当前的问题清单
+ *
+ * <h3>为什么算在这里、而不是读弹窗组件</h3>
+ *
+ * 它有两个用途：设计器里入口按钮的角标，以及保存前的拦截。
+ * 两者都**不能依赖弹窗有没有被打开过** —— 弹窗是懒渲染的，没打开时
+ * stepLogicRef 是 null，读组件会得到空清单，校验静默通过。
+ * 而它要防的恰恰是静默失效：先配好联动、之后回表单设计把字段删了。
+ *
+ * 这里读的是 formData 与 designerFields，两者与挂载无关，任何时候都准。
+ */
+const logicProblems = computed(() => {
+  let rules: any[] = []
+  try {
+    rules = JSON.parse(formData.value.logicRules || '[]')
+  } catch {
+    return []
+  }
+  if (!Array.isArray(rules) || rules.length === 0) {
+    return []
+  }
+  const collected: Array<Record<string, any>> = []
+  for (const rule of designerFields.value) {
+    parseFormFields(rule, collected)
+  }
+  const known = collected.filter((f) => f.field).map((f) => f.field as string)
+  return findInvalidFieldRefs(rules, known).map(
+    (field) => `联动规则引用了已不存在的字段「${field}」`
+  )
+})
+
+/**
+ * 保存前校验「逻辑与扩展」
+ *
+ * 弹窗打开过就走组件自己的 validate()（环形赋值、跨字段不完整、脚本静态检查
+ * 都要读编辑器状态，只有组件知道）；没打开过则至少跑一遍与挂载无关的那条。
+ *
+ * 这个分工是有意的：没打开过弹窗，就说明本次会话没动过这三项配置，
+ * 存量配置里的其它问题由后端发布校验兜底（FormDesignPublishValidator），
+ * 与别处「前端保即时反馈、发布校验保配置正确」的分工一致。
+ * 唯独「引用了已删字段」这条必须在前端也拦 —— 删字段正是在本次会话里做的。
+ */
+const validateLogicBeforeSave = async () => {
+  if (stepLogicRef.value) {
+    await stepLogicRef.value.validate()
+    return
+  }
+  if (logicProblems.value.length > 0) {
+    logicDialogVisible.value = true
+    message.error(logicProblems.value.join('；'))
+    throw new Error('logic invalid field ref')
+  }
+}
+
+/** 弹窗「完成」：收一次并就地校验，把问题拦在关闭之前 */
+const handleLogicDialogClose = async () => {
+  try {
+    await stepLogicRef.value?.validate()
+  } catch {
+    return
+  }
+  logicDialogVisible.value = false
+}
 
 /**
  * 表单字段列表，供列表设计器选择列与查询字段
@@ -303,8 +431,6 @@ const validateCurrentStep = async () => {
     await stepBindingRef.value?.validate()
   } else if (activeStepKey.value === 'form') {
     await stepFormRef.value?.validate()
-  } else if (activeStepKey.value === 'logic') {
-    await stepLogicRef.value?.validate()
   } else if (activeStepKey.value === 'list') {
     // 列表设计没有必填校验，只收集配置
     stepListRef.value?.collect()
@@ -321,11 +447,11 @@ const handleStepClick = async (index: number) => {
       return
     }
   }
-  currentStep.value = index
+  goToStep(index)
 }
 
 const handlePrev = () => {
-  if (currentStep.value > 0) currentStep.value--
+  if (currentStep.value > 0) goToStep(currentStep.value - 1)
 }
 
 const handleNext = async () => {
@@ -334,14 +460,37 @@ const handleNext = async () => {
   } catch {
     return
   }
-  if (currentStep.value < visibleSteps.value.length - 1) currentStep.value++
+  if (currentStep.value < visibleSteps.value.length - 1) goToStep(currentStep.value + 1)
 }
 
-const handleSave = async () => {
+/**
+ * 切换步骤并确保目标步骤已挂载
+ *
+ * mountedSteps 用 Set.add 触发 ref 的响应式更新（Set 本身可变，
+ * 但整个 ref 被替换才能触发 v-if 重算 —— 所以这里重建一个 Set）。
+ */
+const goToStep = (index: number) => {
+  const key = visibleSteps.value[index]?.key
+  if (key && !mountedSteps.value.has(key)) {
+    mountedSteps.value = new Set(mountedSteps.value).add(key)
+  }
+  currentStep.value = index
+}
+
+/**
+ * 保存
+ *
+ * @return 是否保存成功。失败时**不抛出**，由本函数自己提示 —— 三个调用方
+ *         （工具栏「保存」、保存并关闭、保存并发布）都需要知道成没成，
+ *         但不该各自再写一遍 catch
+ */
+const handleSave = async (): Promise<boolean> => {
   try {
     await validateCurrentStep()
+    // 逻辑与扩展不再是一步，validateCurrentStep 不会覆盖它，这里单独过一次
+    await validateLogicBeforeSave()
   } catch {
-    return
+    return false
   }
   // 保存前统一收集所有步骤的产物。
   // 只收集当前步骤是不够的：用户可能在第四步配好列表后切回第三步再点保存，
@@ -360,24 +509,57 @@ const handleSave = async () => {
     }
     // 重新拉一次，让 status 等由后端维护的字段保持最新
     await loadData(formData.value.id)
+    return true
+  } catch (error: any) {
+    handleSaveError(error)
+    return false
   } finally {
     saveLoading.value = false
   }
 }
 
+/**
+ * 保存失败的提示
+ *
+ * ⚠️ axios 层已经弹过一条 `ElNotification`，但那条 4.5 秒就自己没了 ——
+ * 对「随手打错一个字段」够用，对乐观锁冲突不够：冲突的处置动作
+ * （返回重进本页、在最新结构上重做本次修改）不是一个 4.5 秒的浮层
+ * 能承载的，用户读完通知再去找按钮，通知已经没了，只剩下「保存失败」。
+ * 所以这里换成**不自动消失**的 alertError，把处置步骤写在里面。
+ *
+ * 🔴 文案里不塞 `\n` 当换行：ElMessageBox 的消息体是普通 HTML，没有 `white-space: pre-line`
+ * 时换行符会被折叠成一个空格（与 `ExecutionHistoryDrawer` 的 `droppedKeysNotice` 同一口径），
+ * 分句一律用内联 ' ⚠️ ' 分隔。
+ *
+ * 🔴 刻意**不**自动重新拉取。自动 re-baseline 会让用户手里这份旧内容
+ * 盖掉对方刚写进去的改动 —— 那正是这把锁要防的事，只是把「保存被拒」
+ * 换成了「静默覆盖」，更难查。
+ */
+const handleSaveError = (error: any) => {
+  // 🔴 读 `.message` 不是 `.msg`：axios 拦截器 reject 的是 `new Error(msg)`
+  const msg: string = error?.message ?? error?.msg ?? ''
+  if (msg.includes('已被他人修改')) {
+    message.alertError(
+      `${msg} ⚠️ 本页仍持有旧的版本号，继续点保存只会重复失败。` +
+        `请点「返回」重新进入本页取回最新内容，在其上重做本次修改。`
+    )
+  }
+}
+
 /** 保存并关闭：保存成功后关闭当前 tab 返回列表页 */
 const handleSaveAndClose = async () => {
-  await handleSave()
-  // handleSave 内部失败会设 saveLoading=false 但不会抛出，用 id 是否存在来判断是否成功
-  if (formData.value.id) {
+  // 保存失败就不关：关了 tab 用户刚配的东西跟着一起没了，
+  // 而且连「为什么没关」都问不出来
+  if (await handleSave()) {
     handleBack()
   }
 }
 
 /** 保存并发布：保存成功后打开发布对话框 */
 const handleSaveAndPublish = async () => {
-  await handleSave()
-  if (formData.value.id) {
+  // 保存失败就不弹发布框：发布校验读的是**库里那一份**，
+  // 弹出来的对话框会拿旧版本去校验，报的问题跟画布上看到的对不上
+  if (await handleSave()) {
     publishDialogRef.value?.open(formData.value)
   }
 }
@@ -393,6 +575,13 @@ const inspectProblems = ref<string[]>([])
  *
  * ⚠️ 先保存再体检。体检读的是**库里那一份**，不是画布上这一刻的状态 ——
  * 不保存的话，用户刚改完的东西没被检到，而报告看起来却像是最新的。
+ *
+ * <p>🔴 保存之后必须 {@link loadData}（B4-4）。这次 update 会把 version 推高一格，
+ * 而 {@code formData} 上留着的还是旧的那份 —— 不重新拉一次的话，用户下一次点保存
+ * 必然撞上「这张表单在你编辑期间已被他人修改」，可「他人」正是他刚才点的那次体检。
+ * 那句话在这个场景下完全说不通，而用户唯一能做的补救（刷新）恰好也是这里要做的。
+ * 刻意<b>不</b>只补 {@code formData.value.version}：那会让内存里这一份与库里那一份
+ * 在别的字段上继续分叉，而分叉是不报错的。
  */
 const handleInspect = async () => {
   if (!formData.value.id) return
@@ -400,8 +589,12 @@ const handleInspect = async () => {
   try {
     collectAll()
     await FormDesignApi.updateFormDesign({ ...formData.value } as FormDesignApi.FormDesignSaveReqVO)
+    await loadData(formData.value.id)
     inspectProblems.value = await FormDesignApi.inspectFormDesign(formData.value.id)
     inspectVisible.value = true
+  } catch (error: any) {
+    // 提示与保存走同一套：这里也是一次 update，同样会撞上乐观锁
+    handleSaveError(error)
   } finally {
     inspectLoading.value = false
   }

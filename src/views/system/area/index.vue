@@ -22,6 +22,7 @@
             :width="width"
             :height="height"
             expand-column-key="id"
+            :row-class="stripeRowClass"
           />
         </template>
       </el-auto-resizer>
@@ -37,6 +38,10 @@ import AreaForm from './AreaForm.vue'
 import * as AreaApi from '@/api/system/area'
 
 defineOptions({ name: 'SystemArea' })
+
+// 隔行浅色按真实行号取模：v2 只渲染可视窗口的行，CSS nth-child 会让条纹跟着滚动手抖
+const stripeRowClass = ({ rowIndex }: { rowIndex: number }) =>
+  rowIndex % 2 === 1 ? 'xpy-v2-striped' : ''
 
 // 表格的 column 字段
 const columns: Column[] = [

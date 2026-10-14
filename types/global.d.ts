@@ -67,3 +67,17 @@ declare global {
     total: number // 总量
   }
 }
+
+/*
+  模板里的 indexMethod（列表「序号」列的 :index 工厂）
+
+  main.ts 把它挂到了 app.config.globalProperties，运行时能取到；但 auto-import 只注入
+  <script> 里出现过的标识符，模板里的 :index="indexMethod(queryParams)" 编译成
+  _ctx.indexMethod，vue-tsc 在 _ctx 的类型上找不到它 —— 于是每个用序号列的页面都会报一条
+  TS2339 Property 'indexMethod' does not exist。补这条增强把它接回 ComponentCustomProperties。
+*/
+declare module 'vue' {
+  interface ComponentCustomProperties {
+    indexMethod: typeof import('../src/utils/table').indexMethod
+  }
+}

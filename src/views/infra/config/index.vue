@@ -66,15 +66,6 @@
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <el-button
-          type="danger"
-          plain
-          :disabled="checkedIds.length === 0"
-          @click="handleDeleteBatch"
-          v-hasPermi="['infra:config:delete']"
-        >
-          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
-        </el-button>
-        <el-button
           type="success"
           plain
           @click="handleExport"
@@ -83,22 +74,41 @@
         >
           <Icon icon="ep:download" class="mr-5px" /> 导出
         </el-button>
+        <el-button
+          type="danger"
+          plain
+          :disabled="checkedIds.length === 0"
+          @click="handleDeleteBatch"
+          v-hasPermi="['infra:config:delete']"
+        >
+          <Icon icon="ep:delete" class="mr-5px" /> 批量删除
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
-      <el-table-column label="参数主键" align="center" prop="id" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
+      <!-- 这里不显示「参数主键」：参数是拿 key 读的，自增 id 对使用者没有意义 -->
       <el-table-column label="参数分类" align="center" prop="category" />
       <el-table-column label="参数名称" align="center" prop="name" :show-overflow-tooltip="true" />
       <el-table-column label="参数键名" align="center" prop="key" :show-overflow-tooltip="true" />
       <el-table-column label="参数键值" align="center" prop="value" />
-      <el-table-column label="是否可见" align="center" prop="visible">
+      <el-table-column label="是否可见" align="center" prop="visible" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.INFRA_BOOLEAN_STRING" :value="scope.row.visible" />
+          <StatusSwitch
+            :model-value="scope.row.visible === true"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['infra:config:update']"
+            active-text="可见"
+            inactive-text="隐藏"
+            @change="(next) => handleUpdateVisible(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column label="系统内置" align="center" prop="type">
@@ -114,7 +124,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" min-width="110" fixed="right">
         <template #default="scope">
           <el-button
             link
@@ -201,6 +211,19 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 是否可见/启用列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateVisible = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await ConfigApi.updateConfig({ ...row, visible: next })
+    message.success(next ? '已设为可见' : '已设为隐藏')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

@@ -37,3 +37,238 @@
     border-left-color: var(--el-color-primary);
   }
 }
+
+/*
+  面板质感 = 登录页同源表面：无边框 + 面板档圆角 + 静息柔阴影。暗色黑底上柔阴影几乎不可见，
+  层次改由 --brand-edge 的 1px 内描边承担（亮色该令牌为 transparent，即描边只在暗色出现）。
+  选择器写 .el-card.el-card 抬到两档特异性，原因有二：ContentWrap 挂 shadow="never"
+  （.el-card.is-never-shadow 同为两档）；且 element-plus 的样式由 unplugin-element-plus
+  按组件注入、晚于本文件，同档特异性下后写者胜，必须靠档位而不是靠顺序赢。
+  圆角与卡头分隔线也在这里直接写令牌：覆写 --el-card-border-radius 等 EP :root 变量
+  同样会输给后注入的 EP css-vars。
+*/
+.el-card.el-card {
+  border: none;
+  border-radius: var(--brand-radius-panel);
+  background-color: var(--brand-surface);
+  box-shadow:
+    var(--brand-shadow-1),
+    inset 0 0 0 1px var(--brand-edge);
+}
+
+.el-card.el-card .el-card__header {
+  border-bottom-color: var(--brand-line);
+}
+
+/* 卡头品牌签名：与菜单同字号（14px/600）+ 左侧 3px×14px 圆角渐变竖条。
+   全局类而非组件 scoped，ContentWrap 与首页图表卡共用同一枚签名。 */
+.brand-bar-title {
+  position: relative;
+  padding-left: 10px;
+  font-size: 14px;
+  font-weight: 600;
+
+  &::before {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background-image: var(--brand-grad);
+    content: '';
+    transform: translateY(-50%);
+  }
+}
+
+/* 嵌套小卡（面板内卡中卡、弹窗内卡）：浅底 + 小一档圆角 + 不叠阴影，
+   与外层品牌表面形成「浅底衬白底」的层次，避免去边框后糊成一片 */
+.el-card .el-card {
+  border-radius: var(--brand-radius-card);
+  background-color: var(--el-fill-color-light);
+  box-shadow: none;
+}
+
+/*
+  控件层品牌化（圆角档见 var.css 的 :root:root）：弹窗/抽屉取面板圆角与浮起阴影，
+  主按钮取品牌渐变底。选择器档位同卡片一节——EP 样式后注入，靠特异性赢。
+
+  主按钮只动「实心 primary」：plain/text/link 与禁用态原样保留 EP 语义；
+  边框保留 1px 宽度只把颜色透明（布局不跳），hover/active 用 brightness 提亮压暗，
+  渐变是 background-image，EP 的 hover 换底色逻辑与之互不干扰。
+*/
+.el-dialog.el-dialog:not(.is-fullscreen) {
+  border-radius: var(--brand-radius-panel);
+  background-color: var(--brand-surface);
+  box-shadow: var(--brand-shadow-2);
+}
+
+.el-drawer.el-drawer {
+  background-color: var(--brand-surface);
+  box-shadow: var(--brand-shadow-2);
+}
+
+.el-drawer.el-drawer.rtl {
+  border-radius: var(--brand-radius-panel) 0 0 var(--brand-radius-panel);
+}
+
+.el-drawer.el-drawer.ltr {
+  border-radius: 0 var(--brand-radius-panel) var(--brand-radius-panel) 0;
+}
+
+.el-drawer.el-drawer.ttb {
+  border-radius: 0 0 var(--brand-radius-panel) var(--brand-radius-panel);
+}
+
+.el-drawer.el-drawer.btt {
+  border-radius: var(--brand-radius-panel) var(--brand-radius-panel) 0 0;
+}
+
+.el-button.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  border-color: transparent;
+  background-color: transparent;
+  background-image: var(--brand-grad);
+  box-shadow: var(--brand-btn-shadow);
+
+  &:hover,
+  &:focus {
+    filter: brightness(1.08);
+  }
+
+  &:active {
+    filter: brightness(0.94);
+  }
+}
+
+/* 列表「序号」列：收窄左右内边距，让序号列在更小的固定宽度下依然舒适（表头不换行、三位数不挤） */
+.el-table .col-index .cell {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/*
+  列表页统一观感 = 参考站 81.71.100.62 的模型配置列表 = Element Plus 默认表体
+
+  2026-10-11 应用户要求改回此观感并推广到全部改过的页面：表头白底、灰字（#909399）600 字重、
+  表头 40 / 行高 41（单元格 padding 8px 0），隔行浅色由各页 stripe 属性负责，序号列各页按约定手写。
+  这些全是 EP 默认（--el-table-header-bg-color=fill-color-blank、
+  --el-table-header-text-color=text-color-secondary、thead th font-weight 600），
+  所以这个类不再覆盖任何表体底色与内边距——此前在这里压的浅底表头 + 14px padding 与参考站分歧，退役。
+  类里只剩三件 EP 不给的事：序号列窄内边距（见上）、操作列按钮与「更多」下拉的 12px 间距（见下）、
+  固定列边缘投影隐藏（见下）。各列表页仍挂 xpy-list-table + stripe，无需各自写 scoped 样式。
+*/
+.xpy-list-table .el-button + .el-button,
+.xpy-list-table .el-button + .el-dropdown {
+  margin-left: 12px;
+}
+
+/*
+  行高严格对齐参考站（81.71.100.62 模型配置列表）的单行 41px = 内容 24 + 上下 padding 16 + 边框 1。
+
+  td 高度 41 是单行行的下限（border-box，含 padding 与边框）：内容不足 24 的行
+  （操作列 link 按钮只有 20px）原本落到 40，比参考站矮 1px，补齐后全站单行行高逐页一致；
+  真有多行内容的单元格（如流程编排「对话驱动 Agent」）自然撑高，不裁切。
+
+  开关外框压到 24 与 el-tag 同高：EP .el-switch 外框默认 height:32px（内芯 20px），
+  会把带状态开关的行撑到 49px——参考站该行是 41。这里只改外框预留高度，
+  内芯尺寸、内嵌文字、颜色一律不动（开关的交互与语义是业务，不在样式改造范围）。
+
+  vertical-align 必须一起给：.el-switch 是 inline-flex，按基线对齐时行盒会为它多留 1px 下伸部，
+  实测行高停在 42（改 top / line-height:0 / 单元格 line-height:24px 三者等效，取 top）。
+
+  选择器挂在 .xpy-list-table 下：只收敛改过的列表，表单 / 详情里的开关不受影响。
+*/
+.xpy-list-table td.el-table__cell {
+  height: 41px;
+}
+.xpy-list-table .el-switch {
+  height: 24px;
+  vertical-align: top;
+}
+
+/*
+  去掉固定列边缘的投影分隔线
+
+  表格横向溢出时 EP 会在左/右固定列内侧画一条 box-shadow 分隔线，
+  贴在「操作」列左边、贯穿每一行，观感像一条多余的白缝（表单设计页不溢出、没有这条线）。
+  固定列本身已有隔行色 + 白底表头与滚动区自然区分，这条投影反而显脏，故统一隐藏。
+*/
+.el-table .el-table-fixed-column--left.is-last-column::before,
+.el-table .el-table-fixed-column--right.is-first-column::before {
+  display: none;
+}
+
+/*
+  el-table-v2（虚拟表格，菜单管理 / 地区管理）的隔行浅色
+
+  v2 是 div 网格，上面 .xpy-list-table 的选择器落不到它的节点上，
+  挂上去是空转，所以这两页不挂那个类；v2 表头的白底与 700 加粗是它自带的
+  （--el-table-header-bg-color 与 v1 同一个变量，默认白），与 v1 现在的观感一致，这里只补 v2 没有的 stripe。
+
+  ⚠️ 不能写 .el-table-v2__row:nth-child(even)：v2 只渲染可视窗口里的那几行，
+  滚动时 DOM 子序的奇偶会翻，条纹会跟着滚动手抖。改由各页的 row-class 回调
+  按【真实行号】取模（EP 会把 rowIndex 传进回调），条纹才稳定。
+*/
+.el-table-v2 .el-table-v2__row.xpy-v2-striped {
+  background-color: var(--el-fill-color-lighter);
+}
+
+/*
+  查询面板的行间距与页面外边距统一（--app-content-padding）
+
+  列表页查询表单的既有约定是 <el-form class="-mb-15px" :inline="true">：
+  行与行的间距来自 EP .el-form-item 的 18px 下边距，表单自身的 -15px 用来抵掉末行多出的那段。
+  这里把两者一起收到 --app-content-padding：行间距 = 9px（与页面顶部留白同值），
+  且末行下边距被表单的 -9px 精确抵消，面板内上下留白对称（各为 body 的 10px padding）。
+  选择器挂 .v-content-wrap：弹窗 / 抽屉里不在面板中的表单不受影响。
+*/
+.v-content-wrap .el-form--inline {
+  margin-bottom: calc(-1 * var(--app-content-padding));
+}
+.v-content-wrap .el-form--inline .el-form-item {
+  margin-bottom: var(--app-content-padding);
+}
+
+/*
+  v-hasPermi / v-hasRole 的隐藏机制：打标记 + display:none。
+
+  属性名与 directives/permission/hasPermi.ts 里那个 HIDDEN_ATTR 常量是同一个字符串，
+  SCSS 读不到 TS 的常量，改名时两处一起改。
+
+  🔴 **不是**把节点从 DOM 里摘掉。摘节点只动 DOM、不动 Vue 的 vnode 树，
+  `vnode.el` 仍指向那个已游离的元素，Vue 打补丁时拿它当 insertBefore 的锚点就抛
+  NotFoundError（实测：无权限账号在角色资源授权页切两次视图 = 29 条 JS 错误，
+  超管 0 条 —— 只有没权限的人踩得到）。完整理由写在 hasPermi.ts 的注释里。
+
+  ⚠️ !important 是必需的：EP 给 .el-button 写的是 display:inline-flex，
+  与本条选择器同为 (0,1,0)，靠加载顺序取胜太脆 —— main.ts 里
+  setupElementPlus 排在 @/styles/index.scss 前面，但 unocss 又排在两者前面，
+  将来谁调一次 import 顺序，这里就会静默失效（权限按钮重新显示出来）
+*/
+[data-permission-hidden] {
+  display: none !important;
+}
+
+/*
+  🔴 上一条的配套归位规则，删掉它就会出现「第一个看得见的按钮白拿 12px 左缩进」。
+
+  display:none 的元素**仍然是 CSS 兄弟**：`+` 组合器匹配的是文档树，不是渲染树。
+  而 EP 有一条**不带作用域**的全局规则 `.el-button+.el-button{margin-left:12px}`，
+  本文件上面还有一条 `.xpy-list-table .el-button + .el-button{margin-left:12px}`。
+  于是「前一个按钮因为没权限被隐藏」时，下一个可见按钮会被这两条命中并缩进 12px。
+  摘节点的老实现没有这个问题（节点真没了，`+` 匹配不上）。
+
+  !important 的理由是**压过那两条的 specificity**：`.xpy-list-table .el-button + .el-button`
+  是 (0,3,0)，本条不加 !important 就只有 (0,2,0)，写在文件末尾也照样输 ——
+  而表格操作列正是 v-hasPermi 最密集的地方（改 / 删两个按钮），输在这里等于没修。
+
+  ⚠️ 会不会误伤一处合法的间距？会，形状是「v-hasPermi 元素紧跟一个自带 ml-* 或内联
+  margin-left 的 el-button / el-dropdown」。全库扫过，**0 处**
+  （唯一一处 el-button 上同时有 v-hasPermi 与 ml-auto 的是 agent/config/index.vue 的
+  「新增配额」，那是同一个元素、不是被归位的下一个兄弟，且它的上一个兄弟是标题 span）。
+  将来真要写这种形状，把 ml-* 换成在容器上用 gap —— 那才是 display:none 天然正确的间距方式
+*/
+[data-permission-hidden] + .el-button,
+[data-permission-hidden] + .el-dropdown {
+  margin-left: 0 !important;
+}

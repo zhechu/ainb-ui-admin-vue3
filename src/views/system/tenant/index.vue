@@ -108,8 +108,11 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="租户编号" align="center" prop="id" />
       <el-table-column label="租户名" align="center" prop="name" />
       <el-table-column label="租户套餐" align="center" prop="packageId">
@@ -144,9 +147,14 @@
           <span v-if="!scope.row.websites || scope.row.websites.length === 0">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="租户状态" align="center" prop="status">
+      <el-table-column label="租户状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:tenant:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column
@@ -191,6 +199,7 @@
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
+import { CommonStatusEnum } from '@/utils/constants'
 import { dateFormatter } from '@/utils/formatTime'
 import download from '@/utils/download'
 import * as TenantApi from '@/api/system/tenant'
@@ -246,6 +255,22 @@ const resetQuery = () => {
 const formRef = ref()
 const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
+}
+
+/** 状态列快捷开关：走专用的 update-status 接口，不做整行更新（避免被套餐校验挡住，也不触发角色菜单重算） */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: TenantApi.TenantVO, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await TenantApi.updateTenantStatus(
+      row.id,
+      next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    )
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */

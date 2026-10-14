@@ -28,12 +28,12 @@ export const useBillFieldRule = (designer?: Ref) => {
 
   onMounted(async () => {
     try {
-      const data = await BillTemplateApi.getSimpleBillTemplateList()
+      const data = await BillTemplateApi.cachedGetSimpleBillTemplateList()
       if (!data || data.length === 0) {
         return
       }
       templateOptions.value = data.map((item) => ({
-        // 把范例带进选项文案，选模板时不用再去单据模板页对一遍格式
+        // 把范例带进选项文案，选模板时不用再去取号管理页对一遍格式
         label: item.example ? `${item.name}（${item.example}）` : item.name,
         value: item.code
       }))
@@ -106,11 +106,17 @@ export const useBillFieldRule = (designer?: Ref) => {
                 {
                   type: 'select',
                   field: 'templateCode',
-                  title: '单据模板',
+                  // title 说的是被选的东西（一条取号模板），跟着菜单词汇走，不再叫「单据模板」——
+                  // 那是菜单的旧名，页面上的列现在也叫模板名称/模板编码
+                  title: '取号模板',
                   value: '',
                   options: templateOptions.value,
                   props: { filterable: true },
-                  info: '在「基础设施 - 单据模板」中维护，多个表单可共用同一个模板'
+                  // 🔴 info 里的菜单路径必须与左侧菜单逐字一致，这是一条「照着点进去」的指引。
+                  //    原来写的是「基础设施 - 单据模板」，两处都不对：菜单已改名「取号管理」，
+                  //    而且它上面还有一层「数据管理」目录（归目录之后这条文案没跟着改）。
+                  //    照着错路径找是找不到的
+                  info: '在「基础设施 - 数据管理 - 取号管理」中维护，多个表单可共用同一个模板'
                 }
               ]
             },

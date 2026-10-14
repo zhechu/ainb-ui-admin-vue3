@@ -80,20 +80,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" class="form-design-table" stripe>
-      <!--
-        序号列
-
-        取代原来的「编号」列：那一列显示的是数据库自增主键，对用户没有意义
-        （他既不会拿它去查什么，也不会在别处引用到它），却占着第一列的位置。
-        序号按分页连续编号 —— 第二页第一行是 21 而不是重新从 1 开始，
-        否则「第 37 条那个」在页与页之间对不上。
-      -->
-      <el-table-column align="center" label="序号" width="70">
-        <template #default="scope">
-          {{ (queryParams.pageNo - 1) * queryParams.pageSize + scope.$index + 1 }}
-        </template>
-      </el-table-column>
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        class-name="col-index"
+        label-class-name="col-index"
+        :index="indexMethod(queryParams)"
+      />
       <el-table-column label="表单名称" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column label="表单编码" prop="code" min-width="140" show-overflow-tooltip />
       <el-table-column align="center" label="分类" prop="category" width="110">
@@ -137,45 +133,14 @@
         prop="createTime"
         width="170"
       />
-      <el-table-column align="center" fixed="right" label="操作" width="280">
+      <el-table-column align="center" fixed="right" label="操作" width="220">
+        <!--
+          本页的「更多」曾是全站样式标杆（hover 触发、link primary 触发器、纯文字下拉项、
+          删除项 divided）。那段标杆写法已收进 TableActions，浏览器实测两者计算样式逐字一致，
+          所以这里换组件不换观感
+        -->
         <template #default="scope">
-          <el-button
-            v-hasPermi="['infra:form-design:update']"
-            link
-            type="primary"
-            @click="handleUpdate(scope.row.id)"
-          >
-            设计
-          </el-button>
-          <el-button
-            v-hasPermi="['infra:form-design:publish']"
-            link
-            type="success"
-            @click="handlePublish(scope.row)"
-          >
-            发布
-          </el-button>
-          <el-button
-            v-hasPermi="['infra:form-design:query']"
-            link
-            @click="handleVersion(scope.row)"
-          >
-            版本
-          </el-button>
-          <el-dropdown @command="(cmd: string) => handleCommand(cmd, scope.row)">
-            <el-button link type="primary">
-              更多<Icon icon="ep:arrow-down" class="ml-2px" />
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="copy">复制</el-dropdown-item>
-                <el-dropdown-item v-if="scope.row.menuId" command="unpublish">
-                  下线
-                </el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -200,6 +165,7 @@
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as FormDesignApi from '@/api/infra/formDesign'
+import type { TableActionButton } from '@/components/TableActions'
 import * as MenuApi from '@/api/system/menu'
 import PublishDialog from './components/PublishDialog.vue'
 import VersionDrawer from './components/VersionDrawer.vue'
@@ -292,46 +258,97 @@ const handleVersion = (row: FormDesignApi.FormDesignVO) => {
   versionDrawerRef.value?.open(row)
 }
 
-/** 下拉菜单的命令分发 */
-const handleCommand = (command: string, row: FormDesignApi.FormDesignVO) => {
-  if (command === 'copy') {
-    handleCopy(row)
-  } else if (command === 'unpublish') {
-    handleUnpublish(row)
-  } else if (command === 'delete') {
-    handleDelete(row)
+/**
+ * 操作列按钮清单。下拉里的三项原来不带权限门控（复制/下线/删除谁都能点），
+ * 搬进清单后保持不门控：permission 不传 = 不门控，与组件口径一致
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '设计',
+    permission: ['infra:form-design:update'],
+    onClick: (row) => handleUpdate(row.id)
+  },
+  {
+    key: 'publish',
+    label: '发布',
+    type: 'success',
+    permission: ['infra:form-design:publish'],
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'version',
+    label: '版本',
+    permission: ['infra:form-design:query'],
+    onClick: (row) => handleVersion(row)
+  },
+  { key: 'copy', label: '复制', onClick: (row) => handleCopy(row) },
+  {
+    key: 'unpublish',
+    label: '下线',
+    show: (row) => !!row.menuId,
+    onClick: (row) => handleUnpublish(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    onClick: (row) => handleDelete(row)
   }
-}
+]
 
 /**
  * 下线：同样是两步操作
  *
- * 后端清掉线上版本号与菜单关联并返回菜单编号，前端再逐个调 /system/menu/delete。
- * 用户可能手工删过这些菜单，所以删除失败要容错跳过而不是中断整个流程。
+ * 后端清掉线上版本号与菜单关联并返回菜单编号，前端再回收这些菜单。
+ *
+ * 🔴 回收必须用 delete-list 一次删整棵树，不能逐个调 /system/menu/delete。
+ *    menuIds 的顺序就是 infra_form_design_menu 的插入顺序，而 bindMenu 是先插父菜单再插按钮，
+ *    所以**父菜单永远排在第一个**；MenuServiceImpl#deleteMenu 一见「还有子菜单」就抛
+ *    MENU_EXISTS_CHILDREN。逐个删的必然结果是：第一个（父菜单）失败、7 个按钮随后删光，
+ *    侧边栏里留下一棵点得开却什么都不是的孤儿父菜单，而且没有任何东西拦住它 ——
+ *    旧代码把这个失败算进 failedCount，然后提示「可能已被手工删除」，把真因说反了。
+ *    库里有实证：「图书借阅登记」的 7 个按钮在 2026-10-13 01:25:07~09 被这个循环删掉，
+ *    父菜单却直到 01:32:49 才消失，且与另外 7 个父菜单**同一秒** ——
+ *    那是有人受不了了，去菜单管理页手工批量清理的。
+ *    delete-list 的判据刻意排除了「同批一起被选中」的子菜单（见 MenuServiceImpl#deleteMenuList），
+ *    正是为删一整棵子树写的；顺带少了 7 个来回，整棵树在一个事务里同生共死。
+ *
+ * ⚠️ 「用户已经手工删过这些菜单」这个原本要容错的场景照样容错：
+ *    delete-list 不像单删那样校验存在性，deleteByIds 对不存在的行只是命中 0 行。
  */
 const handleUnpublish = async (row: FormDesignApi.FormDesignVO) => {
   try {
     await message.confirm(
       `确认下线表单「${row.name}」吗？会删除它生成的菜单与按钮权限，表单状态回到草稿。`
     )
-    const menuIds = await FormDesignApi.unpublishFormDesign(row.id)
-    let failedCount = 0
-    for (const menuId of menuIds) {
-      try {
-        await MenuApi.deleteMenu(menuId)
-      } catch (e) {
-        // 菜单可能已被用户手工删除，容错跳过
-        failedCount++
-        console.warn(`删除菜单 ${menuId} 失败，可能已不存在`, e)
-      }
-    }
-    if (failedCount > 0) {
-      message.warning(`已下线，但有 ${failedCount} 个菜单删除失败（可能已被手工删除）`)
-    } else {
-      message.success('下线成功')
-    }
+  } catch {
+    return // 用户点了取消
+  }
+  let menuIds: number[]
+  try {
+    menuIds = await FormDesignApi.unpublishFormDesign(row.id)
+  } catch {
+    // 后端事务回滚了，表单侧什么都没变。错误提示由 axios 拦截器给，这里只把列表刷回真实状态
     await getList()
-  } catch {}
+    return
+  }
+  try {
+    // 空数组不能发这个请求：join 出来是空串，后端 @RequestParam List<Long> 绑不上
+    if (menuIds?.length) {
+      await MenuApi.deleteMenuList(menuIds)
+    }
+    message.success('下线成功')
+  } catch {
+    // 🔴 到这一步表单侧【已经下线并提交】（unpublish 是它自己的事务，早已提交），菜单却还活着。
+    //    绝不能报「下线成功」，也绝不能像旧代码那样报「可能已被手工删除」——
+    //    必须直说菜单没回收掉、去哪儿收拾，否则用户看到的就是一棵莫名多出来的孤儿菜单树。
+    message.error(
+      `表单已下线，但菜单回收失败：请到「系统管理 → 菜单管理」手工删除「${row.name}」及其按钮权限`
+    )
+  }
+  await getList()
 }
 
 const handleCopy = async (row: FormDesignApi.FormDesignVO) => {
@@ -345,10 +362,18 @@ const handleCopy = async (row: FormDesignApi.FormDesignVO) => {
 
 const handleDelete = async (row: FormDesignApi.FormDesignVO) => {
   try {
-    // 已发布的表单会连带回收菜单与按钮权限，提示得更明确些
+    // 已关联菜单的表单后端会拒绝删除（菜单只能由「下线」流程回收），
+    // 这里直接拦下并指路，而不是让用户白点一次再吃接口报错
+    if (row.menuId) {
+      message.alertWarning(
+        `表单「${row.name}」已发布并关联菜单，不能直接删除。` +
+          `请先在「更多」中执行「下线」回收菜单与按钮权限，再删除表单`
+      )
+      return
+    }
     if (row.status !== 0) {
       await message.confirm(
-        `表单「${row.name}」已发布，删除会同时回收它生成的菜单与按钮权限，确认删除吗？`
+        `表单「${row.name}」已发布（未关联菜单），删除会同时清除它的版本历史，确认删除吗？`
       )
     } else {
       await message.delConfirm()
@@ -361,49 +386,14 @@ const handleDelete = async (row: FormDesignApi.FormDesignVO) => {
 
 onMounted(() => {
   getList()
+  // 空闲时预热编辑器 chunk。用户点「编辑」/「新增」时几乎瞬时打开。
+  // 失败静默吞掉 —— 预热失败不该在控制台留一条刺眼的 unhandled rejection，
+  // 真正点进去时路由自己的动态 import 还会再试一次
+  const preload = () => import('./editor/index.vue').catch(() => {})
+  if ('requestIdleCallback' in window) {
+    ;(window as any).requestIdleCallback(preload, { timeout: 3000 })
+  } else {
+    setTimeout(preload, 1500)
+  }
 })
 </script>
-
-<style lang="scss" scoped>
-/*
-  行高与分隔
-
-  这张表的单元格基本都是短文本（表单名、编码、表名）与小号标签，
-  没有任何一格会把行撑开，于是整张表挤成一叠细线，扫读时容易串行。
-
-  ⚠️ 选择器为什么要这么写
-
-  ContentWrap 给它包住的**所有**列表页定了一条
-  `.content-wrap[data-v-x] .el-table--default .el-table__cell { padding: 4px }`，
-  权重是 (0,4,0)。写成 `.form-design-table :deep(.el-table__cell)` 只有 (0,3,0)，
-  会被它整条盖掉 —— 这里原先那版 12px 的内边距其实从来没生效过，
-  行高一直是 31px。重复一次类名把权重抬到 (0,5,0)，
-  比 !important 更容易在 DevTools 里看明白是谁盖了谁。
-
-  只改本模块、不动 ContentWrap：那条规则作用于系统里每一个列表页，
-  在这里顺手改掉等于替所有模块做了决定。
-
-  表头压一层浅底色、隔行浅色，是同一件事的另外两半：
-  不然滚动时表头会「混进」第一行，横向扫一行十列时也容易串到上下行去。
-*/
-.form-design-table.form-design-table.el-table--default :deep(.el-table__cell) {
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-.form-design-table :deep(.el-table__header-wrapper th) {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color-light);
-}
-
-.form-design-table :deep(.el-table__row--striped .el-table__cell) {
-  background-color: var(--el-fill-color-lighter);
-}
-
-/* 操作列里几个 link 按钮之间留出间距，避免「设计发布版本更多」连成一串 */
-.form-design-table :deep(.el-button + .el-button),
-.form-design-table :deep(.el-button + .el-dropdown) {
-  margin-left: 12px;
-}
-</style>

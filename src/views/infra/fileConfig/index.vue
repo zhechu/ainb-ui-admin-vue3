@@ -71,9 +71,12 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
-      <el-table-column label="编号" align="center" prop="id" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
+      <!-- 这里不显示「编号」：文件配置是拿名称认的，自增 id 只在「主配置」确认弹窗里出现 -->
       <el-table-column label="配置名" align="center" prop="name" />
       <el-table-column label="存储器" align="center" prop="storage">
         <template #default="scope">
@@ -93,34 +96,10 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="240px">
+      <!-- 实测：编辑 主配置 测试 删除 = 210px，与列宽相等没有余量，放到 220 -->
+      <el-table-column label="操作" align="center" width="220" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['infra:file-config:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            :disabled="scope.row.master"
-            @click="handleMaster(scope.row.id)"
-            v-hasPermi="['infra:file-config:update']"
-          >
-            主配置
-          </el-button>
-          <el-button link type="primary" @click="handleTest(scope.row.id)"> 测试 </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['infra:file-config:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -141,6 +120,7 @@ import * as FileConfigApi from '@/api/infra/fileConfig'
 import FileConfigForm from './FileConfigForm.vue'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'InfraFileConfig' })
 
@@ -221,11 +201,20 @@ const handleDeleteBatch = async () => {
   } catch {}
 }
 
-/** 主配置按钮操作 */
-const handleMaster = async (id) => {
+/** 主配置按钮操作
+ *
+ * 后端 updateFileConfigMaster 是「先把全部置为非主配置，再把这一个置为主配置」，
+ * 也就是全站切换文件上传的落地位置，确认文案必须把这点说清楚。
+ * 原来那句「是否确认修改配置编号为 X 的数据项为主配置」既没说要切换，
+ * 编号在列表里也已经看不到了，用户拿它无从核对 —— 所以这里改用配置名
+ */
+const handleMaster = async (row: any) => {
   try {
-    await message.confirm('是否确认修改配置编号为"' + id + '"的数据项为主配置?')
-    await FileConfigApi.updateFileConfigMaster(id)
+    await message.confirm(
+      `确认将「${row.name}」设为主配置吗？此后上传的文件都会存到它这里，原来的主配置会被取消。`,
+      '切换主配置'
+    )
+    await FileConfigApi.updateFileConfigMaster(row.id)
     message.success(t('common.updateSuccess'))
     await getList()
   } catch {}
@@ -239,6 +228,37 @@ const handleTest = async (id) => {
     window.open(response, '_blank')
   } catch {}
 }
+
+// 「测试」原本就没有 v-hasPermi，这里同样不给 permission —— 按 TableActions 的口径，
+// 不传 = 不门控（永远显示），与改动前一致
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['infra:file-config:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'master',
+    label: '主配置',
+    permission: ['infra:file-config:update'],
+    disabled: (row) => !!row.master,
+    onClick: (row) => handleMaster(row)
+  },
+  {
+    key: 'test',
+    label: '测试',
+    onClick: (row) => handleTest(row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:file-config:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

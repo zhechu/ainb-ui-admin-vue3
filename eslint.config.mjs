@@ -18,7 +18,11 @@ export default tseslint.config(
       'node_modules/',
       'src/main.ts',
       'src/types/auto-components.d.ts',
-      'src/components/Tinyflow/ui/**'
+      'src/components/Tinyflow/ui/**',
+      // 第三方源码副本，不按本工程规则约束，保持对上游零 diff
+      // 见 src/lib/form-create/VENDOR.md
+      'src/lib/form-create/**',
+      'src/lib/form-designer/**'
     ]
   },
 

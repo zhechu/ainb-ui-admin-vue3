@@ -1,30 +1,73 @@
 <template>
   <ContentWrap>
-    <!-- 模型选择：所有操作都以选中的模型为上下文 -->
-    <el-form :inline="true" class="-mb-15px">
-      <el-form-item label="业务模型">
-        <el-select
-          v-model="modelId"
-          placeholder="请选择模型"
-          clearable
-          filterable
-          class="!w-260px"
-          @change="handleModelChange"
-        >
-          <el-option
-            v-for="item in modelList"
-            :key="item.id"
-            :label="`${item.modelName}（${item.tableName}）`"
-            :value="item.id"
-          />
-        </el-select>
-      </el-form-item>
-    </el-form>
+    <!-- 模型选择 + 展示模式切换：所有操作都以选中的模型为上下文 -->
+    <div class="flex items-center justify-between">
+      <el-form :inline="true" class="-mb-15px">
+        <el-form-item label="数据模型">
+          <el-select
+            v-model="modelId"
+            placeholder="请选择模型"
+            clearable
+            filterable
+            class="!w-260px"
+            @change="handleModelChange"
+          >
+            <el-option
+              v-for="item in modelList"
+              :key="item.id"
+              :label="`${item.modelName}（${item.tableName}）`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <el-radio-group v-model="viewMode" class="mb-15px">
+        <el-radio-button value="raw">原始数据</el-radio-button>
+        <el-radio-button value="formatted">展示模式</el-radio-button>
+      </el-radio-group>
+    </div>
   </ContentWrap>
 
   <template v-if="modelId">
-    <!-- 动态查询区：按字段类型渲染 -->
-    <ContentWrap>
+    <!-- 原始数据模式的查询区：单条件「字段 + 关键字」模糊搜索 -->
+    <ContentWrap v-if="viewMode === 'raw'">
+      <el-form :inline="true" class="-mb-15px">
+        <el-form-item label="字段">
+          <el-select
+            v-model="rawQueryColumn"
+            placeholder="选择字段"
+            clearable
+            filterable
+            class="!w-240px"
+          >
+            <el-option
+              v-for="column in columns"
+              :key="column.columnName"
+              :label="column.columnComment
+                ? `${column.columnName}（${column.columnComment}）`
+                : column.columnName"
+              :value="column.columnName"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关键字">
+          <el-input
+            v-model="rawKeyword"
+            placeholder="输入关键字模糊匹配"
+            clearable
+            class="!w-240px"
+            @keyup.enter="handleQuery"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" /> 搜索</el-button>
+          <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" /> 重置</el-button>
+        </el-form-item>
+      </el-form>
+    </ContentWrap>
+
+    <!-- 展示模式的动态查询区：按字段类型渲染 -->
+    <ContentWrap v-else>
       <el-form :inline="true" class="-mb-15px">
         <el-form-item
           v-for="column in queryColumns"
@@ -75,65 +118,69 @@
             v-hasPermi="['infra:data-model-data:create']"
           >
             <Icon icon="ep:plus" class="mr-5px" /> 新增
-          </el-button>
-          <el-button
-            type="danger"
-            plain
-            :disabled="checkedIds.length === 0"
-            @click="handleDeleteBatch"
-            v-hasPermi="['infra:data-model-data:delete']"
-          >
-            <Icon icon="ep:delete" class="mr-5px" /> 批量删除
           </el-button> -->
         </el-form-item>
       </el-form>
     </ContentWrap>
 
-    <!-- 动态列表 -->
+    <!-- 动态列表：原始模式列=物理字段名、值不格式化；展示模式列=注释、值格式化 -->
     <ContentWrap>
       <el-table
+        class="xpy-list-table"
+        stripe
         v-loading="loading"
         :data="list"
-        @selection-change="handleRowCheckboxChange"
+        :row-class-name="() => 'cursor-pointer'"
         @sort-change="handleSortChange"
+        @row-click="handleRowClick"
       >
-        <el-table-column type="selection" width="55" />
         <el-table-column
-          v-for="column in listColumns"
-          :key="column.columnName"
-          :label="column.columnComment || column.columnName"
-          :prop="column.columnName"
-          :show-overflow-tooltip="true"
-          :min-width="isDateType(column.columnType) ? 170 : 120"
-          sortable="custom"
-        >
-          <template #default="{ row }">
-            <span v-if="row[column.columnName] === null" class="text-gray-400">-</span>
-            <span v-else>{{ formatCellValue(row[column.columnName], column) }}</span>
-          </template>
-        </el-table-column>
-        <!-- <el-table-column label="操作" align="center" width="140" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              @click="openForm('update', row.id)"
-              v-hasPermi="['infra:data-model-data:update']"
-            >
-              编辑
-            </el-button>
-            <el-button
-              link
-              type="danger"
-              @click="handleDelete(row.id)"
-              v-hasPermi="['infra:data-model-data:delete']"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column> -->
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod({ pageNo, pageSize })"
+          class-name="col-index"
+          label-class-name="col-index"
+        />
+        <!-- 原始数据模式：全部物理列（含系统列），原样展示 -->
+        <template v-if="viewMode === 'raw'">
+          <el-table-column
+            v-for="column in columns"
+            :key="column.columnName"
+            :label="column.columnName"
+            :prop="column.columnName"
+            :show-overflow-tooltip="true"
+            min-width="120"
+            sortable="custom"
+          >
+            <template #default="{ row }">
+              <span v-if="row[column.columnName] === null || row[column.columnName] === undefined"
+                class="text-[var(--el-text-color-secondary)]">-</span>
+              <span v-else>{{ String(row[column.columnName]) }}</span>
+            </template>
+          </el-table-column>
+        </template>
+        <!-- 展示模式：过滤系统列，格式化显示 -->
+        <template v-else>
+          <el-table-column
+            v-for="column in listColumns"
+            :key="column.columnName"
+            :label="column.columnComment || column.columnName"
+            :prop="column.columnName"
+            :show-overflow-tooltip="true"
+            :min-width="isDateType(column.columnType) ? 170 : 120"
+            sortable="custom"
+          >
+            <template #default="{ row }">
+              <span v-if="row[column.columnName] === null"
+                class="text-[var(--el-text-color-secondary)]">-</span>
+              <span v-else>{{ formatCellValue(row[column.columnName], column) }}</span>
+            </template>
+          </el-table-column>
+        </template>
         <template #empty>
-          <span class="text-gray-400">暂无数据</span>
+          <span class="text-[var(--el-text-color-secondary)]">暂无数据</span>
         </template>
       </el-table>
       <Pagination
@@ -145,10 +192,12 @@
     </ContentWrap>
   </template>
 
-  <el-empty v-else description="请先选择一个业务模型" />
+  <el-empty v-else description="请先选择一个数据模型" />
 
   <!-- 动态表单 -->
   <DataForm ref="formRef" @success="getList" />
+  <!-- 行详情：点击任意行查看全部字段的原始值 -->
+  <RowDetailDialog ref="rowDetailRef" />
 </template>
 
 <script lang="ts" setup>
@@ -165,13 +214,20 @@ import {
   resolveQueryOperator
 } from './columnMeta'
 import DataForm from './DataForm.vue'
+import RowDetailDialog from './RowDetailDialog.vue'
 
-/** 业务数据管理（免代码生成的动态 CRUD） */
+/** 数据查看（菜单原名「业务数据」）：免代码生成的动态 CRUD */
 defineOptions({ name: 'InfraDataModelData' })
 
 const message = useMessage()
 const { t } = useI18n()
-const route = useRoute() // 用于接收数据建模页跳转带来的 modelId
+const route = useRoute() // 用于接收数据模型页跳转带来的 modelId
+
+/**
+ * 展示模式：raw=原始数据（默认，列=物理字段名、值不格式化），
+ * formatted=展示模式（列=字段注释、值按类型格式化）
+ */
+const viewMode = ref<'raw' | 'formatted'>('raw')
 
 const modelList = ref<DataModelApi.DataModelVO[]>([])
 const modelId = ref<number>()
@@ -184,11 +240,14 @@ const pageSize = ref(20)
 const queryValues = ref<Record<string, any>>({})
 const sortField = ref<string>()
 const sortAsc = ref(false)
-const checkedIds = ref<(string | number)[]>([])
 
-/** 查询区字段 */
+/** 原始模式的单条件搜索状态 */
+const rawQueryColumn = ref<string>()
+const rawKeyword = ref('')
+
+/** 查询区字段（展示模式） */
 const queryColumns = computed(() => columns.value.filter(isQueryable))
-/** 列表展示字段 */
+/** 列表展示字段（展示模式） */
 const listColumns = computed(() => columns.value.filter(isVisibleInList))
 
 /** 加载可选模型 */
@@ -203,6 +262,8 @@ const handleModelChange = async () => {
   list.value = []
   total.value = 0
   queryValues.value = {}
+  rawQueryColumn.value = undefined
+  rawKeyword.value = ''
   sortField.value = undefined
   pageNo.value = 1
   if (!modelId.value) {
@@ -211,8 +272,31 @@ const handleModelChange = async () => {
   columns.value = await DataApi.getDataColumns(modelId.value)
   await getList()
 }
+
+/** 切换展示模式：重置分页与两种模式各自的查询条件后重查（列定义共用） */
+watch(viewMode, () => {
+  queryValues.value = {}
+  rawQueryColumn.value = undefined
+  rawKeyword.value = ''
+  pageNo.value = 1
+  getList()
+})
+
 /** 把查询区的值转成后端要的条件数组；空值跳过 */
 const buildConditions = (): DataApi.DataConditionVO[] => {
+  // 原始模式：单条件 LIKE（% 包裹由服务端完成）
+  if (viewMode.value === 'raw') {
+    if (!rawQueryColumn.value || !rawKeyword.value) {
+      return []
+    }
+    return [
+      {
+        columnName: rawQueryColumn.value,
+        operator: 'LIKE',
+        value: rawKeyword.value
+      }
+    ]
+  }
   const conditions: DataApi.DataConditionVO[] = []
   queryColumns.value.forEach((column) => {
     const value = queryValues.value[column.columnName]
@@ -256,6 +340,8 @@ const handleQuery = () => {
 
 const resetQuery = () => {
   queryValues.value = {}
+  rawQueryColumn.value = undefined
+  rawKeyword.value = ''
   handleQuery()
 }
 
@@ -270,8 +356,10 @@ const handleSortChange = ({ prop, order }: { prop: string; order: string | null 
   getList()
 }
 
-const handleRowCheckboxChange = (rows: DataApi.DataRowVO[]) => {
-  checkedIds.value = rows.map((row) => row.id)
+/** 点击行：弹窗查看该行全部字段的原始值（含系统列），不发请求 */
+const rowDetailRef = ref()
+const handleRowClick = (row: DataApi.DataRowVO) => {
+  rowDetailRef.value?.open(row, columns.value)
 }
 
 const formRef = ref()
@@ -290,22 +378,10 @@ const handleDelete = async (id: string | number) => {
   }
 }
 
-const handleDeleteBatch = async () => {
-  try {
-    await message.delConfirm()
-    await DataApi.deleteDataList(modelId.value!, checkedIds.value)
-    message.success(t('common.delSuccess'))
-    checkedIds.value = []
-    await getList()
-  } catch {
-    // 取消删除，无需处理
-  }
-}
-
 /**
  * 初始化
  *
- * 支持从数据建模页跳转过来时带 modelId，直接定位到该模型并加载数据，
+ * 支持从数据模型页跳转过来时带 modelId，直接定位到该模型并加载数据，
  * 省掉「进来还要再选一次模型」的多余一步。
  */
 onMounted(async () => {

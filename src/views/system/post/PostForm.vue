@@ -16,6 +16,17 @@
       <el-form-item label="岗位顺序" prop="sort">
         <el-input v-model="formData.sort" placeholder="请输入岗位顺序" />
       </el-form-item>
+      <el-form-item label="所属组织" prop="deptId">
+        <el-tree-select
+          v-model="formData.deptId"
+          :data="deptList"
+          :props="defaultProps"
+          check-strictly
+          clearable
+          node-key="id"
+          placeholder="请选择所属组织（可不选）"
+        />
+      </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="formData.status" clearable placeholder="请选择状态">
           <el-option
@@ -39,7 +50,9 @@
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { CommonStatusEnum } from '@/utils/constants'
+import { defaultProps, handleTree } from '@/utils/tree'
 import * as PostApi from '@/api/system/post'
+import * as DeptApi from '@/api/system/dept'
 
 defineOptions({ name: 'SystemPostForm' })
 
@@ -55,6 +68,7 @@ const formData = ref({
   name: '',
   code: '',
   sort: 0,
+  deptId: undefined as number | undefined,
   status: CommonStatusEnum.ENABLE,
   remark: ''
 })
@@ -65,6 +79,7 @@ const formRules = reactive({
   remark: [{ required: false, message: '岗位内容不能为空', trigger: 'blur' }]
 })
 const formRef = ref() // 表单 Ref
+const deptList = ref<Tree[]>([]) // 组织树
 
 /** 打开弹窗 */
 const open = async (type: string, id?: number) => {
@@ -81,6 +96,8 @@ const open = async (type: string, id?: number) => {
       formLoading.value = false
     }
   }
+  // 加载组织树
+  deptList.value = handleTree(await DeptApi.getSimpleDeptList())
 }
 defineExpose({ open }) // 提供 open 方法，用于打开弹窗
 
@@ -117,6 +134,7 @@ const resetForm = () => {
     name: '',
     code: '',
     sort: undefined,
+    deptId: undefined,
     status: CommonStatusEnum.ENABLE,
     remark: ''
   } as any

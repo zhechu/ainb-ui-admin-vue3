@@ -20,7 +20,7 @@
       -->
       <template v-if="!inlineFormActive">
       <!-- 查询区 -->
-      <ContentWrap v-if="searchItems.length > 0">
+      <ContentWrap v-if="searchItems.length > 0 || hasToolbar">
         <el-form :inline="true" class="-mb-15px" label-width="90px">
           <el-form-item
             v-for="(item, index) in visibleSearchItems"
@@ -142,15 +142,68 @@
               @keyup.enter="handleQuery"
             />
           </el-form-item>
-          <el-form-item>
-            <el-button @click="handleQuery">
-              <Icon class="mr-5px" icon="ep:search" />
-              搜索
+          <!--
+            搜索/重置、工具栏、展开收起同处一个 form-item。
+
+            ⚠️ 不能拆成多个 form-item：inline 表单里 EP 给每个 form-item 加 margin-right:32px，
+            拆开后「重置」与「新增」之间就是 32px 的洞（实测），而静态列表页
+            （infra/formDesign/index.vue、ai/model/model）把这一排放在同一个 item 里、
+            按钮间距走 .el-button + .el-button 的 12px。拆开会同时把「展开(4)」
+            单独挤到下一行行首，读起来像它属于另一组控件。
+
+            ⚠️ 搜索/重置这对按钮要自带 v-if：没有查询项时 visibleSearchItems 为空、
+            上面的 v-for 不产出任何项，不补它就会渲染出一个只有「搜索/重置」的空表单。
+            原来整张卡片靠 searchItems.length > 0 整体不渲染，这条分支从没暴露过；
+            现在卡片还要为工具栏渲染，所以门挪到了这对按钮上。
+          -->
+          <el-form-item v-if="searchItems.length > 0 || hasToolbar">
+            <template v-if="searchItems.length > 0">
+              <el-button @click="handleQuery">
+                <Icon class="mr-5px" icon="ep:search" />
+                搜索
+              </el-button>
+              <el-button @click="resetQuery">
+                <Icon class="mr-5px" icon="ep:refresh" />
+                重置
+              </el-button>
+            </template>
+            <!--
+              工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
+              按钮本身一字未改 —— 原来就已经是 plain + 按动作性质给色，批量按钮的 disabled
+              与选中数角标也原样搬过来，只换了外层容器（div → el-form-item）。
+            -->
+            <el-button
+              v-for="btn in builtinToolbarButtons"
+              :key="btn.key"
+              :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
+              plain
+              :type="toolbarButtonType(btn.key)"
+              @click="runBuiltinButton(btn.key)"
+            >
+              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+              {{ btn.label }}
+              <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
+                ({{ selectedRows.length }})
+              </span>
             </el-button>
-            <el-button @click="resetQuery">
-              <Icon class="mr-5px" icon="ep:refresh" />
-              重置
+            <!--
+              自定义按钮（工具栏）。⚠️ 这里【不】判可见条件 ——
+              工具栏没有「当前记录」可以求值，见 customButton.ts 的说明
+            -->
+            <el-button
+              v-for="btn in toolbarButtons"
+              :key="btn.key"
+              plain
+              @click="runCustomButton(btn)"
+            >
+              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+              {{ btn.label }}
             </el-button>
+            <!--
+              展开/收起排在最后：它调的是「查询区长什么样」，不是对数据做事的动作。
+              放在搜索/重置紧后面时，「新增」会被挤到一个折叠开关之后 —— 一行里最次要的
+              控件排在最主要的动作前面，读起来像是新增属于折叠功能的一部分。
+            -->
             <el-button
               v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD"
               link
@@ -158,10 +211,7 @@
               @click="searchCollapsed = !searchCollapsed"
             >
               {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
-              <Icon
-                class="ml-2px"
-                :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'"
-              />
+              <Icon class="ml-2px" :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
             </el-button>
           </el-form-item>
         </el-form>
@@ -200,49 +250,16 @@
           />
         </el-tabs>
 
-        <div
-          v-if="builtinToolbarButtons.length || toolbarButtons.length || columnSettingEnabled"
-          class="mb-10px flex items-center"
-        >
-          <!--
-            内置工具栏按钮。文案、图标、顺序都来自列表设计的按钮清单。
-
-            颜色按动作的性质给，与系统里其它管理列表页（如租户管理）保持一致：
-            主操作是主色、导出是成功色、批量删除是危险色。
-            都用默认灰的话，「批量删除」看起来与「导出」一样人畜无害 ——
-            而它是这一排里唯一不可撤销的动作。
-          -->
-          <el-button
-            v-for="btn in builtinToolbarButtons"
-            :key="btn.key"
-            :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
-            plain
-            :type="toolbarButtonType(btn.key)"
-            @click="runBuiltinButton(btn.key)"
-          >
-            <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-            {{ btn.label }}
-            <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
-              ({{ selectedRows.length }})
-            </span>
-          </el-button>
-          <!--
-            自定义按钮（工具栏）。⚠️ 这里【不】判可见条件 ——
-            工具栏没有「当前记录」可以求值，见 customButton.ts 的说明
-          -->
-          <el-button
-            v-for="btn in toolbarButtons"
-            :key="btn.key"
-            plain
-            @click="runCustomButton(btn)"
-          >
-            <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-            {{ btn.label }}
-          </el-button>
-          <!-- 列设置推到最右边：它是「调整视图」而不是「对数据做事」，与左边那排不同类 -->
+        <!--
+          列设置：它是「调整视图」而不是「对数据做事」，与查询区那排工具栏不同类 ——
+          这条理由原来就写在工具栏那个 div 里，工具栏搬进查询区之后，留在列表卡片内
+          反而更贴近它作用的对象（这张表的视图）。
+          没跟着搬进 <el-form-item> 是搬不了：ml-auto 在 inline form 的 item 内不生效
+          （item 宽度由内容决定，没有可分配的自由空间），而查询卡片没有 title、
+          ContentWrap 的 #header 插槽也不渲染，找不到第二个可以右靠的位置。
+        -->
+        <div v-if="columnSettingEnabled" class="mb-10px flex justify-end">
           <ColumnSettingPanel
-            v-if="columnSettingEnabled"
-            class="ml-auto"
             :items="settingColumns"
             @reorder="handleColumnReorder"
             @reset="handleColumnReset"
@@ -255,7 +272,7 @@
           ref="tableRef"
           v-loading="listLoading"
           :border="gridBorderNeeded"
-          class="runtime-table"
+          class="runtime-table xpy-list-table"
           :data="tableData"
           :default-sort="defaultSortProp"
           :row-class-name="rowClassName"
@@ -294,7 +311,9 @@
             align="center"
             :fixed="hasLeftFixedColumn ? 'left' : false"
             label="序号"
-            width="64"
+            width="44"
+            class-name="col-index"
+            label-class-name="col-index"
           >
             <template #default="scope">{{ rowIndexOf(scope.$index) }}</template>
           </el-table-column>
@@ -617,6 +636,22 @@
         </el-timeline-item>
       </el-timeline>
     </Dialog>
+
+    <!--
+      导入向导
+
+      放在这里而不是做成路由页：导入的上下文就是「这张列表」——
+      它要用当前表单的字段定义、当前表单的权限点，离开这张列表就没有意义。
+    -->
+    <ImportDialog ref="importDialogRef" @success="handleImportSuccess" />
+
+    <!--
+      导出设置
+
+      只放范围与合计行两项 —— 列、顺序、格式都由列表本身决定，
+      不该让用户每次导出再选一遍
+    -->
+    <ExportDialog ref="exportDialogRef" />
   </template>
 </template>
 
@@ -682,6 +717,8 @@ import {
   type ColumnPref
 } from '@/components/FormWidgets/columnSetting'
 import GroupRowCell from './GroupRowCell.vue'
+import ImportDialog from './ImportDialog.vue'
+import ExportDialog from './ExportDialog.vue'
 import ColumnSettingPanel from './ColumnSettingPanel.vue'
 import { useUserStore } from '@/store/modules/user'
 import { collapseUploadValues } from '@/components/FormWidgets/uploadValue'
@@ -712,6 +749,7 @@ import {
 import * as RuntimeApi from '@/api/infra/formDesign/runtime'
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
 import { applyPlainTextToggle } from '@/components/FormWidgets/plainText'
+import { applyRelationSource } from '@/components/FormWidgets/relationSource'
 import { getDictTree, getStrDictOptions } from '@/utils/dict'
 import { isValuelessOperator } from '@/components/FormWidgets/searchWidget'
 import {
@@ -895,6 +933,16 @@ const operationColumn = ref({
   maxInline: DEFAULT_MAX_INLINE_BUTTONS,
   buttons: ['edit', 'detail', 'delete'] as any
 })
+/**
+ * 导出行数上限
+ *
+ * 由表单设计者在列表设计里配（listConf.exportMaxRows），默认 2 万。
+ * 前端只用它在导出弹窗上提示「会被截断」—— 真正的约束在服务端，
+ * 前端拦不住也不该拦（用户可以直接调接口）。
+ */
+const DEFAULT_EXPORT_MAX_ROWS = 20000
+const exportMaxRows = ref(DEFAULT_EXPORT_MAX_ROWS)
+
 /** 合计行配置 */
 const showSummary = ref(false)
 const summaryColumns = ref<string[]>([])
@@ -1636,6 +1684,17 @@ const builtinToolbarButtons = computed(() =>
   visibleButtons(builtinButtons.value, 'toolbar').filter((b) => isToolbarButtonAvailable(b.key))
 )
 
+/**
+ * 查询区卡片要不要为了工具栏而渲染
+ *
+ * ⚠️ 不含 columnSettingEnabled：列设置留在列表卡片内，不参与这个判断。
+ * 把它算进来的话，一张「没有查询项、没有工具栏、只开了列设置」的表单会渲染出
+ * 一个只装着搜索按钮的空查询卡片 —— 而搜索按钮自己另有 searchItems.length > 0 的门。
+ */
+const hasToolbar = computed(
+  () => !!(builtinToolbarButtons.value.length || toolbarButtons.value.length)
+)
+
 /** 操作列里要渲染的内置按钮 */
 const builtinRowButtons = computed(() => visibleButtons(builtinButtons.value, 'row'))
 
@@ -1692,6 +1751,9 @@ const gridBorderNeeded = computed(
 const toolbarButtonType = (key: string): any => {
   if (key === 'create') return 'primary'
   if (key === 'export') return 'success'
+  // 导入与导出同为数据进出口，但导入会**改数据** —— 用 warning 与导出区分开，
+  // 两个都用成功色的话，用户点错的概率明显更高
+  if (key === 'import') return 'warning'
   if (key === 'batchDelete') return 'danger'
   return undefined
 }
@@ -1801,6 +1863,8 @@ const runBuiltinButton = (key: string) => {
   switch (key) {
     case 'create':
       return openForm('create')
+    case 'import':
+      return handleImport()
     case 'export':
       return handleExport()
     case 'batchDelete':
@@ -2616,6 +2680,10 @@ const loadConfig = async () => {
       // 千分位：给数字输入框装上 formatter / parser。
       // 必须在赋给 formRule 之前 —— 之后 form-create 已经建好了控件实例
       applyThousandsFormat(rules)
+      // 关联控件要知道自己长在哪张表单上 —— 它取候选数据走的是 REFERENCE 接口，
+      // 入参是「源表单 + 控件字段」而不是「目标表单 + 字段列表」。
+      // 不注入的话下拉框取不到数，且界面上只是空着、不报错
+      applyRelationSource(rules, formCode.value)
       // 分步校验：标签页切走之前校验当前页的字段。
       // 校验函数在这里注入 —— stepValidate 模块不认识 form-create 的 api
       const validateStepFields = async (fields: string[]) => {
@@ -2754,6 +2822,10 @@ const parseListConf = (listConf: string) => {
       maxInline: normalizeMaxInline(storedOperation.maxInline),
       buttons: storedOperation.buttons ?? ['edit', 'detail', 'delete']
     }
+    exportMaxRows.value =
+      typeof conf.exportMaxRows === 'number' && conf.exportMaxRows > 0
+        ? conf.exportMaxRows
+        : DEFAULT_EXPORT_MAX_ROWS
     showSummary.value = conf.showSummary || false
     summaryColumns.value = conf.summaryColumns || []
     // 存量表单的配置里没有这个键，缺省按「显示」——序号是列表的默认预期，
@@ -2784,6 +2856,7 @@ const parseListConf = (listConf: string) => {
     defaultSort.value = undefined
     showSummary.value = false
     summaryColumns.value = []
+    exportMaxRows.value = DEFAULT_EXPORT_MAX_ROWS
     showIndexColumn.value = true
     formViewMode.value = 'DIALOG'
     tabConfig.value = undefined
@@ -3143,36 +3216,62 @@ const handleDelete = async (row: any) => {
   } catch {}
 }
 
-/** 导出列表数据 */
-const handleExport = async () => {
-  // 确认框取消是用户的正常动作，不该弹错误 —— 与导出本身失败分开处理
-  try {
-    await message.exportConfirm()
-  } catch {
-    return
-  }
-  try {
-    const conditions = buildConditions()
-    const sort = currentSort.value || defaultSort.value
-    // 文件名由这里给：响应头带不出来（理由见 exportData），而表单的中文名
-    // 只有这边拿得到 —— 用表单编码当文件名，用户拿到的是一堆 test_demo_xxx.xlsx
-    await RuntimeApi.exportData(
-      formCode.value,
-      {
-        conditions,
-        sortField: sort?.field,
-        sortOrder: sort?.order
-      },
-      config.value?.name || formCode.value
-    )
-    message.success('导出成功')
-  } catch (e: any) {
-    // 原先这里是 `catch {}`：后端报错时界面上什么也不发生，
-    // 用户只会以为「点了没反应」，而浏览器根本没下载任何文件
-    console.error('[FormDesignRender] 导出失败', e)
-    message.error(e?.msg || e?.message || '导出失败，请稍后重试')
-  }
+/** 导入数据 */
+const importDialogRef = ref()
+
+const handleImport = () => {
+  importDialogRef.value?.open(formCode.value, config.value?.name || formCode.value)
 }
+
+/**
+ * 导入完成
+ *
+ * 无条件刷新列表，不管导了几条 —— 用户刚在向导里看到「成功 95 条」，
+ * 关掉弹窗却发现列表还是老样子，会以为没真的导进去。
+ */
+const handleImportSuccess = async () => {
+  queryParams.pageNo = 1
+  await loadList()
+}
+
+/** 导出设置弹窗。真正的下载在它里面做 */
+const exportDialogRef = ref()
+
+/**
+ * 导出
+ *
+ * 不直接下载，而是先开一个设置弹窗 —— 范围（当前页 / 全部）与合计行
+ * 这两件事同一张列表的不同次导出可能不同，得让用户选。
+ *
+ * 列、顺序、格式一概不在弹窗里 —— 它们由列表本身决定（所见即所得）。
+ */
+const handleExport = () => {
+  const visibleKeys = columns.value.map((col) => columnKeyOf(col))
+  exportDialogRef.value?.open({
+    code: formCode.value,
+    name: config.value?.name || formCode.value,
+    pageNo: queryParams.pageNo,
+    pageSize: queryParams.pageSize,
+    total: total.value,
+    maxRows: exportMaxRows.value,
+    columnCount: visibleKeys.length,
+    // 设计期有多少列、现在显示多少列，差额就是用户自己隐藏掉的
+    hiddenCount: Math.max(designColumns.value.length - visibleKeys.length, 0),
+    hasSummary: showSummary.value && summaryColumns.value.length > 0,
+    buildRequest: () => {
+      const sort = currentSort.value || defaultSort.value
+      return {
+        conditions: buildConditions(),
+        sortField: sort?.field,
+        sortOrder: sort?.order,
+        // ⚠️ 传当前【真正渲染出来的】列，而不是设计期的列 ——
+        // 用户在列设置里隐藏掉的列不该出现在导出文件里
+        visibleFields: visibleKeys
+      }
+    }
+  })
+}
+
 
 onMounted(() => {
   loadConfig()
@@ -3181,43 +3280,24 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
-  列表的行高与表头
+  列表观感 = 模型配置列表（参考站 81.71.100.62）= 全站 xpy-list-table
 
-  向租户管理那一类管理列表页看齐。默认状态下这张表是最密的一档
-  （ContentWrap 给所有列表页定了单元格 4px 内边距，行高只有 32px），
-  而它的单元格里装的是标签、缩略图、附件链接这些比纯文本更高的东西，
-  挤在一起时一行的上下几乎贴着边框。
+  表格挂了 xpy-list-table，行高 41 / 表头白底灰字 600 / 按钮间距 12px / 序号列窄内边距
+  全部由 src/styles/index.scss 统一给，这里不再各写一套。
 
-  ⚠️ 选择器要压过 ContentWrap
-
-  ContentWrap 那条是 `.content-wrap[data-v-x] .el-table--default .el-table__cell`，
-  权重 (0,4,0)。写成 `.runtime-table :deep(.el-table__cell)` 只有 (0,3,0)，
-  会被它整条盖掉、一点效果都没有。重复一次类名抬到 (0,5,0)，
-  比 !important 更容易在 DevTools 里看明白是谁盖了谁。
-
-  只改本模块、不动 ContentWrap：那条规则作用于系统里每一个列表页。
+  历史上这里压过两件事，都已退役：
+  - 单元格 12px 上下内边距（行高 49px）。当时的理由是「ContentWrap 给所有列表页定了
+    4px 内边距、行高只有 32px，而这张表装的是标签/缩略图/附件」——ContentWrap 那条
+    4px 规则早已删除，全站列表行高统一到 41px 之后，这张表单独 49px 反而成了异类。
+    单元格里真有更高的内容（缩略图、附件链接）时，td 的 height 只是下限，行会自然撑高。
+  - 表头浅底 + 主色文字。参考站的表头是白底、#909399 灰字、600 字重，浅底表头在
+    2026-10-11 那一轮已随 xpy-list-table 一起退役，这张表没理由留着。
 */
-.runtime-table.runtime-table.el-table--default :deep(.el-table__cell) {
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
-
-.runtime-table :deep(.el-table__header-wrapper th) {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  background-color: var(--el-fill-color-light);
-}
 
 /* 合计行与数据区拉开，否则最后一行数据看起来像是合计的一部分 */
 .runtime-table :deep(.el-table__footer-wrapper td) {
   font-weight: 600;
   background-color: var(--el-fill-color-light);
-}
-
-/* 操作列里的 link 按钮连成一串时很难点准，拉开一点 */
-.runtime-table :deep(.el-table__body .el-button + .el-button),
-.runtime-table :deep(.el-table__body .el-button + .el-dropdown) {
-  margin-left: 10px;
 }
 
 /*
@@ -3288,7 +3368,7 @@ onMounted(() => {
 /* 左侧树 + 列表的分栏布局 */
 .list-with-tree {
   display: flex;
-  gap: 16px;
+  gap: var(--app-content-padding);
   align-items: flex-start;
 }
 

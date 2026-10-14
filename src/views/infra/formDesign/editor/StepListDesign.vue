@@ -19,6 +19,25 @@
             <el-form-item label="显示合计行">
               <el-switch v-model="showSummary" />
             </el-form-item>
+            <el-form-item label="导出上限">
+              <el-input-number
+                v-model="exportMaxRows"
+                :max="200000"
+                :min="1"
+                :step="1000"
+                class="!w-160px"
+                controls-position="right"
+              />
+              <el-tooltip placement="top">
+                <template #content>
+                  一次导出最多多少行，默认 2 万。<br />
+                  超出部分不会被静默丢掉 —— 文件名上会标出「前 N 条」。<br />
+                  上限本身最大 20 万：导出是把整批数据读进内存再写出去的，<br />
+                  真要几十万行该用异步导出，而不是把这个数字调大。
+                </template>
+                <Icon class="ml-4px text-#909399" icon="ep:question-filled" />
+              </el-tooltip>
+            </el-form-item>
             <el-form-item v-if="showSummary" label="合计列">
               <div class="summary-picker">
                 <!--
@@ -1283,6 +1302,16 @@ const summaryColumns = ref<string[]>([])
  */
 const showIndexColumn = ref(true)
 
+/**
+ * 导出行数上限
+ *
+ * 放在设计期而不是让使用者每次导出自己选：一张列表能导多少行，
+ * 取决于它背后有多少数据、字段有多宽 —— 那是设计者知道的事，
+ * 不该让每个使用者去猜。
+ */
+const DEFAULT_EXPORT_MAX_ROWS = 20000
+const exportMaxRows = ref(DEFAULT_EXPORT_MAX_ROWS)
+
 /** 新增 / 编辑 / 详情 的呈现方式 */
 const formViewMode = ref<FormViewMode>('DIALOG')
 
@@ -2163,6 +2192,7 @@ const collect = () => {
     showSummary: showSummary.value,
     summaryColumns: summaryColumns.value,
     showIndexColumn: showIndexColumn.value,
+    exportMaxRows: exportMaxRows.value,
     formViewMode: formViewMode.value,
     // 未启用或没配字段时不写进配置，避免运行时渲染空标签栏
     tabConfig: tabConfig.value.enabled && tabConfig.value.field ? tabConfig.value : undefined,
@@ -2222,6 +2252,12 @@ const restore = () => {
     // 并保证结果一定含全部内置按钮 —— 少一项会让它在设计器里整个消失
     buttonList.value = normalizeButtons(stored.buttons)
     initButtonSortable()
+    // 存量表单没有这个键 —— 回落到默认值而不是 0，
+    // 按 0 处理的话导出会是一张空表，而用户完全看不出为什么
+    exportMaxRows.value =
+      typeof conf.exportMaxRows === 'number' && conf.exportMaxRows > 0
+        ? conf.exportMaxRows
+        : DEFAULT_EXPORT_MAX_ROWS
     showSummary.value = conf.showSummary || false
     summaryColumns.value = migrateSummaryColumns(conf.summaryColumns || [])
     // 存量配置里没有这两个键：序号缺省显示，呈现方式缺省居中弹窗 ——

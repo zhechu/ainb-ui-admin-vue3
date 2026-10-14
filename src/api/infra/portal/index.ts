@@ -24,11 +24,17 @@ export type PortalVO = {
   name: string
   code: string
   description?: string
+  type?: number // 0-在线设计 1-自定义链接
+  linkType?: number // 0-页面（内部路由） 1-外链
+  linkUrl?: string
+  sort?: number // 显示顺序（升序，值越小越靠前）
   status: number
   content: string
   publishedVersion: number
   isDefault: boolean
   enabled: boolean
+  visibleScope?: number // 0-所有人 1-指定角色 2-指定用户
+  visibleIds?: string
   schemaVersion: number
   creator?: string
   createTime?: Date
@@ -41,9 +47,15 @@ export type PortalSaveReqVO = {
   name: string
   code: string
   description?: string
+  type?: number
+  linkType?: number
+  linkUrl?: string
+  sort?: number
   content: string
   isDefault?: boolean
   enabled?: boolean
+  visibleScope?: number
+  visibleIds?: string
 }
 
 export type PortalVersionVO = {
@@ -64,6 +76,10 @@ export type PortalRuntimeVO = {
   version: number
   content: string
   schemaVersion: number
+  type?: number // 0-在线设计 1-自定义链接
+  linkType?: number // 0-页面（内部路由） 1-外链
+  linkUrl?: string
+  isDefault?: boolean
 }
 
 export const createPortal = (data: PortalSaveReqVO) => {
@@ -120,6 +136,10 @@ export const previewPortal = (id: number): Promise<PortalRuntimeVO> => {
 
 export const getHomePortal = (): Promise<PortalRuntimeVO | null> => {
   return request.get({ url: '/infra/portal/runtime/home' })
+}
+
+export const getRuntimePortalList = (): Promise<PortalRuntimeVO[]> => {
+  return request.get({ url: '/infra/portal/runtime/list' })
 }
 
 export const getRuntimePortal = (code: string): Promise<PortalRuntimeVO | null> => {

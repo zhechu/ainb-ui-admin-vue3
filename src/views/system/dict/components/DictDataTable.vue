@@ -88,23 +88,38 @@
   <!-- 列表：卡片撑满剩余高度，表格在内部滚动，表头保持固定 -->
   <ContentWrap :body-style="listBodyStyle" class="min-h-0 flex-1 !mb-0">
     <div class="h-full flex flex-col">
-      <el-table
+      <el-table stripe
         v-loading="loading"
         :data="list"
         :default-expand-all="treeEnabled"
         :row-key="treeEnabled ? 'id' : undefined"
         :tree-props="{ children: 'children' }"
-        class="min-h-0 flex-1"
+        class="xpy-list-table min-h-0 flex-1"
         height="100%"
         @selection-change="handleRowCheckboxChange"
       >
         <el-table-column type="selection" width="55" />
+        <el-table-column
+          v-if="!treeEnabled"
+          label="序号"
+          type="index"
+          width="44"
+          align="center"
+          :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
         <el-table-column label="字典标签" prop="label" show-overflow-tooltip />
         <el-table-column align="center" label="字典键值" prop="value" />
         <el-table-column align="center" label="字典排序" prop="sort" width="90" />
         <el-table-column align="center" label="状态" prop="status" width="90">
           <template #default="scope">
-            <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+            <StatusSwitch
+              :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+              :loading="statusLoadingId === scope.row.id"
+              :permission="['system:dict:update']"
+              @change="(next) => handleUpdateStatus(scope.row, next)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="颜色类型" prop="colorType" width="100" />
@@ -166,6 +181,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import { handleTree } from '@/utils/tree'
 import download from '@/utils/download'
 import * as DictDataApi from '@/api/system/dict/dict.data'
+import { CommonStatusEnum } from '@/utils/constants'
 import type { DictTypeVO } from '@/api/system/dict/dict.type'
 import { DictCacheModeEnum } from '@/api/system/dict/dict.type'
 
@@ -242,6 +258,22 @@ const resetQuery = () => {
   queryParams.keyword = ''
   queryParams.status = undefined
   handleQuery()
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await DictDataApi.updateDictData({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 const handleDelete = async (row: any) => {

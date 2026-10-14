@@ -43,8 +43,17 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
       <!-- TODO 芋艿：增加摘要 -->
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column align="center" label="流程名" prop="processInstanceName" min-width="180" />
       <el-table-column label="摘要" prop="summary" min-width="180">
         <template #default="scope">

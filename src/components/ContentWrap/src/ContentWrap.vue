@@ -102,7 +102,8 @@ const updateListLayout = () => {
     const sectionStyle = contentSection ? getComputedStyle(contentSection) : undefined
     const paddingBottom = Number.parseFloat(sectionStyle?.paddingBottom || '0') || 0
     const marginBottom = Number.parseFloat(getComputedStyle(card).marginBottom || '0') || 0
-    const height = Math.floor(contentBottom - cardRect.top - paddingBottom - marginBottom - 1)
+    // 不再额外减 1px：floor 已保证不溢出，多减会让底部留白比顶部（--app-content-padding）大 1px
+    const height = Math.floor(contentBottom - cardRect.top - paddingBottom - marginBottom)
 
     // 窄屏下搜索区可能已经占满首屏，列表卡片位于首屏之外时保留自然高度，
     // 让外层页面滚动，避免把列表压缩成几像素。
@@ -168,12 +169,12 @@ onBeforeUnmount(() => {
   <ElCard
     ref="cardRef"
     :body-style="bodyStyle"
-    :class="[prefixCls, 'mb-15px', { [`${prefixCls}--list`]: isListContent }]"
+    :class="[prefixCls, 'mb-[var(--app-content-padding)]', { [`${prefixCls}--list`]: isListContent }]"
     shadow="never"
   >
     <template v-if="title" #header>
       <div class="flex items-center">
-        <span class="text-16px font-700">{{ title }}</span>
+        <span class="brand-bar-title">{{ title }}</span>
         <ElTooltip v-if="message" effect="dark" placement="right">
           <template #content>
             <div class="max-w-200px">{{ message }}</div>
@@ -191,6 +192,14 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 $prefix-cls: #{$namespace}-content-wrap;
+
+/* 末位面板不再叠加下外边距，让页面底部留白与顶部（--app-content-padding）一致。
+   不能用 :last-child —— 页面末尾总有 Dialog 渲染出的零高度 .el-overlay 兄弟节点；
+   也不能只看兄弟卡片 —— 表单运行时页把树+列表包在一个 div 里，查询面板的兄弟中没有卡片，
+   但那个 div 里装着列表面板，故第二个 :has 要排除「后续兄弟内含卡片」的情况。 */
+.#{$prefix-cls}:not(:has(~ .#{$prefix-cls})):not(:has(~ * .#{$prefix-cls})) {
+  margin-bottom: 0;
+}
 
 .#{$prefix-cls}--list {
   display: flex;
@@ -226,14 +235,9 @@ $prefix-cls: #{$namespace}-content-wrap;
     flex: 1 1 auto;
   }
 
-  :deep(.el-table--default .el-table__cell) {
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-
-  :deep(.el-table--default .cell) {
-    line-height: 21px;
-  }
+  // 行高刻意不覆盖：让 --list 表格沿用 Element Plus 默认行高（较宽松），
+  // 与「权限规则」页（自带 :height、不套 --list）保持一致的观感。
+  // 若曾在这里压 4px 紧凑 padding，长表会因每行更矮而显得拥挤，且与规则页不统一。
 
   :deep(.el-pagination) {
     flex: 0 0 auto;

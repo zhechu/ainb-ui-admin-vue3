@@ -22,8 +22,11 @@
  *
  * ⚠️ 注册表的键是**设计器菜单名**，而契约里的是**规则类型**。
  * 当前三个可脱敏控件（input / textarea / password）两者同名，可以直接用；
- * 真要出现不同名的（内核里 dateRange / timeRange 就是这种情况，
- * 见 designer/useContractWidgetTypes.ts），得先过一次映射再注册。
+ * 真要出现不同名的，得先过一次映射再注册。
+ *
+ * 内核原本有三个菜单名与规则类型对不上（password / dateRange / timeRange），
+ * 现已在 vendored 的设计器源码里直接对齐，见
+ * `src/lib/form-designer/config/rule/{password,dateRange,timeRange}.js`。
  *
  * <h3>⚠️ 必须走 appendComponentProps</h3>
  *

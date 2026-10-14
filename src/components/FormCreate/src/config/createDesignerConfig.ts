@@ -27,6 +27,21 @@ export interface DesignerConfigOptions {
    * 那时它依赖的函数可能还在暂时性死区里。
    */
   baseRule?: (arg: any) => any
+  /**
+   * 打开「逻辑与扩展」弹窗
+   *
+   * 传了才会在表单配置面板里追加入口按钮。联动规则 / 跨字段校验 / 扩展方式
+   * 这三项原先是向导里的独立一步，配的时候看不到自己刚设计的表单；
+   * 改成从设计器里开弹窗后上下文不丢，向导也少一步。
+   */
+  onOpenLogic?: () => void
+  /**
+   * 取「逻辑与扩展」当前的问题清单，用于入口按钮上的角标
+   *
+   * 传 getter 而不是值：属性面板的规则只在面板建立时构造一次，
+   * 传值的话之后字段变了角标不会更新。
+   */
+  getLogicProblems?: () => string[]
 }
 
 /**
@@ -87,11 +102,54 @@ export const createDesignerConfig = (scene: DesignerScene, options: DesignerConf
     // AI 生成字段不在低代码表单模块范围内。
     // bpm 场景保留内核默认值（开启），两者的差异是有意的，不是漂移
     config.showAi = false
+
+    /**
+     * 去掉最左边那条 40px 的图标切换栏（组件列表 / 国际化配置 / JSON）
+     *
+     * 关掉它之后：
+     * - 组件列表面板**照常显示** —— 设计器的 `activeModule` 默认就是 `'base'`，
+     *   不靠这条栏来激活，拖控件的主流程不受影响
+     * - 国际化配置与 JSON 预览两个面板随之**不可达**。前者本模块是纯中文、用不上；
+     *   后者是开发期调试视图，不该暴露给配表单的人
+     * - 左栏的收起/展开不受影响：展开按钮 `._fc-l-open` 是独立元素，
+     *   不挂在这条栏上，收起后仍能点回来
+     *
+     * 三个开关里只关这一个就够：栏没了，`showLanguage` / `showJsonPreview`
+     * 控制的入口本来就没地方显示，再关是多余的。
+     *
+     * bpm 场景保留内核默认值（显示），与 showAi 一样属于有意的场景差异。
+     */
+    config.showMenuBar = false
   }
 
   if (options.baseRule) {
     // 包一层而不是直接引用：见 DesignerConfigOptions.baseRule 的说明
     config.baseRule = (arg: any) => options.baseRule!(arg)
+  }
+
+  if (options.onOpenLogic) {
+    /**
+     * 往「表单配置」面板末尾追加「逻辑与扩展」入口
+     *
+     * 用 `{ rule, append }` 而不是直接给个函数：给函数是**整体替换**，
+     * 内核那十来项表单级配置（标签位置、尺寸、提交按钮…）会一并消失。
+     * append 语义是「原有的 + 我加的」，升级时内核增减配置项也能跟上。
+     *
+     * 这条规则**不带 field** —— 它是个动作按钮，不是配置项，
+     * 带 field 会让它往表单 option 里写一个无意义的值。
+     */
+    config.formRule = {
+      append: true,
+      rule: () => [
+        {
+          type: 'LogicEntryButton',
+          props: {
+            onOpen: options.onOpenLogic,
+            getProblems: options.getLogicProblems
+          }
+        }
+      ]
+    }
   }
 
   return config

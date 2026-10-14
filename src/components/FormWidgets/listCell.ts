@@ -13,35 +13,26 @@
 import { getDictLabel } from '@/utils/dict'
 import { formatDate } from '@/utils/formatTime'
 import { isSafeLinkUrl } from './linkUrl'
+import {
+  BOOLEAN_TEXT,
+  CELL_FORMAT_CONTRACTS,
+  EMPTY_CELL as CONTRACT_EMPTY_CELL,
+  NUMBER_FORMAT,
+  isTruthyCellValue,
+  type CellFormatterType
+} from './contracts/cellFormat'
 
-/** 列格式化类型 */
-export type CellFormatterType =
-  | 'NONE'
-  | 'DICT'
-  | 'DATE'
-  | 'DATETIME'
-  | 'NUMBER'
-  | 'PERCENT'
-  | 'BOOLEAN'
-  | 'TAG'
-  | 'LINK'
-  | 'IMAGE'
-  | 'FILE'
+export type { CellFormatterType }
 
-/** 设计器下拉用的清单 */
-export const CELL_FORMATTERS: Array<{ value: CellFormatterType; label: string }> = [
-  { value: 'NONE', label: '无格式化' },
-  { value: 'DICT', label: '字典翻译' },
-  { value: 'DATE', label: '日期' },
-  { value: 'DATETIME', label: '日期时间' },
-  { value: 'NUMBER', label: '数字' },
-  { value: 'PERCENT', label: '百分比' },
-  { value: 'BOOLEAN', label: '布尔值' },
-  { value: 'TAG', label: '标签' },
-  { value: 'LINK', label: '超链接' },
-  { value: 'IMAGE', label: '图片' },
-  { value: 'FILE', label: '附件' }
-]
+/**
+ * 设计器下拉用的清单
+ *
+ * ⚠️ 从契约生成，不在这里硬编码 —— 导出那一侧要认识同一批格式化，
+ * 两边各维护一份清单的话，前端加了一种、后端不知道，
+ * 表现是「列表显示正常、导出是原始值」。
+ */
+export const CELL_FORMATTERS: Array<{ value: CellFormatterType; label: string }> =
+  CELL_FORMAT_CONTRACTS.map((c) => ({ value: c.type, label: c.label }))
 
 /** 渲染分支 */
 export type CellRenderKind = 'TEXT' | 'TAG' | 'LINK' | 'IMAGE' | 'FILE'
@@ -61,8 +52,8 @@ export const cellRenderKind = (formatter: any): CellRenderKind => {
   }
 }
 
-/** 空值的统一占位 */
-export const EMPTY_CELL = '-'
+/** 空值的统一占位。来自契约 —— 后端导出也要知道它 */
+export const EMPTY_CELL = CONTRACT_EMPTY_CELL
 
 export const isEmptyCellValue = (value: any): boolean =>
   value === null || value === undefined || value === ''
@@ -94,10 +85,11 @@ export const formatCellText = (value: any, formatter: any): string => {
       // 库里存的是小数（0.15）还是已经乘过 100 的数（15），
       // 两种约定都存在，交给配置决定，默认按「库里存小数」
       const scaled = formatter.alreadyScaled ? num : num * 100
-      return `${scaled.toFixed(formatter.precision ?? 2)}%`
+      return `${scaled.toFixed(formatter.precision ?? NUMBER_FORMAT.defaultPrecision)}%`
     }
     case 'BOOLEAN':
-      return value === true || value === 1 || value === '1' ? '是' : '否'
+      // 判真规则与「是/否」的文案都来自契约，与后端导出共用一份声明
+      return isTruthyCellValue(value) ? BOOLEAN_TEXT.trueText : BOOLEAN_TEXT.falseText
     default:
       return String(value)
   }
@@ -107,7 +99,7 @@ export const formatCellText = (value: any, formatter: any): string => {
 const formatNumber = (value: any, formatter: any): string => {
   const num = Number(value)
   if (Number.isNaN(num)) return String(value)
-  const precision = formatter.precision ?? 2
+  const precision = formatter.precision ?? NUMBER_FORMAT.defaultPrecision
   const fixed = num.toFixed(precision)
   if (!formatter.thousands) return fixed
   return Number(fixed).toLocaleString(undefined, {

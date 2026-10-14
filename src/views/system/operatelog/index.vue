@@ -91,12 +91,21 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        class-name="col-index"
+        label-class-name="col-index"
+        :index="indexMethod(queryParams)"
+      />
       <el-table-column label="日志编号" align="center" prop="id" width="100" />
       <el-table-column label="操作人" align="center" prop="userName" width="120" />
       <el-table-column label="操作模块" align="center" prop="type" width="120" />
       <el-table-column label="操作名" align="center" prop="subType" width="160" />
-      <el-table-column label="操作内容" align="center" prop="action" />
+      <el-table-column label="操作内容" align="center" prop="action" :show-overflow-tooltip="true" min-width="200" />
       <el-table-column
         label="操作时间"
         align="center"

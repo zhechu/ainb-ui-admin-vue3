@@ -4,7 +4,7 @@
       <el-form-item label="角色名称">
         <el-tag>{{ formData.name }}</el-tag>
       </el-form-item>
-      <el-form-item label="角色标识">
+      <el-form-item label="角色编码">
         <el-tag>{{ formData.code }}</el-tag>
       </el-form-item>
       <el-form-item label="菜单权限">

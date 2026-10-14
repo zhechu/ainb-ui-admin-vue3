@@ -57,7 +57,10 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="日志编号" align="center" prop="id" />
       <el-table-column label="登录类型" align="center" prop="logType">
         <template #default="scope">
@@ -66,7 +69,7 @@
       </el-table-column>
       <el-table-column label="用户名称" align="center" prop="username" width="180" />
       <el-table-column label="登录地址" align="center" prop="userIp" width="180" />
-      <el-table-column label="浏览器" align="center" prop="userAgent" />
+      <el-table-column label="浏览器" align="center" prop="userAgent" :show-overflow-tooltip="true" min-width="200" />
       <el-table-column label="登陆结果" align="center" prop="result">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.SYSTEM_LOGIN_RESULT" :value="scope.row.result" />
@@ -79,7 +82,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" fixed="right" width="80">
         <template #default="scope">
           <el-button
             link

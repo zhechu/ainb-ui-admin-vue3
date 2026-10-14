@@ -76,6 +76,47 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
                 {
                     find: /\@\//,
                     replacement: `${pathResolve('src')}/`
+                },
+                // form-create 运行时已改为工程内源码（src/lib/form-create），不再走 npm 包。
+                // 这里保留上游的 `@form-create/*` 写法并转发过去，好处是 vendored 目录
+                // 对上游保持零 diff，升级可以直接覆盖。详见 src/lib/form-create/VENDOR.md。
+                //
+                // ⚠️ 顺序敏感：Rollup 的 alias 对字符串 find 只在 `id === find` 或
+                // `id.startsWith(find + '/')` 时命中，所以更长的前缀必须排在前面。
+                {
+                    find: '@form-create/element-ui/auto-import',
+                    replacement: pathResolve('src/lib/form-create/element-ui/auto-import.js')
+                },
+                {
+                    find: '@form-create/element-ui',
+                    replacement: pathResolve('src/lib/form-create/element-ui/src/index.js')
+                },
+                {
+                    find: '@form-create/utils/lib',
+                    replacement: pathResolve('src/lib/form-create/utils/lib')
+                },
+                {
+                    find: '@form-create/utils',
+                    replacement: pathResolve('src/lib/form-create/utils/lib/index.js')
+                },
+                {
+                    find: '@form-create/core',
+                    replacement: pathResolve('src/lib/form-create/core')
+                },
+                // 控件包是 @form-create/component-elm-<name>/src/index 这种带子路径的写法，
+                // 字符串 find 在 `component-elm-` 这种半个路径段上匹配不到，只能用正则
+                {
+                    find: /^@form-create\/component-elm-(.*)/,
+                    replacement: `${pathResolve('src/lib/form-create/components/elm-')}$1`
+                },
+                {
+                    find: '@form-create/component-subform',
+                    replacement: pathResolve('src/lib/form-create/components/subform')
+                },
+                // 设计器同样已 vendored（src/lib/form-designer，见其 VENDOR.md）
+                {
+                    find: '@form-create/designer',
+                    replacement: pathResolve('src/lib/form-designer/index.js')
                 }
             ]
         },
@@ -102,8 +143,11 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
                     codeSplitting: {
                         groups: [
                             { name: 'echarts', test: /node_modules[\\/]echarts[\\/]/ }, // 将 echarts 单独打包，参考 https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/IAB1SX 讨论
-                            { name: 'form-create', test: /node_modules[\\/]@form-create[\\/]element-ui[\\/]/ }, // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
-                            { name: 'form-designer', test: /node_modules[\\/]@form-create[\\/]designer[\\/]/ },
+                            // form-create 运行时已 vendored 到 src/lib，不再在 node_modules 下，
+                            // 这条 test 必须跟着改，否则它会散进主 chunk。
+                            // 参考 https://github.com/yudaocode/yudao-ui-admin-vue3/issues/148 讨论
+                            { name: 'form-create', test: /src[\\/]lib[\\/]form-create[\\/]/ },
+                            { name: 'form-designer', test: /src[\\/]lib[\\/]form-designer[\\/]/ },
                             { name: 'monaco-editor', test: /node_modules[\\/]monaco-editor[\\/]/ } // Monaco Editor 单独打包
                         ]
                     }

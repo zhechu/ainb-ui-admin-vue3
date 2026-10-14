@@ -323,6 +323,18 @@
               :disabled="relationForm.type !== 'JOIN' && t.frameworkTable"
             >
               <span>{{ t.name }}</span>
+              <!--
+                🔴 表的中文注释必须写进这个自定义插槽，只留在上面的 :label 里等于没写。
+                el-option 一旦给了默认插槽，:label 就【只】用于选中后回显在输入框里，
+                下拉列表渲染的是插槽内容 —— 本文件上面「选择主表」那个下拉就是这么写的，
+                而这里原先漏了，于是关联表候选列表里只剩一串英文表名。
+                这个库有两百多张表、其中大部分带中文注释；而本下拉的候选里还有相当一部分
+                是被上面那条 :disabled 灰掉的系统表 —— 灰掉的和能选的都只是一串英文表名，
+                注释恰恰是唯一能认出「这张表是干什么的」的东西。
+              -->
+              <span v-if="t.comment" class="ml-8px text-[var(--el-text-color-secondary)]">
+                {{ t.comment }}
+              </span>
               <el-tag v-if="t.frameworkTable" type="danger" size="small" class="ml-8px">系统表</el-tag>
             </el-option>
           </el-select>

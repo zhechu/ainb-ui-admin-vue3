@@ -1,10 +1,13 @@
 <template>
   <div class="w-full">
     <div class="mb-8px">
-      <el-button size="small" type="primary" plain @click="add">
+      <el-button v-if="!readonly" size="small" type="primary" plain @click="add">
         <Icon icon="ep:plus" class="mr-5px" /> 添加参数
       </el-button>
-      <span class="ml-8px text-12px text-gray-500">
+      <span
+        :class="readonly ? '' : 'ml-8px'"
+        class="text-12px text-[var(--el-text-color-secondary)]"
+      >
         参数名对应 SQL 里的 <code>#{参数名}</code>；未在此定义的请求参数会被忽略
       </span>
     </div>
@@ -41,13 +44,13 @@
           <el-input v-model="row.remark" size="small" placeholder="选填" @input="sync" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="70" align="center">
+      <el-table-column v-if="!readonly" label="操作" width="70" align="center">
         <template #default="{ $index }">
           <el-button link type="danger" size="small" @click="remove($index)">删除</el-button>
         </template>
       </el-table-column>
       <template #empty>
-        <span class="text-gray-400">暂无参数</span>
+        <span class="text-[var(--el-text-color-secondary)]">暂无参数</span>
       </template>
     </el-table>
   </div>
@@ -59,9 +62,13 @@ import type { ParamDefinitionVO } from '@/api/infra/dataInterface'
 /** 入参定义表格 */
 defineOptions({ name: 'ParamTable' })
 
-const props = withDefaults(defineProps<{ modelValue?: ParamDefinitionVO[] }>(), {
-  modelValue: () => []
-})
+const props = withDefaults(
+  defineProps<{ modelValue?: ParamDefinitionVO[]; readonly?: boolean }>(),
+  {
+    modelValue: () => [],
+    readonly: false
+  }
+)
 const emit = defineEmits(['update:modelValue'])
 
 /** 与后端 ValueConverter 支持的类型保持一致 */

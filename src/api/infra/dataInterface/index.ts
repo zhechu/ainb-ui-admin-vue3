@@ -15,8 +15,13 @@ export type ParamDefinitionVO = {
 export type DataInterfaceVO = {
   id: number
   name: string
+  /** 责任人，手填字符串 */
+  owner?: string
   code: string
+  /** 来源：internal-内部 external-外部，字典 infra_form_type。字段名仍是 category，理由见 index.vue */
   category?: string
+  /** 标签，字典 infra_data_interface_tag。库里是逗号串，接口层收发都是数组 */
+  tags?: string[]
   /** 1-SQL 2-静态JSON 3-HTTP转发 */
   type: number
   status: number
@@ -30,6 +35,8 @@ export type DataInterfaceVO = {
   sqlStatementTypeName?: string
   hasWriteOperation?: boolean
   version?: number
+  /** 是否记录调用日志：0-否 1-是 */
+  logEnabled?: number
   remark?: string
   creator?: string
   createTime?: Date
@@ -49,8 +56,13 @@ export type DataInterfaceVO = {
 export type DataInterfaceSaveReqVO = {
   id?: number
   name: string
+  /** 责任人，手填字符串 */
+  owner?: string
   code: string
+  /** 来源：internal-内部 external-外部，字典 infra_form_type。字段名仍是 category，理由见 index.vue */
   category?: string
+  /** 标签，必填。后端 @NotEmpty，前端也在表单规则里拦一道，省一次往返 */
+  tags: string[]
   type: number
   status?: number
   dataSourceConfigId?: number
@@ -67,6 +79,8 @@ export type DataInterfaceSaveReqVO = {
   remark?: string
   changeSummary?: string
   riskConfirmed?: boolean
+  /** 是否记录调用日志：0-否 1-是。为空默认开启 */
+  logEnabled?: number
   /** 是否分页 */
   hasPage?: number
   /** COUNT SQL */
@@ -97,7 +111,10 @@ export type DataInterfaceLogVO = {
   requestParams?: string
   executeSql?: string
   success: boolean
+  /** 失败原因摘要，最长 500 字符 */
   errorMsg?: string
+  /** 失败原因完整内容，展开行显示 */
+  errorDetail?: string
   resultCount?: number
   duration: number
   userId?: number

@@ -78,6 +78,9 @@ export default {
   },
   setting: {
     projectSetting: 'Project setting',
+    homePortal: 'Home portal',
+    homePortalDefault: 'Default portal',
+    homePortalLinkTag: 'Link',
     theme: 'Theme',
     layout: 'Layout',
     systemTheme: 'System theme',
@@ -113,7 +116,9 @@ export default {
     uniqueOpened: 'Unique opened',
     tagsViewIcon: 'Tags view icon',
     reExperienced: 'Please exit the login experience again',
-    fixedMenu: 'Fixed menu'
+    fixedMenu: 'Fixed menu',
+    darkMode: 'Dark mode',
+    customColor: 'Custom color'
   },
   size: {
     default: 'Default',
@@ -151,7 +156,14 @@ export default {
     SmsSendMsg: 'code has been sent',
     resetPassword: 'Reset Password',
     resetPasswordSuccess: 'Reset Password Success',
-    invalidTenantName: 'Invalid Tenant Name'
+    invalidTenantName: 'Invalid Tenant Name',
+    slogan: 'AI-Native Low-Code Platform',
+    feature1Title: 'Online Modeling',
+    feature1Desc: 'Define tables and fields online; business data usable once modeled',
+    feature2Title: 'Visual Orchestration',
+    feature2Desc: 'Drag-and-drop form design; BPM and agent flows arranged graphically',
+    feature3Title: 'AI-Native',
+    feature3Desc: 'Agents, tools and prompts configurable; chat, knowledge base and imaging built in'
   },
   captcha: {
     verify: 'Verify',

@@ -174,6 +174,16 @@ const collect = () => {
 const validate = async () => {
   // 与 StepFormDesign.validate 一致：先收一次，保证校验与写回看到的是同一份内容
   collect()
+  // 引用了已删字段的联动规则：运行时被静默跳过，界面上看不出任何异常。
+  // 这条原先只有一个内联告警、不参与 validate()，而后端发布校验也不查联动的
+  // 字段存在性（只查环形赋值）—— 也就是说从保存到发布全程没有一道关卡拦得住。
+  // 跨字段校验那边后端是查的（FORM_DESIGN_VALIDATE_RULE_FIELD_NOT_EXISTS），
+  // 两者不对称，这里连同后端一起补齐
+  if (invalidRefs.value.length > 0) {
+    activeTab.value = 'logic'
+    message.error(`联动规则引用了已不存在的字段：${invalidRefs.value.join('、')}，请修改或删除`)
+    throw new Error('logic invalid field ref')
+  }
   const cycles = detectCycles(logicRules.value)
   if (cycles.length > 0) {
     activeTab.value = 'logic'

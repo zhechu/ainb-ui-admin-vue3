@@ -36,18 +36,21 @@
             <Icon icon="ep:upload" class="mr-5px" /> 导入模型
           </el-button>
         </el-form-item>
-        <el-form-item>
+        <el-form-item v-hasPermi="['bpm:category:create', 'bpm:category:update']">
           <el-dropdown @command="(command) => handleCommand(command)" placement="bottom-end">
             <el-button class="w-30px" plain>
               <Icon icon="ep:setting" />
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="handleCategoryAdd">
+                <el-dropdown-item command="handleCategoryAdd" v-hasPermi="['bpm:category:create']">
                   <Icon icon="ep:circle-plus" :size="13" class="mr-5px" />
                   新建分类
                 </el-dropdown-item>
-                <el-dropdown-item command="handleCategorySort">
+                <el-dropdown-item
+                  command="handleCategorySort"
+                  v-hasPermi="['bpm:category:update']"
+                >
                   <Icon icon="fa:sort-amount-desc" :size="13" class="mr-5px" />
                   分类排序
                 </el-dropdown-item>

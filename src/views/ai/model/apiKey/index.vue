@@ -61,7 +61,22 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" :stripe="true" :show-overflow-tooltip="true">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      class="xpy-list-table"
+      :stripe="true"
+      :show-overflow-tooltip="true"
+    >
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="所属平台" align="center" prop="platform">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.AI_PLATFORM" :value="scope.row.platform" />
@@ -70,29 +85,20 @@
       <el-table-column label="名称" align="center" prop="name" />
       <el-table-column label="密钥" align="center" prop="apiKey" />
       <el-table-column label="自定义 API URL" align="center" prop="url" />
-      <el-table-column label="状态" align="center" prop="status">
+      <el-table-column label="状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['ai:api-key:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center">
+      <!-- 实测：2 个两字按钮 34×2 + 12 间距 = 80px，加 .cell 左右内边距后 120 不溢出 -->
+      <el-table-column label="操作" align="center" width="120" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['ai:api-key:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['ai:api-key:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -113,6 +119,10 @@
 import { getIntDictOptions, DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import { ApiKeyApi, ApiKeyVO } from '@/api/ai/model/apiKey'
 import ApiKeyForm from './ApiKeyForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
+// CommonStatusEnum 不在自动导入清单里（自动导入只覆盖 vue / vue-router / useI18n / useMessage /
+// useTable / useCrudSchemas / DICT_TYPE / indexMethod / ElMessage / ElMessageBox 那一批）
+import { CommonStatusEnum } from '@/utils/constants'
 
 /** AI API 密钥 列表 */
 defineOptions({ name: 'AiApiKey' })
@@ -162,6 +172,41 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 
+/** 启用 / 禁用操作 */
+// 启用/禁用做成状态列上的开关。此前改 status 只能进「编辑」弹窗，而 AiApiKeySaveReqVO
+// 每个字段都是 @NotNull/@NotEmpty ⟹ 必须把整行（含密钥）重新提交一遍。
+// 🔴 走专用的 update-status 端点还有一层安全理由，见 ApiKeyApi.updateStatus 的注释：
+//    列表行的 apiKey 是 @SliderDesensitize 打码过的，整行回传会把掩码串当真密钥加密落库。
+// 🔴 只在「禁用」方向二次确认：禁用一个密钥的爆炸半径是「挂在它下面的全部模型」，
+//    比禁用单个模型大得多，必须先说清楚。启用没有副作用，不打断人。
+//    后果核实过出处：AiModelFailoverServiceImpl#buildCandidateChain 第 2 步 removeIf 掉密钥非启用的模型
+//    （选择期就剔除，不是运行时才炸）；#buildPinnedChain 同样校验密钥状态，不可用就返回空链
+//    ⟹ 调用方抛 MODEL_TASK_PINNED_UNAVAILABLE，按「同一任务只用一个模型」的口径刻意不切换。
+// 🔴 顺带的一个后果：失败冷却的记忆按「model.update_time|apiKey.update_time」这个配置指纹判活，
+//    所以点一下「启用」会连带清掉挂在它下面所有模型的失败冷却，它们立刻重新纳入候选，不必干等 30 分钟。
+const statusLoadingId = ref<number>()
+const handleUpdateStatus = async (row: ApiKeyVO, next: boolean) => {
+  // StatusSwitch 只吐 boolean（它不知道 COMMON_STATUS 这套编码），状态码在这里落回枚举。
+  // 下面整段按 status 判的逻辑与改造前逐字一致
+  const status = next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+  try {
+    if (status === CommonStatusEnum.DISABLE) {
+      await message.confirm(
+        `确认禁用密钥「${row.name}」？禁用后挂在它下面的模型会全部从 AI 调用的候选链里剔除` +
+          `（不只是当前这一个模型）；已经钉住这些模型的进行中任务不会切换，而是直接报` +
+          `「本次任务已钉住模型，它现在不可用」。`
+      )
+    }
+    statusLoadingId.value = row.id
+    await ApiKeyApi.updateStatus(row.id, status)
+    message.success(status === CommonStatusEnum.ENABLE ? '启用成功' : '禁用成功')
+    await getList()
+  } catch {
+  } finally {
+    statusLoadingId.value = undefined
+  }
+}
+
 /** 删除按钮操作 */
 const handleDelete = async (id: number) => {
   try {
@@ -174,6 +219,27 @@ const handleDelete = async (id: number) => {
     await getList()
   } catch {}
 }
+
+/** 操作列 */
+// ⚠️ 必须是 setup 层的常量数组，不能写成 :buttons="makeButtons(scope.row)"：
+//    那样每行每次渲染都会新建数组，TableActions 里 computed 的依赖追踪也会退化。
+// statusLoadingId 刻意不在这里出现 —— 它只喂状态列的 StatusSwitch，本页没有别的按行动作。
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['ai:api-key:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['ai:api-key:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

@@ -92,7 +92,22 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" :show-overflow-tooltip="true" :stripe="true">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      :show-overflow-tooltip="true"
+      :stripe="true"
+      class="xpy-list-table"
+    >
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column align="center" label="编号" prop="id" />
       <el-table-column align="center" label="应用名" prop="name" />
       <el-table-column align="center" label="社交平台" prop="socialType">
@@ -118,24 +133,9 @@
         prop="createTime"
         width="180px"
       />
-      <el-table-column align="center" label="操作">
+      <el-table-column label="操作" align="center" width="120">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:social-client:update']"
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-          >
-            编辑
-          </el-button>
-          <el-button
-            v-hasPermi="['system:social-client:delete']"
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -157,6 +157,7 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as SocialClientApi from '@/api/system/social/client'
 import SocialClientForm from './SocialClientForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SocialClient' })
 
@@ -219,6 +220,23 @@ const handleDelete = async (id: number) => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:social-client:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:social-client:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

@@ -85,6 +85,17 @@ export const generateRoute = (routes: AppCustomRouteRecordRaw[]): AppRouteRecord
     if (pathRoute.path) {
       route.path = pathRoute.path
     }
+    // 🔴 顶级路由的 path 必须以 / 开头：vue-router 对根级路由记录是硬校验，菜单里一旦存了
+    //    不带斜杠的顶级地址，addRoute 会抛错中断整棵动态路由装配——表现为登录后永远停在
+    //    登录页，且只能改库修数据。在这里兜底补斜杠，脏数据不至于瘫痪全站。
+    if (
+      Number(route.parentId) === 0 &&
+      route.path &&
+      !isUrl(route.path) &&
+      !route.path.startsWith('/')
+    ) {
+      route.path = `/${route.path}`
+    }
     // 1. 生成 meta 菜单元数据
     const meta = {
       title: route.name,

@@ -12,11 +12,14 @@ const appStore = useAppStore()
 const currentSize = computed(() => appStore.getCurrentSize)
 const greyMode = computed(() => appStore.getGreyMode)
 
-// 未登录（如登录页）时按浏览器偏好给个初始主题；已登录时 loadUserThemeConfig 已在
-// router.isReady() 阶段完成，themeConfigLoaded 为 true，这里不会覆盖用户配置。
+// 未登录（如登录页）时的初始主题：优先用设备级「上次主题」缓存，让登录页与登录后
+// 观感一致、避免登录瞬间跳变；无缓存才回落浏览器深浅色偏好。
+// 已登录时 loadUserThemeConfig 已在 router.isReady() 阶段完成，themeConfigLoaded 为 true，这里不会覆盖。
 const setDefaultTheme = () => {
   if (!appStore.getThemeConfigLoaded) {
-    appStore.setIsDark(isDark())
+    if (!appStore.applyGuestTheme()) {
+      appStore.setIsDark(isDark())
+    }
   }
 }
 setDefaultTheme()

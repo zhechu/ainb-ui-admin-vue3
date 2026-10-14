@@ -121,7 +121,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '表单预览',
-          activeMenu: '/infra/form-design'
+          // 表单设计菜单已归入「在线开发」目录，列表页完整路径由 /infra/form-design/list 变为 /infra/online/list
+          activeMenu: '/infra/online/list'
         }
       }
     ]
@@ -143,7 +144,54 @@ const remainingRouter: AppRouteRecordRaw[] = [
           hidden: true,
           canTo: true,
           title: '门户设计器',
-          activeMenu: '/infra/portal'
+          // 门户设计菜单已归入「在线开发」目录，完整路径由 /infra/portal 变为 /infra/online/portal
+          activeMenu: '/infra/online/portal'
+        }
+      }
+    ]
+  },
+  {
+    path: '/agent-workflow',
+    component: Layout,
+    name: 'AgentWorkflowCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'editor',
+        component: () => import('@/views/agent/workflow/editor/index.vue'),
+        name: 'AgentWorkflowEditor',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '流程编排设计器',
+          // 「流程编排」菜单在 /ai/agent/workflow（DB 菜单驱动，2026-09-29 起挂在「AI」下），设计器是它的隐藏整页子页
+          activeMenu: '/ai/agent/workflow'
+        }
+      }
+    ]
+  },
+  {
+    path: '/agent-def',
+    component: Layout,
+    name: 'AgentDefCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'editor',
+        component: () => import('@/views/agent/def/editor/index.vue'),
+        name: 'AgentDefEditor',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '智能体设计器',
+          // 「智能体管理」菜单在 /ai/agent/def（DB 菜单驱动，2026-09-29 起挂在「AI」下），设计器是它的隐藏整页子页
+          activeMenu: '/ai/agent/def'
         }
       }
     ]
@@ -172,6 +220,43 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           icon: '',
           activeMenu: '/system/dict'
+        }
+      }
+    ]
+  },
+  {
+    path: '/system/role',
+    component: Layout,
+    name: 'SystemRoleGrantL',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'grant',
+        component: () => import('@/views/system/role/grant/index.vue'),
+        name: 'SystemRoleGrant',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          icon: 'ep:key',
+          title: '资源授权',
+          // 角色管理菜单挂在「系统管理 → 组织权限」目录下，实际访问路径带 org-permission 段
+          activeMenu: '/system/org-permission/role'
+        }
+      },
+      {
+        path: 'member',
+        component: () => import('@/views/system/role/member/index.vue'),
+        name: 'SystemRoleMember',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          icon: 'ep:user',
+          title: '成员配置',
+          activeMenu: '/system/org-permission/role'
         }
       }
     ]
@@ -404,156 +489,6 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
-    path: '/mall/product', // 商品中心
-    component: Layout,
-    name: 'ProductCenter',
-    meta: {
-      hidden: true
-    },
-    children: [
-      {
-        path: 'spu/add',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
-        name: 'ProductSpuAdd',
-        meta: {
-          noCache: false, // 需要缓存
-          hidden: true,
-          canTo: true,
-          icon: 'ep:edit',
-          title: '商品添加',
-          activeMenu: '/mall/product/spu'
-        }
-      },
-      {
-        path: 'spu/edit/:id(\\d+)',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
-        name: 'ProductSpuEdit',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: 'ep:edit',
-          title: '商品编辑',
-          activeMenu: '/mall/product/spu'
-        }
-      },
-      {
-        path: 'spu/detail/:id(\\d+)',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
-        name: 'ProductSpuDetail',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: 'ep:view',
-          title: '商品详情',
-          activeMenu: '/mall/product/spu'
-        }
-      },
-      {
-        path: 'property/value/:propertyId(\\d+)',
-        component: () => import('@/views/mall/product/property/value/index.vue'),
-        name: 'ProductPropertyValue',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: 'ep:view',
-          title: '商品属性值',
-          activeMenu: '/product/property'
-        }
-      }
-    ]
-  },
-  {
-    path: '/mall/trade', // 交易中心
-    component: Layout,
-    name: 'TradeCenter',
-    meta: {
-      hidden: true
-    },
-    children: [
-      {
-        path: 'order/detail/:id(\\d+)',
-        component: () => import('@/views/mall/trade/order/detail/index.vue'),
-        name: 'TradeOrderDetail',
-        meta: { title: '订单详情', icon: 'ep:view', activeMenu: '/mall/trade/order' }
-      },
-      {
-        path: 'after-sale/detail/:id(\\d+)',
-        component: () => import('@/views/mall/trade/afterSale/detail/index.vue'),
-        name: 'TradeAfterSaleDetail',
-        meta: { title: '退款详情', icon: 'ep:view', activeMenu: '/mall/trade/after-sale' }
-      }
-    ]
-  },
-  {
-    path: '/member',
-    component: Layout,
-    name: 'MemberCenter',
-    meta: { hidden: true },
-    children: [
-      {
-        path: 'user/detail/:id',
-        name: 'MemberUserDetail',
-        meta: {
-          title: '会员详情',
-          noCache: true,
-          hidden: true
-        },
-        component: () => import('@/views/member/user/detail/index.vue')
-      }
-    ]
-  },
-  {
-    path: '/pay',
-    component: Layout,
-    name: 'pay',
-    meta: { hidden: true },
-    children: [
-      {
-        path: 'cashier',
-        name: 'PayCashier',
-        meta: {
-          title: '收银台',
-          noCache: true,
-          hidden: true
-        },
-        component: () => import('@/views/pay/cashier/index.vue')
-      }
-    ]
-  },
-  {
-    path: '/diy',
-    name: 'DiyCenter',
-    meta: { hidden: true },
-    component: Layout,
-    children: [
-      {
-        path: 'template/decorate/:id',
-        name: 'DiyTemplateDecorate',
-        meta: {
-          title: '模板装修',
-          noCache: false,
-          hidden: true,
-          activeMenu: '/mall/promotion/diy-template/diy-template'
-        },
-        component: () => import('@/views/mall/promotion/diy/template/decorate.vue')
-      },
-      {
-        path: 'page/decorate/:id',
-        name: 'DiyPageDecorate',
-        meta: {
-          title: '页面装修',
-          noCache: false,
-          hidden: true,
-          activeMenu: '/mall/promotion/diy-template/diy-page'
-        },
-        component: () => import('@/views/mall/promotion/diy/page/decorate.vue')
-      }
-    ]
-  },
-  {
     path: '/crm',
     component: Layout,
     name: 'CrmCenter',
@@ -724,122 +659,6 @@ const remainingRouter: AppRouteRecordRaw[] = [
           noCache: true,
           hidden: true,
           activeMenu: '/ai/knowledge'
-        }
-      },
-      {
-        path: 'console/workflow/create',
-        component: () => import('@/views/ai/workflow/form/index.vue'),
-        name: 'AiWorkflowCreate',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          title: '设计 AI 工作流',
-          activeMenu: '/ai/console/workflow'
-        }
-      },
-      {
-        path: 'console/workflow/:type/:id',
-        component: () => import('@/views/ai/workflow/form/index.vue'),
-        name: 'AiWorkflowUpdate',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          title: '设计 AI 工作流',
-          activeMenu: '/ai/console/workflow'
-        }
-      }
-    ]
-  },
-  {
-    path: '/iot',
-    component: Layout,
-    name: 'IOT',
-    meta: {
-      hidden: true
-    },
-    children: [
-      {
-        path: 'product/product/detail/:id',
-        name: 'IoTProductDetail',
-        meta: {
-          title: '产品详情',
-          noCache: true,
-          hidden: true,
-          activeMenu: '/iot/device/product'
-        },
-        component: () => import('@/views/iot/product/product/detail/index.vue')
-      },
-      {
-        path: 'device/detail/:id',
-        name: 'IoTDeviceDetail',
-        meta: {
-          title: '设备详情',
-          noCache: true,
-          hidden: true,
-          activeMenu: '/iot/device/device'
-        },
-        component: () => import('@/views/iot/device/device/detail/index.vue')
-      },
-      {
-        path: 'ota/operation/firmware/detail/:id',
-        name: 'IoTOtaFirmwareDetail',
-        meta: {
-          title: '固件详情',
-          noCache: true,
-          hidden: true,
-          activeMenu: '/iot/operation/ota/firmware'
-        },
-        component: () => import('@/views/iot/ota/firmware/detail/index.vue')
-      }
-    ]
-  },
-  {
-    path: '/mes',
-    component: Layout,
-    name: 'MesWmRouter',
-    meta: {
-      hidden: true
-    },
-    children: [
-      {
-        path: 'wm/warehouse/location',
-        component: () => import('@/views/mes/wm/warehouse/location/index.vue'),
-        name: 'MesWmLocation',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: '',
-          title: '库区设置',
-          activeMenu: '/mes/wm/warehouse'
-        }
-      },
-      {
-        path: 'wm/warehouse/area',
-        component: () => import('@/views/mes/wm/warehouse/area/index.vue'),
-        name: 'MesWmArea',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: '',
-          title: '库位设置',
-          activeMenu: '/mes/wm/warehouse'
-        }
-      },
-      {
-        path: 'pro/task/gantt-edit',
-        component: () => import('@/views/mes/pro/task/edit/index.vue'),
-        name: 'MesProTaskGanttEdit',
-        meta: {
-          noCache: true,
-          hidden: true,
-          canTo: true,
-          icon: '',
-          title: '甘特图编辑',
-          activeMenu: '/mes/pro/task'
         }
       }
     ]

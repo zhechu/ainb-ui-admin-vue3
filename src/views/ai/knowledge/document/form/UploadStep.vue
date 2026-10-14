@@ -199,7 +199,11 @@ const handleUploadSuccess = (response, file) => {
  * @param file 上传的文件
  */
 const handleUploadError = (error, file) => {
-  message.error(`文件 ${file.name} 上传失败: ${error}`)
+  // 🔴 取 .message 而不是直接插值 error：走后端上传时（useUpload 的模式二）这个值是 axios 拦截器
+  //    reject 出来的，C2 之后它是一个 Error —— 直接 `${error}` 会渲染成「上传失败: Error: 没有权限」，
+  //    把类名糊在真因前面。?? 兜住非 Error 的形态（el-upload 自己的 UploadAjaxError 等）。
+  const reason = error?.message ?? error
+  message.error(`文件 ${file.name} 上传失败: ${reason}`)
   // 减少上传中的文件计数
   uploadingCount.value = Math.max(0, uploadingCount.value - 1)
 }

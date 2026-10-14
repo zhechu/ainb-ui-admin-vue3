@@ -20,12 +20,12 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="角色标识" prop="code">
+      <el-form-item label="角色编码" prop="code">
         <el-input
           v-model="queryParams.code"
           class="!w-240px"
           clearable
-          placeholder="请输入角色标识"
+          placeholder="请输入角色编码"
           @keyup.enter="handleQuery"
         />
       </el-form-item>
@@ -92,23 +92,49 @@
     </el-form>
   </ContentWrap>
 
-  <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
-      <el-table-column type="selection" width="55" />
-      <el-table-column align="center" label="角色编号" prop="id" />
-      <el-table-column align="center" label="角色名称" prop="name" />
-      <el-table-column label="角色类型" align="center" prop="type">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      class="xpy-list-table"
+      stripe
+      row-key="id"
+      @selection-change="handleRowCheckboxChange"
+    >
+      <el-table-column type="selection" width="45" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        class-name="col-index"
+        label-class-name="col-index"
+        :index="indexMethod(queryParams)"
+      />
+      <!-- 这里不显示「角色编号」：角色是拿名称和编码认的，自增 id 对使用者没有意义。
+           ⚠️ 上面 el-table 的 row-key="id" 必须保留 —— 它引用的是行数据的 id 字段，不是这一列 -->
+      <el-table-column label="角色名称" prop="name" min-width="140" show-overflow-tooltip />
+      <el-table-column align="center" label="角色类型" prop="type" width="110">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.SYSTEM_ROLE_TYPE" :value="scope.row.type" />
         </template>
       </el-table-column>
-      <el-table-column align="center" label="角色标识" prop="code" />
-      <el-table-column align="center" label="显示顺序" prop="sort" />
-      <el-table-column align="center" label="备注" prop="remark" />
-      <el-table-column align="center" label="状态" prop="status">
+      <el-table-column label="角色编码" prop="code" min-width="140" show-overflow-tooltip />
+      <el-table-column align="center" label="显示顺序" prop="sort" width="90" />
+      <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip>
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <span v-if="scope.row.remark">{{ scope.row.remark }}</span>
+          <span v-else class="text-gray-400">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column align="center" label="状态" prop="status" width="90">
+        <template #default="scope">
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:role:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column
@@ -116,50 +142,15 @@
         align="center"
         label="创建时间"
         prop="createTime"
-        width="180"
+        width="170"
       />
-      <el-table-column :width="300" align="center" label="操作">
+      <!-- 实测：编辑 成员 资源授权 删除 = 224px（含 .cell 左右内边距），220 会折行 -->
+      <el-table-column align="center" fixed="right" label="操作" width="230">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:role:update']"
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-          >
-            编辑
-          </el-button>
-          <el-button
-            v-hasPermi="['system:permission:assign-role-menu']"
-            link
-            preIcon="ep:basketball"
-            title="菜单权限"
-            type="primary"
-            @click="openAssignMenuForm(scope.row)"
-          >
-            菜单权限
-          </el-button>
-          <el-button
-            v-hasPermi="['system:permission:assign-role-data-scope']"
-            link
-            preIcon="ep:coin"
-            title="数据权限"
-            type="primary"
-            @click="openDataPermissionForm(scope.row)"
-          >
-            数据权限
-          </el-button>
-          <el-button
-            v-hasPermi="['system:role:delete']"
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
-    <!-- 分页 -->
     <Pagination
       v-model:limit="queryParams.pageSize"
       v-model:page="queryParams.pageNo"
@@ -170,24 +161,21 @@
 
   <!-- 表单弹窗：添加/修改 -->
   <RoleForm ref="formRef" @success="getList" />
-  <!-- 表单弹窗：菜单权限 -->
-  <RoleAssignMenuForm ref="assignMenuFormRef" @success="getList" />
-  <!-- 表单弹窗：数据权限 -->
-  <RoleDataPermissionForm ref="dataPermissionFormRef" @success="getList" />
 </template>
 <script lang="ts" setup>
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import download from '@/utils/download'
 import * as RoleApi from '@/api/system/role'
+import { CommonStatusEnum } from '@/utils/constants'
 import RoleForm from './RoleForm.vue'
-import RoleAssignMenuForm from './RoleAssignMenuForm.vue'
-import RoleDataPermissionForm from './RoleDataPermissionForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemRole' })
 
 const message = useMessage() // 消息弹窗
 const { t } = useI18n() // 国际化
+const router = useRouter()
 
 const loading = ref(true) // 列表的加载中
 const total = ref(0) // 列表的总页数
@@ -233,16 +221,30 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 
-/** 数据权限操作 */
-const dataPermissionFormRef = ref()
-const openDataPermissionForm = async (row: RoleApi.RoleVO) => {
-  dataPermissionFormRef.value.open(row)
+/** 成员配置：页内跳转到独立的成员页（与「资源授权」一致，不弹窗） */
+const openMemberPage = (row: RoleApi.RoleVO) => {
+  router.push({ name: 'SystemRoleMember', query: { roleId: String(row.id) } })
 }
 
-/** 菜单权限操作 */
-const assignMenuFormRef = ref()
-const openAssignMenuForm = async (row: RoleApi.RoleVO) => {
-  assignMenuFormRef.value.open(row)
+/** 资源授权：页内跳转到独立的授权页面（不弹窗） */
+const openGrantPage = (row: RoleApi.RoleVO) => {
+  router.push({ name: 'SystemRoleGrant', query: { roleId: String(row.id) } })
+}
+
+/** 状态列快捷开关：走整行更新接口，与编辑表单保存同一条后端路径 */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await RoleApi.updateRole({
+      ...row,
+      status: next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    })
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
 }
 
 /** 删除按钮操作 */
@@ -257,6 +259,35 @@ const handleDelete = async (id: number) => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['system:role:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'member',
+    label: '成员',
+    permission: ['system:permission:assign-user-role'],
+    onClick: (row) => openMemberPage(row)
+  },
+  {
+    key: 'grant',
+    label: '资源授权',
+    permission: ['system:grant:query'],
+    onClick: (row) => openGrantPage(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:role:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 批量删除按钮操作 */
 const checkedIds = ref<number[]>([])

@@ -103,9 +103,26 @@ const include = [
   'element-plus/es/components/footer/style/css',
   'element-plus/es/components/empty/style/css',
   'element-plus/es/components/mention/style/css',
-  'element-plus/es/components/progress/style/css'
+  'element-plus/es/components/progress/style/css',
+  // form-create / designer 已整体 vendored 到 src/lib，下面这些是它们仅存的外部依赖。
+  // codemirror5 是 CJS，且 designer 用的是 lib/ mode/ addon/ 这些深层子路径，
+  // 只写包名覆盖不到，必须逐条列出，否则 dev 首次进设计器会触发二次预构建刷页。
+  'codemirror5/lib/codemirror',
+  'codemirror5/mode/javascript/javascript',
+  'codemirror5/addon/hint/show-hint',
+  'codemirror5/addon/hint/javascript-hint',
+  'js-beautify'
 ]
 
+// form-create 与 designer 均已 vendored 到 src/lib（见各自的 VENDOR.md），
+// node_modules 下已不存在 @form-create/*，无需再排除。
+//
+// ⚠️ 留给后来人：若将来又引入某个依赖 @form-create/* 的 npm 包，必须把它加进这里。
+// 依赖预构建会用 esbuild 打包该包，它对 @form-create/element-ui 的引用会被
+// vite.config.ts 的 alias 指向 src/lib，于是 esbuild 把整棵 vendored 源码树吸进
+// 预构建产物；其中的 .jsx 由 esbuild 以 jsx:'preserve' 处理，vue-jsx 插件没机会跑，
+// 产物里留着裸 JSX，dev 下整个应用白屏——而生产构建不走预构建，会一路绿。
+// 详见 docs/form-create-源码集成方案.md §7.2a。
 const exclude: string[] = []
 
 export { include, exclude }

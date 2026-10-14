@@ -26,9 +26,12 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
       <el-table-column type="selection" width="55" />
-      <el-table-column label="主键编号" align="center" prop="id" />
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod()" class-name="col-index"
+        label-class-name="col-index"
+      />
+      <!-- 这里不显示「主键编号」：数据源是拿名称认的，id 只在编辑弹窗的 URL 里有意义 -->
       <el-table-column label="数据源名称" align="center" prop="name" />
       <el-table-column label="数据源连接" align="center" prop="url" :show-overflow-tooltip="true" />
       <el-table-column label="用户名" align="center" prop="username" />
@@ -39,7 +42,7 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" fixed="right" width="140">
         <template #default="scope">
           <el-button
             link

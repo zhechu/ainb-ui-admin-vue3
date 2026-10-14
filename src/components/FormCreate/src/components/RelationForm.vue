@@ -16,12 +16,7 @@
       @change="handleChange"
       @visible-change="handleVisibleChange"
     >
-      <el-option
-        v-for="item in options"
-        :key="item.pk"
-        :label="item.label"
-        :value="item.pk"
-      />
+      <el-option v-for="item in options" :key="item.pk" :label="item.label" :value="item.pk" />
     </el-select>
 
     <!-- 弹窗表格：能显示多列，适合「光看一个名称选不出来」的场景 -->
@@ -150,6 +145,15 @@ const props = withDefaults(
     mode?: string
     /** 带出字段映射 */
     fieldMappings?: FieldMapping[]
+    /**
+     * 本控件长在哪张表单上。由渲染页的 applyRelationSource 注入
+     *
+     * 取候选数据要用它 —— REFERENCE 接口的入参是「源表单 + 控件字段」，
+     * 目标表单与可见字段由服务端从已发布配置里读，前端传不了
+     */
+    sourceFormCode?: string
+    /** 本控件的字段名，同样由 applyRelationSource 注入 */
+    sourceField?: string
     placeholder?: string
     disabled?: boolean
     /** form-create 注入，用来给带出字段赋值 */
@@ -234,6 +238,27 @@ const loadTargetMeta = async () => {
 /** 按关键字查目标表单的数据。关键字为空时取第一页 */
 const queryRows = async (keywordText: string, pageNo = 1, pageSize = OPTION_PAGE_SIZE) => {
   if (!props.targetFormCode) return { list: [], total: 0 }
+
+  // 下拉选择走 REFERENCE 弱查询：它只要目标表单的 reference 权限，
+  // 而不是完整的 query。这正是「能填订单但不该浏览客户列表」那类用户
+  // 能选到客户的原因。
+  //
+  // ⚠️ 只在「有源表单上下文 + 第一页」时走它。REFERENCE 按设计不支持翻页
+  // （支持了就等于 query），所以弹窗表格那条路径仍然走分页接口 ——
+  // 那条路径本来就是在浏览列表，要 query 权限是合理的
+  if (props.sourceFormCode && props.sourceField && pageNo === 1) {
+    const rows = await RuntimeApi.getReferenceOptions(
+      props.sourceFormCode,
+      props.sourceField,
+      keywordText || undefined,
+      pageSize
+    )
+    const list = (rows ?? []) as Record<string, any>[]
+    // REFERENCE 不返回总数 —— 它不分页，也就没有「共几条」可言。
+    // 这里拿条数充数只是为了让调用方的解构不报错
+    return { list, total: list.length }
+  }
+
   // 关键字打在显示字段上。没配显示字段就不加条件 —— 打在主键上搜不出东西
   const conditions =
     keywordText && props.displayField

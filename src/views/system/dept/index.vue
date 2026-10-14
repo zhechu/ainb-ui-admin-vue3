@@ -8,19 +8,19 @@
       :inline="true"
       label-width="68px"
     >
-      <el-form-item label="部门名称" prop="name">
+      <el-form-item label="组织名称" prop="name">
         <el-input
           v-model="queryParams.name"
-          placeholder="请输入部门名称"
+          placeholder="请输入组织名称"
           clearable
           @keyup.enter="handleQuery"
           class="!w-240px"
         />
       </el-form-item>
-      <el-form-item label="部门状态" prop="status">
+      <el-form-item label="组织状态" prop="status">
         <el-select
           v-model="queryParams.status"
-          placeholder="请选择部门状态"
+          placeholder="请选择组织状态"
           clearable
           class="!w-240px"
         >
@@ -68,18 +68,31 @@
       :default-expand-all="isExpandAll"
       v-if="refreshTable"
       @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
     >
       <el-table-column type="selection" width="55" />
-      <el-table-column prop="name" label="部门名称" />
+      <el-table-column prop="name" label="组织名称" />
+      <el-table-column prop="code" label="组织编码" show-overflow-tooltip>
+        <template #default="scope">
+          <!-- 存量组织没有编码（后端刻意不回填），渲染 '-' 而不是空白：
+               空白会被读成「这一列没数据」，'-' 才是「这一行还没补录」 -->
+          {{ scope.row.code || '-' }}
+        </template>
+      </el-table-column>
       <el-table-column prop="leader" label="负责人">
         <template #default="scope">
           {{ userList.find((user) => user.id === scope.row.leaderUserId)?.nickname }}
         </template>
       </el-table-column>
       <el-table-column prop="sort" label="排序" />
-      <el-table-column prop="status" label="状态">
+      <el-table-column prop="status" label="状态" width="90">
         <template #default="scope">
-          <dict-tag :type="DICT_TYPE.COMMON_STATUS" :value="scope.row.status" />
+          <StatusSwitch
+            :model-value="scope.row.status === CommonStatusEnum.ENABLE"
+            :loading="statusLoadingId === scope.row.id"
+            :permission="['system:dept:update']"
+            @change="(next) => handleUpdateStatus(scope.row, next)"
+          />
         </template>
       </el-table-column>
       <el-table-column
@@ -89,24 +102,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="120">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:dept:update']"
-          >
-            修改
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:dept:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -120,8 +118,10 @@ import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import { handleTree } from '@/utils/tree'
 import * as DeptApi from '@/api/system/dept'
+import { CommonStatusEnum } from '@/utils/constants'
 import DeptForm from './DeptForm.vue'
 import * as UserApi from '@/api/system/user'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemDept' })
 
@@ -141,7 +141,7 @@ const isExpandAll = ref(true) // 是否展开，默认全部展开
 const refreshTable = ref(true) // 重新渲染表格状态
 const userList = ref<UserApi.UserVO[]>([]) // 用户列表
 
-/** 查询部门列表 */
+/** 查询组织列表 */
 const getList = async () => {
   loading.value = true
   try {
@@ -179,6 +179,28 @@ const openForm = (type: string, id?: number) => {
   formRef.value.open(type, id)
 }
 
+/**
+ * 状态列快捷开关：走 /update-status 专用接口，只提交 id + status。
+ *
+ * 不复用整行更新（updateDept）：组织编码在后端是必填的，而存量组织行的 code 为 NULL，
+ * 整行提交会被 Bean Validation 拦成 400 —— 开关点了就报错，且要逐个补录编码才能恢复。
+ * 专用接口结构性地绕开这个冲突，与租户、租户套餐的状态开关同一条口径
+ */
+const statusLoadingId = ref<number | null>(null)
+const handleUpdateStatus = async (row: any, next: boolean) => {
+  statusLoadingId.value = row.id
+  try {
+    await DeptApi.updateDeptStatus(
+      row.id,
+      next ? CommonStatusEnum.ENABLE : CommonStatusEnum.DISABLE
+    )
+    message.success(next ? '已开启' : '已关闭')
+    await getList()
+  } finally {
+    statusLoadingId.value = null
+  }
+}
+
 /** 删除按钮操作 */
 const handleDelete = async (id: number) => {
   try {
@@ -210,6 +232,23 @@ const handleDeleteBatch = async () => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:dept:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:dept:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

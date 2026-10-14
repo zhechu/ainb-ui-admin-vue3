@@ -1,5 +1,20 @@
 <template>
-  <Dialog v-model="dialogVisible" :title="dialogTitle" width="640px">
+  <ContentWrap>
+    <!-- 顶部操作栏：配置项较多，页内展示，保存/返回固定在顶部便于随时操作 -->
+    <div class="bt-form-header mb-15px flex items-center justify-between">
+      <div class="flex items-center">
+        <el-button link @click="handleCancel">
+          <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
+        </el-button>
+        <span class="bt-form-title ml-8px">{{ formTitle }}</span>
+      </div>
+      <div class="flex items-center">
+        <el-button @click="handleCancel">取 消</el-button>
+        <el-button type="primary" :loading="formLoading" @click="submitForm">保 存</el-button>
+      </div>
+    </div>
+
+    <!-- 控件较多，分两栏：左栏基本信息、右栏生成配置，减少上下滚动 -->
     <el-form
       ref="formRef"
       v-loading="formLoading"
@@ -7,166 +22,183 @@
       :rules="formRules"
       label-width="100px"
     >
-      <el-form-item label="模板名称" prop="name">
-        <el-input v-model="formData.name" placeholder="请输入模板名称" maxlength="100" />
-      </el-form-item>
+      <el-row :gutter="24">
+        <el-col :span="12">
+          <div class="bt-col-title">基本信息</div>
+          <el-form-item label="模板名称" prop="name">
+            <el-input v-model="formData.name" placeholder="请输入模板名称" maxlength="100" />
+          </el-form-item>
 
-      <el-form-item label="模板编码" prop="code">
-        <el-input
-          v-model="formData.code"
-          placeholder="只允许字母、数字、下划线"
-          maxlength="100"
-          :disabled="formType === 'update'"
-        />
-        <div class="form-tip">
-          表单与其它模块通过它引用本模板。<b>保存后不建议修改</b>——
-          它同时是流水计数的标识，改了等于换一个计数器，流水会从头开始。
-        </div>
-      </el-form-item>
-
-      <el-form-item label="分类" prop="category">
-        <el-select v-model="formData.category" placeholder="请选择分类" clearable class="w-full">
-          <el-option
-            v-for="dict in getStrDictOptions(DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY)"
-            :key="dict.value"
-            :label="dict.label"
-            :value="dict.value"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="生成方式" prop="genType">
-        <el-radio-group v-model="formData.genType">
-          <el-radio v-for="item in GEN_TYPE_OPTIONS" :key="item.value" :value="item.value">
-            {{ item.label }}
-          </el-radio>
-        </el-radio-group>
-      </el-form-item>
-
-      <el-form-item label="前缀" prop="prefix">
-        <el-input v-model="formData.prefix" placeholder="如 CG" maxlength="50" clearable />
-      </el-form-item>
-
-      <!-- 时间流水 -->
-      <template v-if="formData.genType === GEN_TYPE.TIME">
-        <el-form-item label="日期格式" prop="dateFormat">
-          <el-select v-model="formData.dateFormat" class="w-full">
-            <el-option
-              v-for="item in DATE_FORMAT_OPTIONS"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
+          <el-form-item label="模板编码" prop="code">
+            <el-input
+              v-model="formData.code"
+              placeholder="只允许字母、数字、下划线"
+              maxlength="100"
+              :disabled="formType === 'update'"
             />
-          </el-select>
-        </el-form-item>
+            <div class="form-tip">
+              表单与其它模块通过它引用本模板。<b>保存后不建议修改</b>——
+              它同时是流水计数的标识，改了等于换一个计数器，流水会从头开始。
+            </div>
+          </el-form-item>
 
-        <el-form-item label="流水位数" prop="digit">
-          <el-input-number v-model="formData.digit" :min="1" :max="9" :precision="0" />
-          <div class="form-tip">
-            流水值超过该位数时不会截断，而是输出更长的号码（截断会产生重复号），
-            届时日志里会有告警提示调大位数。
-          </div>
-        </el-form-item>
+          <el-form-item label="分类" prop="category">
+            <el-select v-model="formData.category" placeholder="请选择分类" clearable class="w-full">
+              <el-option
+                v-for="dict in getStrDictOptions(DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY)"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
+          </el-form-item>
 
-        <el-form-item label="起始值" prop="startNumber">
-          <el-input-number v-model="formData.startNumber" :min="0" :precision="0" />
-        </el-form-item>
+          <el-form-item label="排序" prop="sort">
+            <el-input-number v-model="formData.sort" :min="0" :precision="0" />
+          </el-form-item>
 
-        <el-form-item label="步长" prop="step">
-          <el-input-number v-model="formData.step" :min="1" :precision="0" />
-        </el-form-item>
+          <el-form-item label="状态" prop="status">
+            <el-radio-group v-model="formData.status">
+              <el-radio :value="0">开启</el-radio>
+              <el-radio :value="1">停用</el-radio>
+            </el-radio-group>
+          </el-form-item>
 
-        <el-form-item label="重置周期" prop="resetCycle">
-          <el-select v-model="formData.resetCycle" class="w-full">
-            <el-option
-              v-for="item in RESET_CYCLE_OPTIONS"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-          <div class="form-tip">
-            「跟随日期格式」按日期的最小单位推导：含日按天、含月按月、含年按年。
-            注意到秒、到毫秒的格式仍然<b>按天</b>重置——按秒重置会让每张单子的流水都是 1，等于没有流水。
-          </div>
-        </el-form-item>
+          <el-form-item label="备注" prop="remark">
+            <el-input v-model="formData.remark" type="textarea" :rows="4" maxlength="500" />
+          </el-form-item>
+        </el-col>
 
-        <el-form-item label="流水分组" prop="groupByPrefix">
-          <el-switch v-model="formData.groupByPrefix" />
-          <div class="form-tip">
-            开启后<b>按前缀分别计数</b>。前缀是固定字符串时开不开都一样；
-            它主要为表单里「前缀取自客户编号」这类场景准备——那时每个客户各自从 1 开始。
-          </div>
-        </el-form-item>
-      </template>
+        <el-col :span="12">
+          <div class="bt-col-title">生成配置</div>
+          <el-form-item label="生成方式" prop="genType">
+            <el-radio-group v-model="formData.genType">
+              <el-radio v-for="item in GEN_TYPE_OPTIONS" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </el-radio>
+            </el-radio-group>
+          </el-form-item>
 
-      <!-- 随机数编号 -->
-      <template v-if="formData.genType === GEN_TYPE.RANDOM">
-        <el-form-item label="随机位数" prop="randomDigit">
-          <el-select v-model="formData.randomDigit" class="!w-160px">
-            <el-option
-              v-for="item in RANDOM_DIGIT_OPTIONS"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
+          <el-form-item label="前缀" prop="prefix">
+            <el-input v-model="formData.prefix" placeholder="如 CG" maxlength="50" clearable />
+          </el-form-item>
 
-        <el-form-item label="随机类型" prop="randomType">
-          <el-radio-group v-model="formData.randomType">
-            <el-radio v-for="item in RANDOM_TYPE_OPTIONS" :key="item.value" :value="item.value">
-              {{ item.label }}
-            </el-radio>
-          </el-radio-group>
-          <div class="form-tip">
-            随机方式不消耗流水计数，理论上存在重复可能，建议给目标列加唯一索引兜底。
-          </div>
-        </el-form-item>
-      </template>
+          <!-- 时间流水 -->
+          <template v-if="formData.genType === GEN_TYPE.TIME">
+            <el-form-item label="日期格式" prop="dateFormat">
+              <el-select v-model="formData.dateFormat" class="w-full">
+                <el-option
+                  v-for="item in DATE_FORMAT_OPTIONS"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+    
+            <el-form-item label="流水位数" prop="digit">
+              <el-input-number v-model="formData.digit" :min="1" :max="9" :precision="0" />
+              <div class="form-tip">
+                流水值超过该位数时不会截断，而是输出更长的号码（截断会产生重复号），
+                届时日志里会有告警提示调大位数。
+              </div>
+            </el-form-item>
+    
+            <el-form-item label="起始值" prop="startNumber">
+              <el-input-number v-model="formData.startNumber" :min="0" :precision="0" />
+            </el-form-item>
+    
+            <el-form-item label="步长" prop="step">
+              <el-input-number v-model="formData.step" :min="1" :precision="0" />
+            </el-form-item>
+    
+            <el-form-item label="重置周期" prop="resetCycle">
+              <el-select v-model="formData.resetCycle" class="w-full">
+                <el-option
+                  v-for="item in RESET_CYCLE_OPTIONS"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <div class="form-tip">
+                「跟随日期格式」按日期的最小单位推导：含日按天、含月按月、含年按年。
+                注意到秒、到毫秒的格式仍然<b>按天</b>重置——按秒重置会让每张单子的流水都是 1，等于没有流水。
+              </div>
+            </el-form-item>
+    
+            <el-form-item label="流水分组" prop="groupByPrefix">
+              <el-switch v-model="formData.groupByPrefix" />
+              <div class="form-tip">
+                开启后<b>按前缀分别计数</b>。前缀是固定字符串时开不开都一样；
+                它主要为表单里「前缀取自客户编号」这类场景准备——那时每个客户各自从 1 开始。
+              </div>
+            </el-form-item>
+          </template>
+    
+          <!-- 随机数编号 -->
+          <template v-if="formData.genType === GEN_TYPE.RANDOM">
+            <el-form-item label="随机位数" prop="randomDigit">
+              <el-select v-model="formData.randomDigit" class="!w-160px">
+                <el-option
+                  v-for="item in RANDOM_DIGIT_OPTIONS"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+    
+            <el-form-item label="随机类型" prop="randomType">
+              <el-radio-group v-model="formData.randomType">
+                <el-radio v-for="item in RANDOM_TYPE_OPTIONS" :key="item.value" :value="item.value">
+                  {{ item.label }}
+                </el-radio>
+              </el-radio-group>
+              <div class="form-tip">
+                随机方式不消耗流水计数，理论上存在重复可能，建议给目标列加唯一索引兜底。
+              </div>
+            </el-form-item>
+          </template>
+    
+          <el-form-item v-if="formData.genType === GEN_TYPE.UUID" label=" ">
+            <el-alert type="info" :closable="false" show-icon>
+              UUID 方式生成 36 位大写字符串（含连字符），加上前后缀后容易超过
+              <code>varchar(64)</code>，请确认目标列长度足够。
+            </el-alert>
+          </el-form-item>
+    
+          <el-form-item label="后缀" prop="suffix">
+            <el-input v-model="formData.suffix" placeholder="如 -A" maxlength="50" clearable />
+          </el-form-item>
+    
+          <!-- 范例由后端试算，保证与真实出号走同一段代码 -->
+          <el-form-item label="范例">
+            <div class="example-box">
+              <span v-if="previewLoading" class="text-[var(--el-text-color-secondary)]">试算中…</span>
+              <span v-else-if="previewError" class="text-[var(--el-color-danger)]">{{ previewError }}</span>
+              <span v-else class="example-text">{{ previewText || '-' }}</span>
+            </div>
+            <div class="form-tip">由服务端按当前配置试算，<b>不消耗流水</b>。</div>
+          </el-form-item>
 
-      <el-form-item v-if="formData.genType === GEN_TYPE.UUID" label=" ">
-        <el-alert type="info" :closable="false" show-icon>
-          UUID 方式生成 36 位大写字符串（含连字符），加上前后缀后容易超过
-          <code>varchar(64)</code>，请确认目标列长度足够。
-        </el-alert>
-      </el-form-item>
+          <el-form-item label="取号日志" prop="logEnabled">
+            <el-switch v-model="formData.logEnabled" />
+            <div class="form-tip">
+              开启后每次取号都会记录日志（谁、何时、何途径、取得何号、当时的周期与序号），
+              用于严格追溯场景；日志写在独立事务里，不影响取号结果。默认关闭。
+            </div>
+          </el-form-item>
+        </el-col>
+      </el-row>
 
-      <el-form-item label="后缀" prop="suffix">
-        <el-input v-model="formData.suffix" placeholder="如 -A" maxlength="50" clearable />
-      </el-form-item>
-
-      <!-- 范例由后端试算，保证与真实出号走同一段代码 -->
-      <el-form-item label="范例">
-        <div class="example-box">
-          <span v-if="previewLoading" class="text-gray-400">试算中…</span>
-          <span v-else-if="previewError" class="text-red-500">{{ previewError }}</span>
-          <span v-else class="example-text">{{ previewText || '-' }}</span>
-        </div>
-        <div class="form-tip">由服务端按当前配置试算，<b>不消耗流水</b>。</div>
-      </el-form-item>
-
-      <el-form-item label="排序" prop="sort">
-        <el-input-number v-model="formData.sort" :min="0" :precision="0" />
-      </el-form-item>
-
-      <el-form-item label="状态" prop="status">
-        <el-radio-group v-model="formData.status">
-          <el-radio :value="0">开启</el-radio>
-          <el-radio :value="1">停用</el-radio>
-        </el-radio-group>
-      </el-form-item>
-
-      <el-form-item label="备注" prop="remark">
-        <el-input v-model="formData.remark" type="textarea" :rows="2" maxlength="500" />
+      <!-- 底部再来一组操作按钮：表单较长，填到底部不必滚回顶部 -->
+      <el-form-item label=" ">
+        <el-button type="primary" :loading="formLoading" @click="submitForm">保 存</el-button>
+        <el-button @click="handleCancel">取 消</el-button>
       </el-form-item>
     </el-form>
-
-    <template #footer>
-      <el-button :disabled="formLoading" type="primary" @click="submitForm">确 定</el-button>
-      <el-button @click="dialogVisible = false">取 消</el-button>
-    </template>
-  </Dialog>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
@@ -186,8 +218,9 @@ defineOptions({ name: 'InfraBillTemplateForm' })
 const { t } = useI18n()
 const message = useMessage()
 
-const dialogVisible = ref(false)
-const dialogTitle = ref('')
+/** 面板是否已打开：试算 watch 的守卫，未打开时不发起试算请求 */
+const opened = ref(false)
+const formTitle = ref('')
 const formLoading = ref(false)
 const formType = ref('')
 const formRef = ref()
@@ -208,6 +241,7 @@ const defaultForm = (): BillTemplateApi.BillTemplateSaveReqVO => ({
   groupByPrefix: false,
   randomDigit: 16,
   randomType: 1,
+  logEnabled: false,
   status: 0,
   sort: 0,
   remark: ''
@@ -294,7 +328,7 @@ watch(
     formData.value.randomType
   ],
   () => {
-    if (!dialogVisible.value) return
+    if (!opened.value) return
     clearTimeout(previewTimer)
     previewTimer = setTimeout(doPreview, 300)
   }
@@ -303,8 +337,10 @@ watch(
 // ==================== 打开与提交 ====================
 
 const open = async (type: string, id?: number) => {
-  dialogVisible.value = true
-  dialogTitle.value = type === 'create' ? '新建单据模板' : '编辑单据模板'
+  opened.value = true
+  // 标题不再带「单据」：菜单已改名「取号管理」，页面上的列也叫模板名称/模板编码，
+  // 「单据模板」这个旧名留着只会让人以为还有另一个模块
+  formTitle.value = type === 'create' ? '新建模板' : '编辑模板'
   formType.value = type
   resetForm()
   if (id) {
@@ -329,6 +365,7 @@ const open = async (type: string, id?: number) => {
         groupByPrefix: data.groupByPrefix,
         randomDigit: data.randomDigit,
         randomType: data.randomType,
+        logEnabled: data.logEnabled ?? false,
         status: data.status,
         sort: data.sort,
         remark: data.remark
@@ -341,7 +378,12 @@ const open = async (type: string, id?: number) => {
 }
 defineExpose({ open })
 
-const emit = defineEmits(['success'])
+const emit = defineEmits(['success', 'back'])
+
+const handleCancel = () => {
+  opened.value = false
+  emit('back')
+}
 
 const submitForm = async () => {
   await formRef.value?.validate()
@@ -355,7 +397,7 @@ const submitForm = async () => {
       await BillTemplateApi.updateBillTemplate(data)
       message.success(t('common.updateSuccess'))
     }
-    dialogVisible.value = false
+    opened.value = false
     emit('success')
   } finally {
     formLoading.value = false
@@ -371,6 +413,21 @@ const resetForm = () => {
 </script>
 
 <style lang="scss" scoped>
+.bt-form-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.bt-col-title {
+  padding-bottom: 8px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
 .form-tip {
   margin-top: 4px;
   font-size: 12px;

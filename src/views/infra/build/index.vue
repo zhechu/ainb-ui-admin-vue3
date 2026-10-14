@@ -1,5 +1,14 @@
 <template>
-  <ContentWrap :body-style="{ padding: '0px' }" class="form-builder-page !mb-0">
+  <!-- v-if 必须门控 ContentWrap 本身而不是里面的 <fc-designer>：fc-designer 在 ContentWrap
+       的插槽里，插槽闭包捕获的是【页面组件渲染那一刻】的 resolveComponent 结果。FcDesigner
+       注册晚于首次渲染时，闭包里是不认识的字符串标签，之后 designerReady 翻转只会触发
+       ElCard 重渲染并复用旧闭包，页面上出现空白的 <fc-designer> 原生标签。门控放在自身
+       模板层级，翻转才会让本组件重渲染、重新 resolve 到已注册的组件。 -->
+  <ContentWrap
+    v-if="designerReady"
+    :body-style="{ padding: '0px' }"
+    class="form-builder-page !mb-0"
+  >
     <!-- 表单设计器 -->
     <div
       class="h-[calc(100vh-var(--top-tool-height)-var(--tags-view-height)-var(--app-content-padding)-var(--app-content-padding)-2px)]"
@@ -30,6 +39,7 @@
 </template>
 <script lang="ts" setup>
 import { useFormCreateDesigner } from '@/components/FormCreate'
+import { ensureFcDesigner } from '@/plugins/formCreate/designer'
 import { useClipboard } from '@vueuse/core'
 import { isString } from '@/utils/is'
 
@@ -83,6 +93,16 @@ const dialogTitle = ref('') // 弹窗的标题
 const formType = ref(-1) // 表单的类型：0 - 生成 JSON；1 - 生成 Options；2 - 生成组件
 const formData = ref('') // 表单数据
 useFormCreateDesigner(designer) // 表单设计器增强
+
+// FcDesigner 按需加载。见 plugins/formCreate/designer.ts 的注释
+const designerReady = ref(false)
+onBeforeMount(async () => {
+  const instance = getCurrentInstance()
+  if (instance) {
+    await ensureFcDesigner(instance.appContext.app)
+  }
+  designerReady.value = true
+})
 
 /** 打开弹窗 */
 const openModel = (title: string) => {

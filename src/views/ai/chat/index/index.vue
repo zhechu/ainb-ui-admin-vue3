@@ -630,4 +630,11 @@ onMounted(async () => {
   activeMessageListLoading.value = true
   await getMessageList()
 })
+
+/** 卸载时主动终止进行中的流式请求，防止连接悬挂 */
+onUnmounted(() => {
+  if (conversationInProgress.value) {
+    stopStream()
+  }
+})
 </script>

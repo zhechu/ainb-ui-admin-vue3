@@ -122,8 +122,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column
         label="模板编码"
         align="center"
@@ -178,32 +193,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="210" fixed="right">
+      <el-table-column label="操作" align="center" width="160" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:sms-template:update']"
-          >
-            修改
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openSendForm(scope.row.id)"
-            v-hasPermi="['system:sms-template:send-sms']"
-          >
-            测试
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:sms-template:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -229,6 +221,7 @@ import * as SmsChannelApi from '@/api/system/sms/smsChannel'
 import download from '@/utils/download'
 import SmsTemplateForm from './SmsTemplateForm.vue'
 import SmsTemplateSendForm from './SmsTemplateSendForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemSmsTemplate' })
 
@@ -335,6 +328,29 @@ const handleExport = async () => {
     exportLoading.value = false
   }
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:sms-template:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'send',
+    label: '测试',
+    permission: ['system:sms-template:send-sms'],
+    onClick: (row) => openSendForm(row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:sms-template:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

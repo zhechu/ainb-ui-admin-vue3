@@ -1,7 +1,7 @@
 <template>
   <el-drawer v-model="drawerVisible" title="版本历史" size="560px">
     <el-alert
-      title="每个表单最多保留最新 10 个版本。回滚只把配置写回草稿，线上版本不变，需再点发布才生效。"
+      title="每个表单最多保留最新 100 个版本。回滚只把配置写回草稿，线上版本不变，需再点发布才生效。"
       type="info"
       :closable="false"
       class="mb-15px"
@@ -21,6 +21,9 @@
             <el-tag v-if="item.version === publishedVersion" size="small" type="success">
               当前线上
             </el-tag>
+            <el-button link size="small" type="primary" @click="handlePreview(item)">
+              预览
+            </el-button>
             <el-button
               v-hasPermi="['infra:form-design:rollback']"
               link
@@ -40,12 +43,40 @@
     </el-timeline>
 
     <el-empty v-else description="还没有发布过，暂无版本历史" />
+
+    <Dialog
+      v-model="previewVisible"
+      :title="`版本预览 - v${previewItem?.version ?? ''}`"
+      width="80%"
+      top="5vh"
+    >
+      <div v-loading="previewLoading" class="version-preview__body">
+        <form-create
+          v-if="previewRule.length > 0"
+          :rule="previewRule"
+          :option="previewOption"
+        />
+        <el-empty v-else-if="!previewLoading" description="该版本没有可预览的表单内容" />
+      </div>
+      <template #footer>
+        <el-button
+          v-hasPermi="['infra:form-design:rollback']"
+          type="primary"
+          :disabled="previewLoading || previewRule.length === 0"
+          @click="handleRollback(previewItem!)"
+        >
+          回滚到此版本
+        </el-button>
+        <el-button @click="previewVisible = false">关闭</el-button>
+      </template>
+    </Dialog>
   </el-drawer>
 </template>
 
 <script lang="ts" setup>
 import * as FormDesignApi from '@/api/infra/formDesign'
 import { formatDate } from '@/utils/formatTime'
+import { decodeConf, decodeFieldsAsync } from '@/utils/formCreate'
 
 defineOptions({ name: 'FormDesignVersionDrawer' })
 
@@ -71,6 +102,39 @@ const loadVersions = async () => {
   versionList.value = await FormDesignApi.getVersionList(designId.value)
 }
 
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewItem = ref<FormDesignApi.FormDesignVersionVO>()
+const previewRule = ref<any[]>([])
+const previewOption = ref<Record<string, any>>({})
+
+const handlePreview = async (item: FormDesignApi.FormDesignVersionVO) => {
+  previewItem.value = item
+  previewRule.value = []
+  previewOption.value = {}
+  previewVisible.value = true
+  previewLoading.value = true
+  try {
+    const detail = await FormDesignApi.getVersion(designId.value!, item.version)
+    const snapshot = JSON.parse(detail.snapshot || '{}')
+    previewOption.value = {
+      ...(snapshot.formConf ? decodeConf(snapshot.formConf) : {}),
+      submitBtn: false,
+      resetBtn: false
+    }
+    // 快照里的 formFields 是 DO 原样的 JSON 字符串（字符串数组再序列化一层），需先解开
+    const rawFields = snapshot.formFields
+    const fields: string[] =
+      typeof rawFields === 'string' ? JSON.parse(rawFields) : rawFields || []
+    previewRule.value = await decodeFieldsAsync(fields)
+  } catch {
+    message.error('版本快照解析失败，无法预览')
+    previewVisible.value = false
+  } finally {
+    previewLoading.value = false
+  }
+}
+
 const handleRollback = async (item: FormDesignApi.FormDesignVersionVO) => {
   try {
     await message.confirm(
@@ -78,6 +142,7 @@ const handleRollback = async (item: FormDesignApi.FormDesignVersionVO) => {
     )
     await FormDesignApi.rollbackVersion(designId.value!, item.version)
     message.success('回滚成功，配置已写回草稿')
+    previewVisible.value = false
     emit('success')
     drawerVisible.value = false
   } catch {}
@@ -106,5 +171,12 @@ const handleRollback = async (item: FormDesignApi.FormDesignVersionVO) => {
 .version-meta {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+.version-preview__body {
+  min-height: 200px;
+  max-height: calc(100vh - 260px);
+  padding: 4px 8px;
+  overflow: auto;
 }
 </style>

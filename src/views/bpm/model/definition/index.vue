@@ -79,6 +79,14 @@
           >
             恢复
           </el-button>
+          <el-button
+            v-hasPermi="['system:grant:query']"
+            link
+            type="primary"
+            @click="openProcessGrant(scope.row)"
+          >
+            权限配置
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -95,6 +103,8 @@
   <Dialog title="表单详情" v-model="formDetailVisible" width="800">
     <form-create :rule="formDetailPreview.rule" :option="formDetailPreview.option" />
   </Dialog>
+  <!-- 弹窗：流程权限配置 -->
+  <ResourceDetailPanel ref="resourceDetailPanelRef" />
 </template>
 
 <script lang="ts" setup>
@@ -103,6 +113,7 @@ import * as DefinitionApi from '@/api/bpm/definition'
 import { setConfAndFields2 } from '@/utils/formCreate'
 import { DICT_TYPE } from '@/utils/dict'
 import { BpmModelFormType } from '@/utils/constants'
+import ResourceDetailPanel from '@/views/system/resource/ResourceDetailPanel.vue'
 
 defineOptions({ name: 'BpmProcessDefinition' })
 
@@ -158,6 +169,21 @@ const openModelForm = async (id?: number) => {
     name: 'BpmModelUpdate',
     params: { id, type: 'definition' }
   })
+}
+
+/** 流程权限配置操作（S8c）：打开资源详情面板，展示该流程资源的授权 / 槽位 / 字段权限 */
+const resourceDetailPanelRef = ref()
+const openProcessGrant = async (row: any) => {
+  const { getResourceList } = await import('@/api/system/grant')
+  const resources = await getResourceList('PROCESS')
+  const res = resources.find((r) => r.permission?.endsWith(':' + row.key))
+  if (!res) {
+    useMessage().warning(
+      `流程 ${row.name} 在资源表中不存在（bpm:process:${row.key}），请先发布流程或等待迁移 Runner 同步`
+    )
+    return
+  }
+  resourceDetailPanelRef.value?.open(res)
 }
 
 /** 初始化 **/

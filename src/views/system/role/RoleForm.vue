@@ -10,8 +10,8 @@
       <el-form-item label="角色名称" prop="name">
         <el-input v-model="formData.name" placeholder="请输入角色名称" />
       </el-form-item>
-      <el-form-item label="角色标识" prop="code">
-        <el-input v-model="formData.code" placeholder="请输入角色标识" />
+      <el-form-item label="角色编码" prop="code">
+        <el-input v-model="formData.code" placeholder="请输入角色编码" />
       </el-form-item>
       <el-form-item label="显示顺序" prop="sort">
         <el-input v-model="formData.sort" placeholder="请输入显示顺序" />
@@ -60,7 +60,7 @@ const formData = ref({
 })
 const formRules = reactive({
   name: [{ required: true, message: '角色名称不能为空', trigger: 'blur' }],
-  code: [{ required: true, message: '角色标识不能为空', trigger: 'change' }],
+  code: [{ required: true, message: '角色编码不能为空', trigger: 'change' }],
   sort: [{ required: true, message: '显示顺序不能为空', trigger: 'change' }],
   status: [{ required: true, message: '状态不能为空', trigger: 'change' }],
   remark: [{ required: false, message: '备注不能为空', trigger: 'blur' }]

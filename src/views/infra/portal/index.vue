@@ -33,17 +33,34 @@
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" />重置</el-button>
         <el-button v-hasPermi="['infra:portal:create']" type="primary" plain @click="handleCreate"
-          ><Icon icon="ep:plus" class="mr-5px" />新建门户</el-button
+          ><Icon icon="ep:plus" class="mr-5px" />新增</el-button
         >
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
-      <el-table-column label="编号" prop="id" width="75" align="center" />
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
+      <!-- 这里不显示「编号」：门户是拿名称和编码认的，自增 id 对使用者没有意义 -->
       <el-table-column label="门户名称" prop="name" min-width="150" show-overflow-tooltip />
       <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />
+      <el-table-column label="类型" width="90" align="center">
+        <template #default="{ row }">
+          <el-tag :type="isLinkPortal(row) ? 'warning' : 'primary'" size="small">
+            {{ isLinkPortal(row) ? '自定义链接' : '在线设计' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="排序" prop="sort" width="70" align="center" />
       <el-table-column label="状态" prop="status" width="125" align="center">
         <template #default="{ row }"
           ><el-tag :type="statusType(row.status)" size="small">{{
@@ -78,52 +95,9 @@
         align="center"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" width="390" fixed="right" align="center">
+      <el-table-column label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button
-            v-hasPermi="['infra:portal:update']"
-            link
-            type="primary"
-            @click="handleDesign(row)"
-            ><Icon icon="ep:edit-pen" class="mr-3px" />设计</el-button
-          >
-          <el-button
-            v-hasPermi="['infra:portal:update']"
-            link
-            type="primary"
-            @click="handleEdit(row)"
-            ><Icon icon="ep:setting" class="mr-3px" />编辑</el-button
-          >
-          <el-button
-            v-hasPermi="['infra:portal:publish']"
-            link
-            type="success"
-            @click="handlePublish(row)"
-            >{{ row.publishedVersion ? '重新发布' : '发布' }}</el-button
-          >
-          <el-button v-hasPermi="['infra:portal:query']" link @click="handleVersions(row)"
-            >版本</el-button
-          >
-          <el-dropdown @command="(command: string) => handleCommand(command, row)"
-            ><el-button link type="primary"
-              >更多<Icon icon="ep:arrow-down" class="ml-2px" /></el-button
-            ><template #dropdown
-              ><el-dropdown-menu
-                ><el-dropdown-item v-hasPermi="['infra:portal:preview']" command="preview"
-                  >预览</el-dropdown-item
-                ><el-dropdown-item
-                  v-if="row.publishedVersion"
-                  v-hasPermi="['infra:portal:publish']"
-                  command="unpublish"
-                  >下线</el-dropdown-item
-                ><el-dropdown-item v-hasPermi="['infra:portal:create']" command="copy"
-                  >复制</el-dropdown-item
-                ><el-dropdown-item v-hasPermi="['infra:portal:delete']" command="delete" divided
-                  >删除</el-dropdown-item
-                ></el-dropdown-menu
-              ></template
-            ></el-dropdown
-          >
+          <TableActions :row="row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -152,6 +126,7 @@
 import { ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import * as PortalApi from '@/api/infra/portal'
+import type { TableActionButton } from '@/components/TableActions'
 import PortalRuntime from '@/components/Portal/Runtime/PortalRuntime.vue'
 import PortalForm from './PortalForm.vue'
 import VersionDrawer from './components/VersionDrawer.vue'
@@ -183,6 +158,9 @@ const statusLabel = (status: number) =>
   STATUS_OPTIONS.find((item) => item.value === status)?.label || '-'
 const statusType = (status: number) =>
   status === 1 ? 'success' : status === 2 ? 'warning' : 'info'
+
+const isLinkPortal = (row: PortalApi.PortalVO) => row.type === 1
+const isPublished = (row: PortalApi.PortalVO) => row.status !== 0
 
 const getList = async () => {
   loading.value = true
@@ -235,15 +213,28 @@ const toSaveReq = (row: PortalApi.PortalVO): PortalApi.PortalSaveReqVO => ({
   name: row.name,
   code: row.code,
   description: row.description,
+  type: row.type,
+  linkType: row.linkType,
+  linkUrl: row.linkUrl,
+  sort: row.sort,
   content: row.content,
   isDefault: row.isDefault,
-  enabled: row.enabled
+  enabled: row.enabled,
+  visibleScope: row.visibleScope,
+  visibleIds: row.visibleIds
 })
 
 const handlePublish = async (row: PortalApi.PortalVO) => {
   try {
-    const result = await message.prompt('请输入发布说明（可选）', '发布门户')
-    await PortalApi.publishPortal({ id: row.id, publishRemark: result.value })
+    let publishRemark: string | undefined
+    if (isLinkPortal(row)) {
+      // 链接门户没有内容快照，不产生版本，无需填写发布说明
+      await message.confirm(`确认发布门户“${row.name}”吗？`)
+    } else {
+      const result = await message.prompt('请输入发布说明（可选）', '发布门户')
+      publishRemark = result.value
+    }
+    await PortalApi.publishPortal({ id: row.id, publishRemark })
     message.success('发布成功')
     await getList()
   } catch {
@@ -290,12 +281,67 @@ const handlePreview = async (row: PortalApi.PortalVO) => {
   previewData.value = await PortalApi.previewPortal(row.id)
   previewVisible.value = true
 }
-const handleCommand = (command: string, row: PortalApi.PortalVO) => {
-  if (command === 'preview') handlePreview(row)
-  if (command === 'unpublish') handleUnpublish(row)
-  if (command === 'copy') handleCopy(row)
-  if (command === 'delete') handleDelete(row)
-}
+/**
+ * 操作列按钮清单。行级条件（外链门户没有设计/版本/预览、未发布没有下线）
+ * 原来散在模板的 v-if 里，现在落在各按钮的 show 上；command 字符串映射消失
+ */
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'design',
+    label: '设计',
+    permission: ['infra:portal:update'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handleDesign(row)
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: ['infra:portal:update'],
+    onClick: (row) => handleEdit(row)
+  },
+  {
+    key: 'publish',
+    label: '发布',
+    type: 'success',
+    permission: ['infra:portal:publish'],
+    onClick: (row) => handlePublish(row)
+  },
+  {
+    key: 'versions',
+    label: '版本',
+    permission: ['infra:portal:query'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handleVersions(row)
+  },
+  {
+    key: 'preview',
+    label: '预览',
+    permission: ['infra:portal:preview'],
+    show: (row) => !isLinkPortal(row),
+    onClick: (row) => handlePreview(row)
+  },
+  {
+    key: 'unpublish',
+    label: '下线',
+    permission: ['infra:portal:publish'],
+    show: (row) => isPublished(row),
+    onClick: (row) => handleUnpublish(row)
+  },
+  {
+    key: 'copy',
+    label: '复制',
+    permission: ['infra:portal:create'],
+    onClick: (row) => handleCopy(row)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:portal:delete'],
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(getList)
 </script>

@@ -5,3 +5,5 @@ public/*
 /src/types/env.d.ts
 /src/components/Tinyflow/ui/**
 /docs/**/*
+/src/lib/form-create/**
+/src/lib/form-designer/**

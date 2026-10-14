@@ -117,7 +117,17 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        fixed="left"
+        :index="indexMethod(queryParams)"
+      class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="流程名称" align="center" prop="name" min-width="200px" fixed="left" />
       <el-table-column label="摘要" prop="summary" width="180" fixed="left">
         <template #default="scope">

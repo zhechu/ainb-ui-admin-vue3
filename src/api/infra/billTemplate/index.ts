@@ -5,6 +5,12 @@ import request from '@/config/axios'
  *
  * 可视化配置的单据编号规则。表单设计的「单据组件」与其它业务模块通过 code 引用它，
  * 保存数据时由后端自动生成单号。
+ *
+ * 🔴 术语对照：菜单叫【取号管理】（在「基础设施 → 数据管理」下），而表名与实体名仍是
+ *    bill_template / BillTemplateDO，API 路径是 /infra/bill-template/*，权限串是
+ *    infra:bill-template:*。本文件里出现的「单据模板」一律指后者（实体概念），
+ *    不改名是为了不让 API 层与后端 VO 的 @Schema 描述脱节；
+ *    需要指引用户去点菜单的地方，必须写【取号管理】。
  */
 export type BillTemplateVO = {
   id: number
@@ -33,6 +39,8 @@ export type BillTemplateVO = {
   randomDigit?: number
   /** 随机类型：1-纯数字 2-字母+数字 */
   randomType?: number
+  /** 是否记录取号日志，默认关闭 */
+  logEnabled?: boolean
   /** 范例，后端保存时算好，仅供展示 */
   example?: string
   /** 最近一次生成的号码 */
@@ -90,6 +98,31 @@ export type BillTemplateSimpleVO = {
   example?: string
 }
 
+/**
+ * 取号日志
+ *
+ * genType / period / seq 是取号当时的规则快照，模板配置日后被改仍可还原现场
+ */
+export type BillTemplateLogVO = {
+  id: number
+  templateId: number
+  templateCode: string
+  /** 生成的单据号；取号失败时为空 */
+  billNo?: string
+  /** 生成方式快照：1-时间流水 2-随机数 3-UUID */
+  genType: number
+  /** 周期标记快照 */
+  period?: string
+  /** 本次消耗的流水序号；随机/UUID 为空 */
+  seq?: number
+  /** 取号来源：1-业务出号 2-表单预占 */
+  source: number
+  success: boolean
+  errorMsg?: string
+  userId?: number
+  createTime: Date
+}
+
 export const getBillTemplatePage = (params: any) => {
   return request.get({ url: '/infra/bill-template/page', params })
 }
@@ -120,6 +153,23 @@ export const getSimpleBillTemplateList = (): Promise<BillTemplateSimpleVO[]> => 
 }
 
 /**
+ * 单据模板精简列表的会话级缓存
+ *
+ * 与 cachedGetSimpleDictTypeList 同理：设计器每次挂载都会拉一次，
+ * 而模板属于低频变更的主数据，一个会话内共享同一份即可。
+ */
+let simpleBillTemplateListPromise: Promise<BillTemplateSimpleVO[]> | null = null
+export const cachedGetSimpleBillTemplateList = (): Promise<BillTemplateSimpleVO[]> => {
+  if (!simpleBillTemplateListPromise) {
+    simpleBillTemplateListPromise = getSimpleBillTemplateList().catch((err) => {
+      simpleBillTemplateListPromise = null
+      throw err
+    })
+  }
+  return simpleBillTemplateListPromise
+}
+
+/**
  * 试算范例，不消耗流水
  *
  * 前端不自己拼号 —— 补零、起始值换算、位数溢出这些细节一旦两边各写一遍就会漂移，
@@ -137,4 +187,31 @@ export const previewBillTemplate = (data: BillTemplatePreviewReqVO): Promise<str
  */
 export const occupyBillNo = (code: string): Promise<string> => {
   return request.post({ url: '/infra/bill-template/occupy', params: { code } })
+}
+
+/** 获得取号日志分页。仅开启「记录取号日志」的模板会产生日志 */
+export const getBillTemplateLogPage = (params: any) => {
+  return request.get({ url: '/infra/bill-template/log-page', params })
+}
+
+/** 测试取号结果 */
+export type BillTemplateTestVO = {
+  /** 生成（或试算）的单据号 */
+  no: string
+  /** 本次使用的流水序号；随机数 / UUID 方式为 null */
+  seq?: number
+  /** 计数周期段 */
+  period?: string
+  /** 是否真实取号：true-已消耗流水 false-仅模拟 */
+  real: boolean
+}
+
+/**
+ * 测试取号
+ *
+ * real=false（默认）为模拟：按「当前流水 + 1」试算下一个号，不消耗流水、不写日志；
+ * real=true 与业务出号同路径，会消耗流水，日志来源记为「测试取号」。
+ */
+export const testBillTemplate = (id: number, real: boolean): Promise<BillTemplateTestVO> => {
+  return request.post({ url: '/infra/bill-template/test', params: { id, real } })
 }

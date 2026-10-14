@@ -52,7 +52,16 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
+    <el-table v-loading="loading" :data="list" class="xpy-list-table" stripe>
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column label="访问令牌" align="center" prop="accessToken" width="300" />
       <el-table-column label="刷新令牌" align="center" prop="refreshToken" width="300" />
       <el-table-column label="用户编号" align="center" prop="userId" />
@@ -75,16 +84,9 @@
         :formatter="dateFormatter"
         width="180"
       />
-      <el-table-column label="操作" align="center">
+      <el-table-column label="操作" align="center" width="80">
         <template #default="scope">
-          <el-button
-            link
-            type="danger"
-            @click="handleForceLogout(scope.row.accessToken)"
-            v-hasPermi="['system:oauth2-token:delete']"
-          >
-            强退
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -102,6 +104,7 @@
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { dateFormatter } from '@/utils/formatTime'
 import * as OAuth2AccessTokenApi from '@/api/system/oauth2/token'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemTokenClient' })
 
@@ -156,6 +159,17 @@ const handleForceLogout = async (accessToken: string) => {
     await getList()
   } catch {}
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'force-logout',
+    label: '强退',
+    type: 'danger',
+    divided: true,
+    permission: ['system:oauth2-token:delete'],
+    onClick: (row) => handleForceLogout(row.accessToken)
+  }
+]
 
 /** 初始化 **/
 onMounted(() => {

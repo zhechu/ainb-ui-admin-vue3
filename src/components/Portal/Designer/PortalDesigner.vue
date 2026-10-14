@@ -265,7 +265,7 @@ onBeforeUnmount(stopPointerTracking)
   display: flex;
   min-width: 0;
   min-height: 0;
-  padding: 12px 16px 8px;
+  padding: 0;
   background: var(--portal-page-bg);
   flex: 1;
   flex-direction: column;
@@ -279,18 +279,16 @@ onBeforeUnmount(stopPointerTracking)
   background-color: var(--portal-grid-bg);
   background-image: radial-gradient(var(--portal-grid-dot) 1px, transparent 1px);
   background-size: 20px 20px;
-  border: 1px solid var(--portal-border);
-  border-radius: 6px;
 }
 
 .portal-designer__canvas.is-populated::after {
   display: block;
-  height: clamp(180px, 32vh, 320px);
+  height: clamp(140px, 26vh, 260px);
   content: '';
 }
 
 .portal-designer__grid {
-  min-height: 720px;
+  min-height: 560px;
 }
 
 .portal-designer__item {

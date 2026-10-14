@@ -99,6 +99,27 @@ export type RuntimeExportReqVO = {
   conditions?: RuntimeConditionVO[]
   sortField?: string
   sortOrder?: string
+  /**
+   * 当前可见的列，含顺序。明细列用 `子表::字段`（与 columnKeyOf 一致）
+   *
+   * ⚠️ 必须传：列设置存在浏览器本地，服务端不知道。不传的话导出按【设计期】
+   * 的列来 —— 用户隐藏掉的列照样被导出、调过的顺序也不生效，
+   * 而「所见即所得」正是导出这件事的全部要求。
+   */
+  visibleFields?: string[]
+  /** 导出范围：CURRENT_PAGE-当前页 / ALL-全部。默认 ALL */
+  scope?: 'CURRENT_PAGE' | 'ALL'
+  /** 页码。仅 CURRENT_PAGE 用 */
+  pageNo?: number
+  /** 每页条数。仅 CURRENT_PAGE 用 */
+  pageSize?: number
+  /**
+   * 要不要导出合计行。
+   *
+   * ⚠️ 不传表示「跟随列表」。列表上没有合计行时应当【不传】而不是传 false ——
+   * 传 false 会把「跟随」这层语义盖掉，日后列表加了合计行也导不出来
+   */
+  includeSummary?: boolean
 }
 
 /** 获得渲染配置 */
@@ -109,6 +130,33 @@ export const getRenderConfig = (code: string): Promise<FormRuntimeConfigVO> => {
 /** 分页查询。用 POST 是因为查询条件是结构化数组，放 query 里会很难看 */
 export const getDataPage = (code: string, data: RuntimePageReqVO) => {
   return request.post({ url: `/infra/form-design/runtime/${code}/page`, data })
+}
+
+/**
+ * 关联表单控件的候选数据
+ *
+ * ⚠️ 不要图省事改回 getDataPage。两者的权限语义不同：
+ * 分页查询要目标表单的完整 query 权限，于是「填订单要选客户」这件事
+ * 会逼着管理员把整个客户列表的查看权发下去。本接口校验的是目标表单的
+ * reference（没有则回落 query），让「能填订单但不该浏览客户列表」的人
+ * 也选得到客户。
+ *
+ * 入参里没有 targetCode 与字段列表 —— 那两样由服务端从**源表单的已发布配置**
+ * 里读。允许前端传的话，这个接口就成了「任意表单任意字段」的读取口
+ *
+ * @param code  正在填写的表单编码（引用方）
+ * @param field 该表单上关联控件的字段名
+ */
+export const getReferenceOptions = (
+  code: string,
+  field: string,
+  keyword?: string,
+  limit?: number
+): Promise<Record<string, any>[]> => {
+  return request.get({
+    url: `/infra/form-design/runtime/${code}/reference-options`,
+    params: { field, keyword, limit }
+  })
 }
 
 /** 详情。含子表明细 */
@@ -225,26 +273,30 @@ export const getDistinctValues = (code: string, field: string): Promise<any[]> =
  *
  * @param fileNameHint 保存时用的文件名（不含扩展名）。见下面取名那一段的说明
  */
+export interface ExportResultVO {
+  /** 是否因为超过导出上限被截断 */
+  truncated: boolean
+  /** 服务端生效的上限。仅 truncated 时有值 */
+  maxRows?: number
+}
+
 export const exportData = async (
   code: string,
   data: RuntimeExportReqVO,
-  fileNameHint?: string
-): Promise<void> => {
+  fileNameHint?: string,
+  fileNameSuffix?: string
+): Promise<ExportResultVO> => {
   const { getAccessToken, getTenantId } = await import('@/utils/auth')
   const axios = (await import('axios')).default
   const baseUrl = import.meta.env.VITE_BASE_URL + import.meta.env.VITE_API_URL
 
-  const res = await axios.post(
-    `${baseUrl}/infra/form-design/runtime/${code}/export`,
-    data,
-    {
-      responseType: 'blob',
-      headers: {
-        Authorization: 'Bearer ' + getAccessToken(),
-        'tenant-id': getTenantId() || ''
-      }
+  const res = await axios.post(`${baseUrl}/infra/form-design/runtime/${code}/export`, data, {
+    responseType: 'blob',
+    headers: {
+      Authorization: 'Bearer ' + getAccessToken(),
+      'tenant-id': getTenantId() || ''
     }
-  )
+  })
 
   //
   // 判断这一响应到底是 Excel 还是一段错误 JSON
@@ -289,11 +341,24 @@ export const exportData = async (
   // 仍然先读一次响应头：哪天框架把设头的时机挪到写流之前，这里自动就用上了，
   // 不必再改一遍。
   //
+  //
+  // 截断信息走普通响应头，读得到
+  //
+  // ⚠️ 与 Content-Disposition 不同：X-Export-Truncated 是在 ExcelUtils.write
+  // 【之前】设的，所以能正常发出来。服务端在文件名里也标了「前 N 条」，
+  // 但那份文件名随 Content-Disposition 一起发不出去，所以这里要自己拼。
+  const truncated = String(res.headers['x-export-truncated'] || '') === 'true'
+  const maxRows = Number(res.headers['x-export-max-rows']) || undefined
+
   const disposition = res.headers['content-disposition'] || ''
   const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i)
+  const suffix = [fileNameSuffix, truncated && maxRows ? `前${maxRows}条` : '']
+    .filter(Boolean)
+    .map((part) => `(${part})`)
+    .join('')
   const fileName = match
     ? decodeURIComponent(match[1])
-    : `${sanitizeFileName(fileNameHint || code)}.xlsx`
+    : `${sanitizeFileName(fileNameHint || code)}${suffix}.xlsx`
 
   // 触发浏览器下载
   const url = URL.createObjectURL(new Blob([res.data]))
@@ -302,6 +367,8 @@ export const exportData = async (
   a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
+
+  return { truncated, maxRows }
 }
 
 /**
@@ -330,4 +397,194 @@ export const invokeButton = (code: string, buttonKey: string, id?: string | numb
     url: `/infra/form-design/runtime/${code}/invoke-button`,
     params: { buttonKey, ...(id === undefined || id === null ? {} : { id }) }
   })
+}
+
+// ==================== 表格导入 ====================
+
+/** 预览里的一条错误 */
+export interface ImportPreviewErrorVO {
+  rowNo?: number
+  columnLetter?: string
+  field?: string
+  fieldLabel?: string
+  message: string
+  rawValue?: string
+  /** ERROR / WARN */
+  level?: string
+}
+
+/** 表头映射的一列 */
+export interface ImportColumnMappingVO {
+  columnLetter: string
+  header?: string
+  field: string
+  fieldLabel: string
+  subTitle?: string
+  required?: boolean
+  formula?: boolean
+}
+
+/** 没识别出来 / 重复的列 */
+export interface ImportUnmatchedColumnVO {
+  columnLetter: string
+  header?: string
+  reason?: string
+  firstColumnLetter?: string
+}
+
+/** 预览里的一行 */
+export interface ImportPreviewRowVO {
+  rowNo: number
+  endRowNo?: number
+  /** NEW / EXISTS / DUPLICATE_IN_FILE / INVALID */
+  status: string
+  statusText: string
+  data?: Record<string, any>
+  subData?: Record<string, any[]>
+  errors?: ImportPreviewErrorVO[]
+  warnings?: ImportPreviewErrorVO[]
+}
+
+export interface ImportSummaryVO {
+  totalRows: number
+  totalGroups: number
+  newCount: number
+  existsCount: number
+  duplicateCount: number
+  invalidCount: number
+  previewRowCount: number
+}
+
+export interface ImportPreviewVO {
+  /** 执行时必须原样带回，且只能用一次 */
+  importToken: string
+  mappings: ImportColumnMappingVO[]
+  unmatchedColumns: ImportUnmatchedColumnVO[]
+  duplicateColumns: ImportUnmatchedColumnVO[]
+  missingRequiredFields: string[]
+  rows: ImportPreviewRowVO[]
+  summary: ImportSummaryVO
+  tableErrors: ImportPreviewErrorVO[]
+  /** 更新键的字段名。为空表示这张表单无法判断「已存在」，覆盖策略不可用 */
+  updateKeyFields: string[]
+  groupCount: number
+}
+
+export interface ImportFailureVO {
+  rowNo?: number
+  columnLetter?: string
+  field?: string
+  fieldLabel?: string
+  message: string
+  rawValue?: string
+  businessKey?: string
+}
+
+export interface ImportResultVO {
+  createCount: number
+  updateCount: number
+  skipCount: number
+  failCount: number
+  failures: ImportFailureVO[]
+  tableErrors: ImportPreviewErrorVO[]
+}
+
+/**
+ * 上传 Excel 并预览
+ *
+ * ⚠️ 必须用 `request.upload`，不能用 `request.post`
+ *
+ * `request.post` 无条件把 `Content-Type` 设成 `application/json`，
+ * 而 axios 1.x 的默认 transformRequest 在 JSON 内容类型下会把 FormData
+ * **转成 JSON 对象** —— 文件字段变成 `{}`，后端收到的是一个没有文件的请求。
+ * 表现是「点了下一步，接口返回 200，但弹窗停在第一步」，极难归因。
+ *
+ * `request.upload` 把头设成 multipart/form-data，axios 的 xhr 适配器
+ * 见到 FormData 会把这个头删掉交给浏览器补 boundary，链路才是通的。
+ * 上游的导入接口（crm/customer）用的也是它。
+ *
+ * ⚠️ `upload` 返回的是整个响应体 `{code,msg,data}`，不像 `post` 那样已经剥过一层。
+ *
+ * 上传阶段可能比较久（解析几千行），所以单独给一个更长的超时。
+ */
+export const importPreview = async (
+  code: string,
+  file: File,
+  updateKeyFields?: string[]
+): Promise<ImportPreviewVO> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await request.upload({
+    url: `/infra/form-design/runtime/${code}/import/preview`,
+    data: formData,
+    params: updateKeyFields?.length ? { updateKeyFields: updateKeyFields.join(',') } : {},
+    timeout: 120_000
+  })
+  return (res as any)?.data as ImportPreviewVO
+}
+
+/**
+ * 执行导入
+ *
+ * 逐条一个事务 —— 一条失败不影响其余。
+ */
+export const importExecute = (
+  code: string,
+  data: {
+    importToken: string
+    /** 用户改过的行：文件行号 → 改后的字段值 */
+    editedRows?: Record<string, Record<string, any>>
+    /** 用户删掉的行号（文件行号） */
+    removedRows?: string[]
+    /** SKIP / UPDATE / APPEND */
+    duplicateStrategy?: string
+    allOrNothing?: boolean
+  }
+): Promise<ImportResultVO> => {
+  return request.post({
+    url: `/infra/form-design/runtime/${code}/import/execute`,
+    data,
+    timeout: 120_000
+  })
+}
+
+/**
+ * 下载导入模板
+ *
+ * 模板由后端按表单字段动态生成（表头是字段标题、字典列带下拉、第二行是填写说明），
+ * 不是一份通用的静态文件 —— 所以只能通过这个接口拿，前端拼不出来。
+ */
+export const downloadTemplate = async (code: string): Promise<void> => {
+  const { getAccessToken, getTenantId } = await import('@/utils/auth')
+  const axios = (await import('axios')).default
+  const baseUrl = import.meta.env.VITE_BASE_URL + import.meta.env.VITE_API_URL
+
+  const res = await axios.get(`${baseUrl}/infra/form-design/runtime/${code}/import/template`, {
+    responseType: 'blob',
+    headers: {
+      Authorization: 'Bearer ' + getAccessToken(),
+      'tenant-id': getTenantId() || ''
+    }
+  })
+
+  // 与导出同一个判据：xlsx 是 zip，必然以 "PK" 开头。
+  // 不能看 Content-Type —— 理由见上面 exportData 里那段注释
+  const magic = new Uint8Array(await res.data.slice(0, 2).arrayBuffer())
+  if (!(magic[0] === 0x50 && magic[1] === 0x4b)) {
+    const text = await new Response(res.data).text()
+    let msg = ''
+    try {
+      msg = JSON.parse(text)?.msg || ''
+    } catch {
+      msg = text.slice(0, 200)
+    }
+    throw new Error(msg || '模板下载失败')
+  }
+
+  const url = URL.createObjectURL(new Blob([res.data]))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${sanitizeFileName(code)}-导入模板.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
 }

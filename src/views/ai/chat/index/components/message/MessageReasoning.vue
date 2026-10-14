@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ArrowDown, ChatDotSquare } from '@element-plus/icons-vue'
 import MarkdownView from '@/components/MarkdownView/index.vue'
 
@@ -44,9 +44,32 @@ import MarkdownView from '@/components/MarkdownView/index.vue'
 const props = defineProps<{
   reasoningContent?: string
   content?: string
+  /**
+   * 正文开始输出后，是否自动把思维链折叠起来
+   *
+   * 默认 false —— 保持 ai/chat 原有行为不变。
+   *
+   * AI 助手侧传 true：它用的是推理模型，思维链动辄几百字，
+   * 一直展开会把真正的回答整个挤到屏幕外，用户得先滚过一大段推理过程才看得到答案。
+   * 「思考时展开、答完折叠」既保留了过程可查，又让答案是第一眼看到的东西。
+   */
+  autoCollapseOnAnswer?: boolean
 }>()
 
 const isExpanded = ref(true) // 默认展开
+
+// 正文一出现就折叠（仅在 autoCollapseOnAnswer 打开时）。
+// 用 watch 而不是 computed：折叠之后用户可以手动再展开，
+// 若做成 computed 就会被下一次正文增量重新压回折叠，点都点不开
+watch(
+  () => props.content,
+  (content) => {
+    if (props.autoCollapseOnAnswer && content && content.trim() !== '' && isExpanded.value) {
+      isExpanded.value = false
+    }
+  },
+  { once: true }
+)
 
 /** 计算属性：判断是否应该显示组件（有思考内容时，则展示） */
 const shouldShowComponent = computed(() => {

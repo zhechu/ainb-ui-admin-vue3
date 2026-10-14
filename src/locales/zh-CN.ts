@@ -78,6 +78,9 @@ export default {
   },
   setting: {
     projectSetting: '项目配置',
+    homePortal: '首页门户',
+    homePortalDefault: '默认门户',
+    homePortalLinkTag: '链接',
     theme: '主题',
     layout: '布局',
     systemTheme: '系统主题',
@@ -113,7 +116,9 @@ export default {
     uniqueOpened: '菜单手风琴',
     tagsViewIcon: '标签页图标',
     reExperienced: '请重新退出登录体验',
-    fixedMenu: '固定菜单'
+    fixedMenu: '固定菜单',
+    darkMode: '暗黑模式',
+    customColor: '自选颜色'
   },
   size: {
     default: '默认',
@@ -121,7 +126,7 @@ export default {
     small: '小'
   },
   login: {
-    welcome: '评估执业智能辅助平台',
+    welcome: 'AI原生低代码平台',
     message: '',
     tenantname: '租户名称',
     username: '用户名',
@@ -151,7 +156,14 @@ export default {
     SmsSendMsg: '验证码已发送',
     resetPassword: '重置密码',
     resetPasswordSuccess: '重置密码成功',
-    invalidTenantName: '无效的租户名称'
+    invalidTenantName: '无效的租户名称',
+    slogan: 'AI原生低代码平台',
+    feature1Title: '在线建模',
+    feature1Desc: '表与字段在线定义，业务数据即建即用',
+    feature2Title: '可视化编排',
+    feature2Desc: '表单拖拽设计，工作流程与智能体流程图形化编排',
+    feature3Title: 'AI 原生',
+    feature3Desc: '智能体协同执行，自然语言驱动操作'
   },
   captcha: {
     verify: '验证',
@@ -381,7 +393,7 @@ export default {
       qrSignInFormTitle: '二维码登录',
       signUpFormTitle: '注册',
       forgetFormTitle: '重置密码',
-      signInTitle: '评估执业智能辅助平台',
+      signInTitle: 'AI原生低代码平台',
       signInDesc: '输入您的个人详细信息开始使用！',
       policy: '我同意xxx隐私政策',
       scanSign: `扫码后点击"确认"，即可完成登录`,

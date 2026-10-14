@@ -5,9 +5,64 @@ dist-ssr
 /dist*
 pnpm-debug
 auto-*.d.ts
+# 上一行本意是忽略 unplugin 生成的 src/types/auto-{imports,components}.d.ts，
+# 但它会误伤 vendored 的 @form-create/element-ui/auto-import.d.ts（那是上游源码，必须入库）
+!src/lib/**/auto-*.d.ts
 .idea
 .history
 output/
 .playwright-cli/
 test-results/
 playwright-report/
+# T1/T2 真发矩阵的人工评审证据（每轮重新生成，见 prompt-template-chat-matrix.spec.ts）
+# 🔴 这里必须写 `_evidence/*` 而不是 `_evidence/`：git 不会重新包含**父目录已被排除**的文件，
+#    写成 `_evidence/` 的话下面那些 `!` 一行都不生效（gitignore(5)「It is not possible to
+#    re-include a file if a parent directory of that file is excluded」）。
+_evidence/*
+# 🔴 迭代八 U3：白名单从「只收工具与夹具」扩成「`_evidence/` 里现存的 **33** 个文件逐条收全」。
+#    判据不是「把目录清空」，而是**保留清单逐条入 git、清单之外一个不剩**：这些报告与日志是多轮验收
+#    唯一的人工评审证据，而 `_evidence/` **不在** `C:/code/yudao_backups/` 的归档范围内 ⟹ 一次 `git clean` 就永久没了。
+#    🔴 也**绝不能把它们挪走**：`hint-satisfaction.mjs` 里的 `SPEC` / `GAPS` 用的是**相对 URL**，一挪就断、且断得悄无声息。
+#    入仓前逐个扫过：不含密钥、不含 `Authorization` 头、不含 webhook 请求体（33 文件 / 590,297 B）。
+#    🔴 仍坚持**逐条**白名单、不整目录放开 —— 新掉进来的产物默认照旧被忽略，要入仓必须在这里显式加一行。
+# ① 分析工具与夹具（三个每轮重跑的分析工具 + 两个夹具；coverage-gap-cases.json 是 P3-1 的人工裁定结果，库里查不回来）
+!_evidence/intent-agreement.mjs
+!_evidence/hint-satisfaction.mjs
+!_evidence/coverage-gap-cases.json
+!_evidence/expect-intent.tsv
+# 变异探针跑手：改了 tests/e2e/helpers/workflow-def-cleanup.ts 之后要重跑，
+# 用来证明那七条断言**真的会红**（判据恒绿比没有判据更坏）。是工具，不是产物。
+!_evidence/wdc-mutation-probe.cjs
+!_evidence/wdc-mutation-probe.log
+# ② T1 聊天矩阵报告（当前一份 + 6 份时间戳副本；副本是棘轮基线的历史证据，删了就说不清 22/23 是在哪一轮量的）
+!_evidence/prompt-template-chat-matrix.md
+!_evidence/prompt-template-chat-matrix.2026-10-04T04-32-22-935Z.md
+!_evidence/prompt-template-chat-matrix.2026-10-04T11-16-00-385Z.md
+!_evidence/prompt-template-chat-matrix.2026-10-05T00-00-01-860Z.md
+!_evidence/prompt-template-chat-matrix.2026-10-05T01-14-49-566Z.md
+!_evidence/prompt-template-chat-matrix.2026-10-08T00-34-52-830Z.md
+!_evidence/prompt-template-chat-matrix.2026-10-08T14-07-15-680Z.md
+# ③ T2 建模矩阵报告（当前一份 + 5 份时间戳副本）
+!_evidence/prompt-template-build-matrix.md
+!_evidence/prompt-template-build-matrix.2026-10-08T03-55-06-294Z.md
+!_evidence/prompt-template-build-matrix.2026-10-08T12-22-32-599Z.md
+!_evidence/prompt-template-build-matrix.2026-10-08T12-23-59-167Z.md
+!_evidence/prompt-template-build-matrix.2026-10-08T14-03-04-995Z.md
+!_evidence/prompt-template-build-matrix.2026-10-08T15-07-31-560Z.md
+# ④ 无头入口闸门报告（当前一份 + 4 份时间戳副本）
+!_evidence/workflow-headless-gate.md
+!_evidence/workflow-headless-gate.2026-10-05T21-04-17-693Z.md
+!_evidence/workflow-headless-gate.2026-10-07T21-13-52-975Z.md
+!_evidence/workflow-headless-gate.2026-10-07T21-27-37-537Z.md
+!_evidence/workflow-headless-gate.2026-10-08T03-58-31-923Z.md
+# ⑤ A7 两个核账脚本的输出（不花厂商额度，可反复重跑；留一份是为了钉住「没有被加例外」这个结论）
+!_evidence/r10-a7-hint-satisfaction.log
+!_evidence/r10-a7-intent-agreement.log
+# ⑥ C2 变异探针那一批的原始输出 + 跑前校验和
+!_evidence/c2-probe-before.sha256
+!_evidence/c2-step1-e2e-batchA.log
+!_evidence/c2-step1-e2e-batchB.log
+!_evidence/c2-step1-probe-red.log
+!_evidence/c2-step1-run1.log
+!_evidence/c2-step1-run2-restored.log
+!_evidence/c2-step1-unit.log

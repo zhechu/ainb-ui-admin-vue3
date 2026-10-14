@@ -26,7 +26,7 @@ export type OnlineFormVO = {
 /**
  * 获得流程可用的在线表单列表
  *
- * @param mainForm 是否作为主表单校验。主表单要求业务表同时有 process_instance_id 与 status 两列，
+ * @param mainForm 是否作为主表单校验。主表单要求业务表同时有 process_instance_id 与 process_status 两列，
  *                 节点表单只要求 process_instance_id
  */
 export const getOnlineFormList = (mainForm: boolean = true) => {

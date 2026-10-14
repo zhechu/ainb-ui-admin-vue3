@@ -1,18 +1,28 @@
 <template>
-  <Dialog :title="`版本历史 - ${interfaceName}`" v-model="dialogVisible" width="1000px">
+  <ContentWrap>
+    <!-- 顶部操作栏：内容较多，页内展示 -->
+    <div class="di-panel-header mb-15px flex items-center justify-between">
+      <div class="flex items-center">
+        <el-button link @click="emit('back')">
+          <Icon icon="ep:arrow-left" class="mr-5px" /> 返回
+        </el-button>
+        <span class="di-panel-title ml-8px">版本历史 - {{ interfaceName }}</span>
+      </div>
+    </div>
+
     <el-alert type="info" :closable="false" class="mb-10px">
       <template #title>
-        每次修改前会自动存一份「修改前的配置」。回滚会把该版本的配置写回，
-        <b>回滚本身也会产生新版本</b>，操作全程可追溯。
+        每次修改前会自动存一份「修改前的配置」，单个接口最多保留 100 个版本（超出自动清理最旧的）。
+        回滚会把该版本的配置写回，<b>回滚本身也会产生新版本</b>，操作全程可追溯。
       </template>
     </el-alert>
 
-    <el-table v-loading="loading" :data="list" size="small" max-height="420">
+    <el-table v-loading="loading" :data="list" size="small">
       <el-table-column type="expand">
         <template #default="{ row }">
           <div class="px-20px py-10px">
-            <div class="mb-5px font-bold">配置快照</div>
-            <pre class="code-block">{{ prettySnapshot(row.snapshot) }}</pre>
+            <div class="mb-8px font-bold">配置快照</div>
+            <VersionSnapshotView :snapshot="row.snapshot" />
           </div>
         </template>
       </el-table-column>
@@ -24,13 +34,22 @@
       <el-table-column label="变更说明" prop="changeSummary" :show-overflow-tooltip="true" min-width="200">
         <template #default="{ row }">
           <span v-if="row.changeSummary">{{ row.changeSummary }}</span>
-          <span v-else class="text-gray-400">未填写</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">未填写</span>
         </template>
       </el-table-column>
       <el-table-column label="操作人" prop="creator" width="110" align="center" />
       <el-table-column label="时间" prop="createTime" width="170" :formatter="dateFormatter" />
-      <el-table-column label="操作" width="90" align="center" fixed="right">
+      <el-table-column label="操作" width="140" align="center" fixed="right">
         <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            size="small"
+            @click="emit('preview', row)"
+            v-hasPermi="['infra:data-interface:query']"
+          >
+            预览
+          </el-button>
           <el-button
             link
             type="primary"
@@ -43,7 +62,7 @@
         </template>
       </el-table-column>
       <template #empty>
-        <span class="text-gray-400">还没有版本记录（首次修改后才会产生）</span>
+        <span class="text-[var(--el-text-color-secondary)]">还没有版本记录（首次修改后才会产生）</span>
       </template>
     </el-table>
     <Pagination
@@ -52,21 +71,23 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
-  </Dialog>
+  </ContentWrap>
 </template>
 
 <script lang="ts" setup>
 import { ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
+import VersionSnapshotView from './components/VersionSnapshotView.vue'
 
-/** 版本历史 */
+/** 版本历史（页内展示） */
 defineOptions({ name: 'DataInterfaceVersionList' })
 
 const message = useMessage()
 const { t } = useI18n()
 
-const dialogVisible = ref(false)
+const emit = defineEmits(['back', 'success', 'preview'])
+
 const loading = ref(false)
 const interfaceId = ref<number>()
 const interfaceName = ref('')
@@ -75,15 +96,12 @@ const total = ref(0)
 const queryParams = reactive({ pageNo: 1, pageSize: 20 })
 
 const open = async (row: DataInterfaceApi.DataInterfaceVO) => {
-  dialogVisible.value = true
   interfaceId.value = row.id
   interfaceName.value = row.name
   queryParams.pageNo = 1
   await getList()
 }
 defineExpose({ open })
-
-const emit = defineEmits(['success'])
 
 const getList = async () => {
   if (!interfaceId.value) {
@@ -96,18 +114,6 @@ const getList = async () => {
     total.value = data.total
   } finally {
     loading.value = false
-  }
-}
-
-/** 快照是 JSON 字符串，格式化后展示；解析不了就原样显示 */
-const prettySnapshot = (raw?: string) => {
-  if (!raw) {
-    return '（无内容）'
-  }
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
   }
 }
 
@@ -134,15 +140,9 @@ const handleRollback = async (row: DataInterfaceApi.DataInterfaceVersionVO) => {
 </script>
 
 <style lang="scss" scoped>
-.code-block {
-  padding: 10px;
-  margin: 0;
-  font-family: Consolas, Monaco, monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-  background-color: #f5f7fa;
-  border-radius: 4px;
+.di-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 </style>

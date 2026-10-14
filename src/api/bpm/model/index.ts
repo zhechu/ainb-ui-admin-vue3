@@ -49,10 +49,6 @@ export const updateModelSortBatch = async (ids: number[]) => {
   })
 }
 
-export const updateModelBpmn = async (data: ModelVO) => {
-  return await request.put({ url: '/bpm/model/update-bpmn', data: data })
-}
-
 // 任务状态修改
 export const updateModelState = async (id: number, state: number) => {
   const data = {

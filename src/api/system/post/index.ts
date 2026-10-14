@@ -5,6 +5,8 @@ export interface PostVO {
   name: string
   code: string
   sort: number
+  /** 所属组织编号，为空表示不挂组织 */
+  deptId?: number
   status: number
   remark: string
   createTime?: Date

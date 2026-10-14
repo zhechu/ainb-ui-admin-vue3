@@ -1,144 +1,140 @@
 <template>
   <div class="form-design-wrapper">
-    <!-- 设计器主体。不加任何工具条，整块高度都留给画布 -->
+    <!--
+      设计器主体。字段映射挂在左栏「大纲」之后的第三个页签里（vendored 的 l-tab-extra 插槽，
+      见 src/lib/form-designer/VENDOR.md 本地改动 #8）——它和大纲一样是「按字段看表单」，
+      放一起比原先在右边单开一条侧栏更顺手。
+
+      ⚠️ 未映射的字段提交时静默不入库，而这件事目前【只有本面板顶部那条告警】在报
+      —— 设计期体检与后端发布校验都不查。也就是说不切到这个页签就看不见。
+      正确的做法是把它补成发布校验的一条，见 docs 里的说明。
+    -->
     <div class="designer-area">
-      <fc-designer ref="designer" :config="designerConfig" class="h-full" />
-    </div>
-
-    <!-- 收起态：只留一条竖边，未映射数量挂在角标上 -->
-    <div v-if="mappingCollapsed" class="mapping-handle" @click="mappingCollapsed = false">
-      <el-badge
-        :hidden="unmappedCount === 0"
-        :value="unmappedCount"
-        type="danger"
-        class="mapping-handle-badge"
-      >
-        <Icon icon="ep:d-arrow-left" />
-      </el-badge>
-      <span class="mapping-handle-text">字段映射</span>
-    </div>
-
-    <!-- 字段映射侧栏 -->
-    <div v-else class="mapping-area">
-      <div class="mapping-header">
-        <span class="mapping-title">字段映射</span>
-        <div>
-          <el-button link type="primary" size="small" @click="handleRefreshFields">
-            <Icon icon="ep:refresh" class="mr-3px" />
-            刷新字段
-          </el-button>
-          <el-button link size="small" title="收起" @click="mappingCollapsed = true">
-            <Icon icon="ep:d-arrow-right" />
-          </el-button>
-        </div>
-      </div>
-
-      <!--
-        字段ID 已经能从物理列里直接选，选完映射会自动补上，所以这个面板平时用不到。
-        留着是因为它仍是两件事的唯一入口：把自定义命名的字段绑到列上，
-        以及看出哪些字段【没有】映射 —— 少了它，漏配会重新变成运行时才发现的静默失败。
-      -->
-      <el-alert
-        v-if="unmappedCount > 0"
-        :title="`有 ${unmappedCount} 个字段还没有映射到物理列，提交时这些字段不会入库`"
-        type="warning"
-        :closable="false"
-        class="mb-10px"
-      />
-
-      <el-alert
-        v-if="!modelData.mainTable"
-        title="请先在「数据绑定」步骤选择主表"
-        type="warning"
-        :closable="false"
-        class="mb-10px"
-      />
-
-      <!-- 一键生成。放在面板里而不是画布上方：常驻工具条要横占一整行，太吃高度 -->
-      <el-button
-        v-else
-        type="primary"
-        plain
-        size="small"
-        class="w-full mb-10px"
-        @click="handleGenerateFromColumns"
-      >
-        <Icon icon="ep:magic-stick" class="mr-3px" />
-        从 {{ modelData.mainTable }} 一键生成字段
-      </el-button>
-
-      <!-- 映射表。按归属分组：主表/副表字段一组，每张子表各一组 -->
-      <div v-if="mappingGroups.length > 0" class="mapping-list">
-        <div v-for="group in mappingGroups" :key="group.key" class="mapping-group">
-          <div class="mapping-group-title">
-            <span>{{ group.label }}</span>
-            <span v-if="group.table" class="mapping-group-table">{{ group.table }}</span>
+      <fc-designer v-if="designerReady" ref="designer" :config="designerConfig" class="h-full">
+        <template #l-tab-extra-title>字段映射</template>
+        <template #l-tab-extra>
+          <div class="mapping-area">
+          <!-- 标题已在页签头上，这里只留动作 -->
+          <div class="mapping-header">
+            <el-button link type="primary" size="small" @click="handleRefreshFields">
+              <Icon icon="ep:refresh" class="mr-3px" />
+              刷新字段
+            </el-button>
           </div>
 
+          <!--
+            字段ID 已经能从物理列里直接选，选完映射会自动补上，所以这个面板平时用不到。
+            留着是因为它仍是两件事的唯一入口：把自定义命名的字段绑到列上，
+            以及看出哪些字段【没有】映射 —— 少了它，漏配会重新变成运行时才发现的静默失败。
+          -->
           <el-alert
-            v-if="group.owner && !group.table"
-            title="该子表控件还没有在「数据绑定」步骤配置对应的明细表，字段无法映射"
+            v-if="unmappedCount > 0"
+            :title="`有 ${unmappedCount} 个字段还没有映射到物理列，提交时这些字段不会入库`"
             type="warning"
             :closable="false"
-            class="mb-8px"
+            class="mb-10px"
           />
 
-          <div v-for="field in group.fields" :key="group.key + '::' + field.field" class="mapping-item">
-            <div class="mapping-field">
-              <span class="field-title">{{ field.title || field.field }}</span>
-              <span class="field-name">{{ field.field }}</span>
-            </div>
-            <!-- 主表作用域下有副表时才显示表选择器；子表字段的表由控件归属决定，不给选 -->
-            <el-select
-              v-if="!group.owner && writableTables.length > 1"
-              :model-value="mappingOf(group, field)?.table || modelData.mainTable"
-              placeholder="选择表"
-              size="small"
-              class="mb-4px"
-              @update:model-value="(t) => handleMappingTableChange(group, field, t)"
-            >
-              <el-option v-for="t in writableTables" :key="t.table" :label="t.label" :value="t.table" />
-            </el-select>
-            <el-select
-              :model-value="mappingOf(group, field)?.column"
-              :disabled="!!group.owner && !group.table"
-              placeholder="选择物理列"
-              clearable
-              size="small"
-              filterable
-              @update:model-value="(c) => handleMappingColumnChange(group, field, c)"
-            >
-              <el-option
-                v-for="col in mappableColumnsOf(mappingOf(group, field)?.table || group.table)"
-                :key="col.columnName"
-                :label="
-                  col.columnComment ? `${col.columnName}（${col.columnComment}）` : col.columnName
-                "
-                :value="col.columnName"
+          <el-alert
+            v-if="!modelData.mainTable"
+            title="请先在「数据绑定」步骤选择主表"
+            type="warning"
+            :closable="false"
+            class="mb-10px"
+          />
+
+          <!-- 一键生成。放在面板里而不是画布上方：常驻工具条要横占一整行，太吃高度 -->
+          <el-button
+            v-else
+            type="primary"
+            plain
+            size="small"
+            class="w-full mb-10px"
+            @click="handleGenerateFromColumns"
+          >
+            <Icon icon="ep:magic-stick" class="mr-3px" />
+            从 {{ modelData.mainTable }} 一键生成字段
+          </el-button>
+
+          <!-- 映射表。按归属分组：主表/副表字段一组，每张子表各一组 -->
+          <div v-if="mappingGroups.length > 0" class="mapping-list">
+            <div v-for="group in mappingGroups" :key="group.key" class="mapping-group">
+              <div class="mapping-group-title">
+                <span>{{ group.label }}</span>
+                <span v-if="group.table" class="mapping-group-table">{{ group.table }}</span>
+              </div>
+
+              <el-alert
+                v-if="group.owner && !group.table"
+                title="该子表控件还没有在「数据绑定」步骤配置对应的明细表，字段无法映射"
+                type="warning"
+                :closable="false"
+                class="mb-8px"
               />
-            </el-select>
+
+              <div v-for="field in group.fields" :key="group.key + '::' + field.field" class="mapping-item">
+                <div class="mapping-field">
+                  <span class="field-title">{{ field.title || field.field }}</span>
+                  <span class="field-name">{{ field.field }}</span>
+                </div>
+                <!-- 主表作用域下有副表时才显示表选择器；子表字段的表由控件归属决定，不给选 -->
+                <el-select
+                  v-if="!group.owner && writableTables.length > 1"
+                  :model-value="mappingOf(group, field)?.table || modelData.mainTable"
+                  placeholder="选择表"
+                  size="small"
+                  class="mb-4px"
+                  @update:model-value="(t) => handleMappingTableChange(group, field, t)"
+                >
+                  <el-option v-for="t in writableTables" :key="t.table" :label="t.label" :value="t.table" />
+                </el-select>
+                <el-select
+                  :model-value="mappingOf(group, field)?.column"
+                  :disabled="!!group.owner && !group.table"
+                  placeholder="选择物理列"
+                  clearable
+                  size="small"
+                  filterable
+                  @update:model-value="(c) => handleMappingColumnChange(group, field, c)"
+                >
+                  <el-option
+                    v-for="col in mappableColumnsOf(mappingOf(group, field)?.table || group.table)"
+                    :key="col.columnName"
+                    :label="
+                      col.columnComment ? `${col.columnName}（${col.columnComment}）` : col.columnName
+                    "
+                    :value="col.columnName"
+                  />
+                </el-select>
+              </div>
+
+              <el-empty
+                v-if="group.fields.length === 0"
+                description="该子表控件内还没有字段"
+                :image-size="40"
+              />
+            </div>
           </div>
 
-          <el-empty
-            v-if="group.fields.length === 0"
-            description="该子表控件内还没有字段"
-            :image-size="40"
-          />
-        </div>
-      </div>
-
-      <el-empty v-else description="设计器中还没有字段，请先拖入控件" :image-size="60" />
+          <el-empty v-else description="设计器中还没有字段，请先拖入控件" :image-size="60" />
+          </div>
+        </template>
+      </fc-designer>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { useFormCreateDesigner, createDesignerConfig } from '@/components/FormCreate'
-import { SUB_TABLE_WIDGET_TYPE } from '@/components/FormWidgets/contracts'
+import { ensureFcDesigner, whenDesignerReady } from '@/plugins/formCreate/designer'
+import { SUB_TABLE_WIDGET_TYPE, isNoStorage } from '@/components/FormWidgets/contracts'
 import { encodeConf, encodeFields, setConfAndFields } from '@/utils/formCreate'
 import { useStepRestore } from './useStepRestore'
 import { fieldNameOf } from './fieldNaming'
 import * as FormDesignApi from '@/api/infra/formDesign'
+// 设计器基础属性面板的默认规则。直接取 vendored 源码的那一份，避免手抄出漂移，
+// 见下方 buildBaseRule
+import defaultFieldRule from '@/lib/form-designer/config/base/field'
 
 defineOptions({ name: 'FormDesignStepFormDesign' })
 
@@ -153,22 +149,59 @@ defineOptions({ name: 'FormDesignStepFormDesign' })
 const message = useMessage()
 const modelData = defineModel<any>({ required: true })
 
+const emit = defineEmits<{
+  /** 请求打开「逻辑与扩展」弹窗。弹窗挂在向导页（editor/index.vue）上 */
+  (e: 'open-logic'): void
+}>()
+
+const props = defineProps<{
+  /**
+   * 「逻辑与扩展」当前的问题清单，用于入口按钮的角标
+   *
+   * 由向导页算好传下来 —— 它是从 formData 与表单字段推出来的，
+   * 与弹窗有没有被打开过无关（这一点很重要，见 index.vue 里保存前的校验）
+   */
+  logicProblems?: string[]
+}>()
+
 /**
  * 设计器配置
  *
  * 与 bpm/form/editor 共用同一个配置工厂 —— 改造前两处各维护一份近乎相同的配置，
- * 已经出现漂移。场景差异（本模块关掉 AI 生成字段、字段ID 改为从物理列下拉选）
- * 通过参数表达，而不是各自复制一份基线。
+ * 已经出现漂移。场景差异（本模块关掉 AI 生成字段、字段ID 改为从物理列下拉选、
+ * 表单配置面板里加「逻辑与扩展」入口）通过参数表达，而不是各自复制一份基线。
  */
 const designerConfig = ref(
   createDesignerConfig('formDesign', {
     // 字段ID 改为从物理列里下拉选择，见 buildBaseRule
-    baseRule: (arg: any) => buildBaseRule(arg)
+    baseRule: (arg: any) => buildBaseRule(arg),
+    onOpenLogic: () => emit('open-logic'),
+    // 传 getter：属性面板规则只构造一次，传值的话角标不会跟着变
+    getLogicProblems: () => props.logicProblems ?? []
   })
 )
 
 const designer = ref()
 useFormCreateDesigner(designer)
+
+/**
+ * FcDesigner 按需加载
+ *
+ * 改造前 FcDesigner 随 main.ts 一起同步注册，vendored 的 form-designer (~926KB)
+ * 进了首屏 bundle。现在只有真正会渲染 `<fc-designer>` 的页面才动态 import 一次，
+ * 全站单例（见 plugins/formCreate/designer.ts）。
+ *
+ * 门控放在模板的 v-if 上：designer 组件注册好之前不挂载 `<fc-designer>`，
+ * 避免 Vue 报「未知自定义元素」。
+ */
+const designerReady = ref(false)
+onBeforeMount(async () => {
+  const instance = getCurrentInstance()
+  if (instance) {
+    await ensureFcDesigner(instance.appContext.app)
+  }
+  designerReady.value = true
+})
 
 const columnList = ref<FormDesignApi.DbColumnVO[]>([])
 
@@ -200,31 +233,31 @@ const fieldMapping = ref<Record<string, { table?: string; column?: string }>>({}
 const mappingKey = (owner: string | undefined, field: string): string =>
   owner ? `${owner}::${field}` : field
 
-/**
- * 映射面板是否收起
- *
- * 默认收起：字段ID 现在能直接从物理列里选，选完映射自动补上，
- * 常规流程根本不需要展开这个面板，让它长期占着 320px 不合适。
- *
- * 但不能删掉 —— 见模板里的说明。收起态用角标暴露「还有几个字段没映射」，
- * 否则漏配就藏起来了，那正是这个面板存在的意义。
- */
-/**
- * 映射面板是否收起
- *
- * 默认收起且【不会】自动弹出：字段ID 能直接从物理列里选，选完映射自动补上，
- * 常规流程根本不需要展开。自动弹出会在用户正拖控件时突然抢走 320px，很打断操作。
- *
- * 但面板不能删 —— 见模板里的说明。漏配的可见性由两处兜住，都不依赖面板是否展开：
- * 顶部工具条的告警按钮（点一下直接展开去处理），以及收起态竖边上的角标。
- */
-const mappingCollapsed = ref(true)
 
-/** 还没映射到物理列的字段数。展示型控件没有 field，不会进 designerFields，不计入 */
+/**
+ * 还没映射到物理列、且【本来应该映射】的字段数
+ *
+ * ⚠️ 必须按契约的 storage 过滤掉不落库的控件，否则这条提示会多报一整类。
+ *
+ * 原先的写法是「designerFields 里没有 column 的都算」，注释写着「展示型控件没有
+ * field，不会进 designerFields」——这句话对 col / space 那种成立，对
+ * SystemValue / Link / CodeImage / elImage / fcTitle / FormStep / elTabPane /
+ * fcTable 等**不成立**：它们有 field，会进 designerFields，但 storage=none，
+ * 本来就不该落库。结果是一张放了「创建人」系统值控件的正常表单，
+ * 面板上会一直挂着「有 N 个字段还没有映射到物理列，提交时这些字段不会入库」。
+ *
+ * 后端对这件事的口径是明确的，`FormDesignPublishValidator#validateSystemValueFields`
+ * 里写着「没映射列 —— 纯展示用法，合法」。前端跟上同一个口径。
+ *
+ * 判据取自控件契约（isNoStorage），不另列一份清单——另列必然与契约漂移。
+ * 契约里查不到的类型也按不计入处理：宁可漏报，也不要让一个没见过的控件
+ * 把正常表单标成有问题。
+ */
 const unmappedCount = computed(
   () =>
-    designerFields.value.filter((f) => !fieldMapping.value[mappingKey(f.owner, f.field)]?.column)
-      .length
+    designerFields.value.filter(
+      (f) => !isNoStorage(f.type) && !fieldMapping.value[mappingKey(f.owner, f.field)]?.column
+    ).length
 )
 
 /** 可写表（主表 + 副表）。子表不在其中，它由所属控件决定归属 */
@@ -471,47 +504,31 @@ const syncActiveScope = () => {
  * 基础属性面板的规则
  *
  * 用设计器支持的 config.baseRule 钩子整体替换默认规则，只把「字段ID」从
- * FieldInput 换成下拉选择，其余项按默认样子重建。
+ * FieldInput 换成下拉选择，其余项原样沿用上游默认。
  *
- * ⚠️ 这是对设计器默认基础规则的一份复刻（@form-create/designer 3.4.0）。
- * 该钩子只支持整体替换或前后追加，没有「只改其中一项」的模式，所以必须重建全部。
- * 升级设计器时如果默认基础项有增减，这里要跟着补 —— 少一项的后果是那个属性
- * 在面板上消失，界面上看得出来，不会静默出错。
+ * 该钩子只支持整体替换或前后追加，没有「只改其中一项」的模式，所以必须给出全部项。
+ * 但**不再手抄一份** —— 直接引入 vendored 设计器导出的默认规则再替换第一项，
+ * 上游增减基础项时这里自动跟上。
+ *
+ * 之前是手抄的，而且已经抄漏了：上游 `_control` 项带一条指向联动文档的 warning，
+ * 复刻版没有。这类漏项在界面上表现为「某个说明凭空少了」，不会报错。
  */
-const buildBaseRule = ({ t }: any) => [
-  {
-    // 自带的 FieldInput 是自由输入框。DbFieldSelect 换成从物理列下拉选，
-    // 但原样保留了它的三重校验（非空 / 字母开头 / 同作用域不重名）——
-    // 重名那条尤其不能丢：form-create 按 field 取值，两个控件同名会互相覆盖且毫无提示
-    type: 'DbFieldSelect',
-    field: 'field',
-    value: '',
-    title: t('form.field'),
-    warning: t('warning.field'),
-    props: {
-      options: fieldOptions,
-      placeholder: '选择数据库字段，或输入自定义字段名'
-    }
-  },
-  { type: 'LanguageInput', field: 'title', value: '', title: t('form.title') },
-  { type: 'LanguageInput', field: 'info', value: '', title: t('form.info') },
-  { type: 'SizeInput', field: 'formCreateWrap>labelWidth', value: '', title: t('form.labelWidth') },
-  {
-    type: 'Struct',
-    field: '_control',
-    name: 'control',
-    value: [],
-    title: t('form.control'),
-    props: {
-      defaultValue: [],
-      validate(val: any) {
-        if (!Array.isArray(val)) return false
-        if (!val.length) return true
-        return !val.some(({ rule }: any) => !Array.isArray(rule))
-      }
-    }
-  }
-]
+const buildBaseRule = ({ t }: any) =>
+  defaultFieldRule({ t }).map((item: any) =>
+    item.field === 'field'
+      ? {
+          // 自带的 FieldInput 是自由输入框。DbFieldSelect 换成从物理列下拉选，
+          // 但原样保留了它的三重校验（非空 / 字母开头 / 同作用域不重名）——
+          // 重名那条尤其不能丢：form-create 按 field 取值，两个控件同名会互相覆盖且毫无提示
+          ...item,
+          type: 'DbFieldSelect',
+          props: {
+            options: fieldOptions,
+            placeholder: '选择数据库字段，或输入自定义字段名'
+          }
+        }
+      : item
+  )
 
 /**
  * 保留列黑名单：不允许在字段映射里选择
@@ -886,6 +903,10 @@ const AUDIT_COLUMN_PATTERNS: Record<string, string[]> = {
 
 /** 回显已保存的设计产物与映射 */
 const restore = async () => {
+  // ⚠️ 必须先等 fc-designer 渲染出来。FcDesigner 按需加载后本组件用 v-if="designerReady"
+  //    门控它，而回显由数据到达触发（useStepRestore）—— 数据可能比设计器 chunk 先到。
+  //    那时 designer.value 还是 null，setConfAndFields 会抛错且回显不会重试，设计区永远空白。
+  await whenDesignerReady(designer)
   if (modelData.value.formConf && modelData.value.formFields?.length) {
     setConfAndFields(designer, modelData.value.formConf, modelData.value.formFields)
   }
@@ -991,58 +1012,18 @@ onMounted(async () => {
   border: 1px solid var(--el-border-color-lighter);
 }
 
+/* 面板现在住在设计器左栏的第三个页签里，宽度由左栏给（激活时 360px），自己不再定宽 */
 .mapping-area {
-  width: 320px;
-  flex-shrink: 0;
-  padding: 12px;
+  height: 100%;
   overflow-y: auto;
-  background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-}
-
-/* 收起态：一条可点击的竖边，把宽度还给设计器 */
-.mapping-handle {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: 12px;
-  align-items: center;
-  width: 36px;
-  padding-top: 12px;
-  cursor: pointer;
-  background-color: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
-
-  &:hover {
-    color: var(--el-color-primary);
-    background-color: var(--el-fill-color-light);
-  }
-}
-
-/* 竖排文字，窄边里放得下 */
-.mapping-handle-text {
-  font-size: 13px;
-  line-height: 1.2;
-  writing-mode: vertical-rl;
-  letter-spacing: 2px;
-}
-
-/* 角标默认会把图标挤出容器，收窄一点 */
-.mapping-handle-badge :deep(.el-badge__content) {
-  transform: translateY(-50%) translateX(60%);
 }
 
 .mapping-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
-.mapping-title {
-  font-size: 15px;
-  font-weight: bold;
-}
 
 .mapping-item {
   padding: 8px 0;

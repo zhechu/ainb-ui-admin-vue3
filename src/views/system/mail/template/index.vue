@@ -94,8 +94,23 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+      class="xpy-list-table"
+      stripe
+    >
       <el-table-column type="selection" width="55" />
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
+        label-class-name="col-index"
+      />
       <el-table-column
         label="模板编码"
         align="center"
@@ -148,32 +163,9 @@
         width="180"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="210" fixed="right">
+      <el-table-column label="操作" align="center" width="160" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', scope.row.id)"
-            v-hasPermi="['system:mail-template:update']"
-          >
-            修改
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            @click="openSendForm(scope.row.id)"
-            v-hasPermi="['system:mail-template:send-mail']"
-          >
-            测试
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(scope.row.id)"
-            v-hasPermi="['system:mail-template:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="scope.row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -198,6 +190,7 @@ import * as MailTemplateApi from '@/api/system/mail/template'
 import * as MailAccountApi from '@/api/system/mail/account'
 import MailTemplateForm from './MailTemplateForm.vue'
 import MailTemplateSendForm from './MailTemplateSendForm.vue'
+import type { TableActionButton } from '@/components/TableActions'
 
 defineOptions({ name: 'SystemMailTemplate' })
 
@@ -292,6 +285,29 @@ const getAccountMail = (accountId: number) => {
   const account = accountList.value.find((account) => account.id === accountId)
   return account?.mail || ''
 }
+
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'update',
+    label: '修改',
+    permission: ['system:mail-template:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'send',
+    label: '测试',
+    permission: ['system:mail-template:send-mail'],
+    onClick: (row) => openSendForm(row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['system:mail-template:delete'],
+    onClick: (row) => handleDelete(row.id)
+  }
+]
 
 /** 初始化 **/
 onMounted(async () => {

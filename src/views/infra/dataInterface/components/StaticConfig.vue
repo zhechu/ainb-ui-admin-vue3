@@ -7,13 +7,23 @@
       v-model="jsonText"
       type="textarea"
       :rows="8"
+      :readonly="readonly"
       placeholder="[{&quot;value&quot;: 1, &quot;label&quot;: &quot;启用&quot;}, {&quot;value&quot;: 0, &quot;label&quot;: &quot;停用&quot;}]"
       spellcheck="false"
       class="json-input"
       @blur="validateJson"
     />
-    <div v-if="jsonError" class="mt-6px text-12px text-red-500">JSON 格式有误：{{ jsonError }}</div>
-    <el-button v-else-if="jsonText" link type="primary" size="small" class="mt-6px" @click="format">
+    <div v-if="jsonError" class="mt-6px text-12px text-[var(--el-color-danger)]">
+      JSON 格式有误：{{ jsonError }}
+    </div>
+    <el-button
+      v-else-if="jsonText && !readonly"
+      link
+      type="primary"
+      size="small"
+      class="mt-6px"
+      @click="format"
+    >
       格式化
     </el-button>
   </div>
@@ -25,7 +35,10 @@ import { useVModel } from '@vueuse/core'
 /** 静态 JSON 配置 */
 defineOptions({ name: 'StaticConfig' })
 
-const props = withDefaults(defineProps<{ modelValue?: string }>(), { modelValue: '' })
+const props = withDefaults(defineProps<{ modelValue?: string; readonly?: boolean }>(), {
+  modelValue: '',
+  readonly: false
+})
 const emit = defineEmits(['update:modelValue'])
 const jsonText = useVModel(props, 'modelValue', emit) as Ref<string>
 

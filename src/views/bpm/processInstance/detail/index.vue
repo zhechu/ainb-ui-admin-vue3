@@ -121,6 +121,22 @@
               </el-scrollbar>
             </div>
           </el-tab-pane>
+
+          <!-- 变更清单（S3 建渲染 / S6 供数据）：agent 流程挂到 BPM 上时，
+               审批人在这里看「点了通过之后平台上会多出/改掉什么」。
+               🔴 放在最后一个页签，不插到中间：现有页签顺序被别处按位置假设过，
+                  而这块今天还恒不出现（S6 才注入流程变量），不值得为它冒重排的险 -->
+          <el-tab-pane v-if="agentManifest" label="变更清单" name="manifest">
+            <div class="form-scroll-area">
+              <el-scrollbar>
+                <ChangeManifestCard
+                  data-testid="bpm-manifest"
+                  :manifest="agentManifest"
+                  class="p-12px"
+                />
+              </el-scrollbar>
+            </div>
+          </el-tab-pane>
         </el-tabs>
 
         <div class="b-t-solid border-t-1px border-[var(--el-border-color)]">
@@ -133,6 +149,7 @@
             :normal-form="detailForm"
             :normal-form-api="fApi"
             :writable-fields="writableFields"
+            :agent-manifest="agentManifest"
             @success="refresh"
           />
         </div>
@@ -165,6 +182,12 @@ import approveSvg from '@/assets/svgs/bpm/approve.svg'
 import rejectSvg from '@/assets/svgs/bpm/reject.svg'
 import cancelSvg from '@/assets/svgs/bpm/cancel.svg'
 import PrintDialog from './PrintDialog.vue'
+// 🔴 跨模块复用（bpm → agent）：方案 §L1149 要求四处渲染共用同一个组件，
+//    在 bpm 里另抄一份「清单渲染」就是第 5 份会漂的副本 —— 而清单的渲染纪律
+//    （null 不等于「没有变更」、NOT_PROBED 不是「不通过」）抄漏一条就是让审批人放心点通过
+import ChangeManifestCard from '@/views/agent/workflow/components/ChangeManifestCard.vue'
+import type { ChangeManifestVO } from '@/api/agent/workflow'
+import { readAgentManifest } from './manifestFallback'
 
 defineOptions({ name: 'BpmProcessInstanceDetail' })
 const props = defineProps<{
@@ -321,6 +344,27 @@ const handlePrint = async () => {
 
 /** 当前的 Tab */
 const activeTab = ref('form')
+
+/**
+ * agent 流程挂到 BPM 审批上时的变更清单（S3 建渲染，S6 供数据）。
+ *
+ * 🔴 键名 `agent_change_manifest`，由 S6 在启动流程实例时冻结进流程变量。
+ *
+ * 🔴 全部判定策略（含「读不出来时怎么办」）已抽到 `./manifestFallback`，
+ *    由 `manifestFallback.spec.ts` 钉住。抽出去的理由不是整洁：内联在 setup 体里时
+ *    它**没有任何强制点** —— 前端单测只收 `src` 下的 `*.spec.ts`，`.vue` 不在其中，
+ *    而「读不出来就沉默」正是缺陷 C10 本身。
+ *
+ * 🔴 这个 computed 只有**一种**情况返回 null：流程变量压根没有值
+ *    （「这条流程不是 agent 流程」或「作者关掉了 injectManifest」）——
+ *    这两种情况下页签不出现是对的，平台从没答应过要给一份清单。
+ *    `raw` 有值却读不出来时返回一份 `degraded: true` 的降级清单，页签照常出现并说明失败：
+ *    「没算出来」和「不改什么」在界面上必须是两句话，
+ *    否则审批人会在盲批不可逆动作时看到一片安静。
+ */
+const agentManifest = computed<ChangeManifestVO | null>(() =>
+  readAgentManifest(processInstance.value?.formVariables?.agent_change_manifest)
+)
 
 /** 初始化 */
 const userOptions = ref<UserApi.UserVO[]>([]) // 用户列表

@@ -6,6 +6,7 @@ import { useDesign } from '@/hooks/web/useDesign'
 defineOptions({ name: 'ColorRadioPicker' })
 
 const { getPrefixCls } = useDesign()
+const { t } = useI18n()
 
 const prefixCls = getPrefixCls('color-radio-picker')
 
@@ -40,7 +41,7 @@ watch(
 </script>
 
 <template>
-  <div :class="prefixCls" class="flex flex-wrap space-x-14px">
+  <div :class="prefixCls" class="flex flex-wrap items-center gap-x-10px gap-y-8px">
     <span
       v-for="(item, i) in schema"
       :key="`radio-${i}`"
@@ -48,11 +49,21 @@ watch(
       :style="{
         background: item
       }"
-      class="mb-5px h-20px w-20px cursor-pointer border-2px border-gray-300 rounded-2px border-solid text-center leading-20px"
+      :title="item"
+      class="h-22px w-22px cursor-pointer border-2px border-gray-300 rounded-3px border-solid text-center leading-22px"
       @click="colorVal = item"
     >
-      <Icon v-if="colorVal === item" :size="16" color="#fff" icon="ep:check" />
+      <Icon v-if="colorVal === item" :size="15" :color="item === '#ffffff' ? '#333' : '#fff'" icon="ep:check" />
     </span>
+
+    <!-- 自选颜色：预设之外的任意色，取色器内也提供同一批预设做快捷选择 -->
+    <ElColorPicker
+      v-model="colorVal"
+      :predefine="schema"
+      :title="t('setting.customColor')"
+      popper-class="setting-color-popper"
+      size="small"
+    />
   </div>
 </template>
 

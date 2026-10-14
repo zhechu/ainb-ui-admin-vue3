@@ -3,12 +3,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import { useVModel } from '@vueuse/core'
 import monaco from '@/utils/monaco'
 import type * as Monaco from 'monaco-editor'
+import { useAppStore } from '@/store/modules/app'
 
 defineOptions({ name: 'CodeEditor' })
+
+const appStore = useAppStore()
 
 interface CodeEditorProps {
   modelValue: string
@@ -82,6 +85,15 @@ const props = withDefaults(defineProps<CodeEditorProps>(), {
 const emit = defineEmits(['update:modelValue', 'change'])
 const value = useVModel(props, 'modelValue', emit) as Ref<string>
 
+/**
+ * Monaco 主题跟随全局明暗模式
+ *
+ * props.theme 只作为初始默认值；实际主题以应用当前的暗黑状态为准，
+ * 否则切到暗黑主题后编辑器仍是一大块刺眼的白底。setTheme 是全局的，
+ * 同页多个编辑器主题一致，无副作用。
+ */
+const monacoTheme = computed(() => (appStore.getIsDark ? 'vs-dark' : 'vs'))
+
 const editorContainer = ref<HTMLElement>()
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
 let completionProvider: Monaco.IDisposable | null = null
@@ -110,7 +122,7 @@ const initEditor = () => {
   editor = monaco.editor.create(editorContainer.value, {
     value: props.modelValue || '',
     language: props.language,
-    theme: props.theme === 'dark' ? 'vs-dark' : 'vs',
+    theme: monacoTheme.value,
     readOnly: props.readonly,
     automaticLayout: true,
     minimap: { enabled: false },
@@ -412,6 +424,11 @@ watch(
     editor?.layout()
   }
 )
+
+// 主题跟随全局明暗切换（切换主题时无需重建编辑器）
+watch(monacoTheme, (theme) => {
+  monaco.editor.setTheme(theme)
+})
 
 onMounted(() => {
   initEditor()

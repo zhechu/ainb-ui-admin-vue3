@@ -1,4 +1,6 @@
 <template>
+  <!-- 页内视图切换：列表 / 新建编辑表单 / 取号日志，参照接口管理页的做法 -->
+  <template v-if="viewMode === 'list'">
   <ContentWrap>
     <el-form class="-mb-15px" :model="queryParams" ref="queryFormRef" :inline="true">
       <el-form-item label="模板名称" prop="name">
@@ -54,15 +56,18 @@
           @click="openForm('create')"
           v-hasPermi="['infra:bill-template:create']"
         >
-          <Icon icon="ep:plus" class="mr-5px" /> 新建模板
+          <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
 
   <ContentWrap>
-    <el-table v-loading="loading" :data="list">
-      <el-table-column label="编号" align="center" prop="id" width="70" />
+    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list">
+      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+        label-class-name="col-index"
+      />
+      <!-- 这里不显示「编号」：模板是拿 code 取号的，自增 id 对使用者没有意义 -->
       <el-table-column label="模板名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="模板编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="分类" align="center" width="100">
@@ -72,7 +77,7 @@
             :type="DICT_TYPE.INFRA_BILL_TEMPLATE_CATEGORY"
             :value="row.category"
           />
-          <span v-else class="text-gray-400">-</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
       <el-table-column label="生成方式" align="center" width="110">
@@ -101,7 +106,7 @@
           >
             <span>{{ row.currentNumber ?? 0 }}</span>
           </el-tooltip>
-          <span v-else class="text-gray-400">-</span>
+          <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="90">
@@ -120,24 +125,16 @@
         width="170"
         :formatter="dateFormatter"
       />
-      <el-table-column label="操作" align="center" width="140" fixed="right">
+      <!--
+        「取号日志」改叫「日志」之后这一列变窄了，宽度是推算的，没有复测：
+        改之前实测「测试 取号日志 编辑 删除」= 224px（含 .cell 左右内边距）。
+        拿它与接口管理页那次实测（「配置 预览 版本 更多」= 214px，8 个汉字 + 一个下拉箭头）
+        对解，得到每个汉字连按钮内边距约 17px；少 2 个汉字 ≈ -34px，224 - 34 = 190，取 200。
+        ⚠️ 这个数是算出来的不是量出来的，改动按钮文案后请实际看一眼有没有折行
+      -->
+      <el-table-column label="操作" align="center" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button
-            link
-            type="primary"
-            @click="openForm('update', row.id)"
-            v-hasPermi="['infra:bill-template:update']"
-          >
-            编辑
-          </el-button>
-          <el-button
-            link
-            type="danger"
-            @click="handleDelete(row)"
-            v-hasPermi="['infra:bill-template:delete']"
-          >
-            删除
-          </el-button>
+          <TableActions :row="row" :buttons="rowButtons" />
         </template>
       </el-table-column>
     </el-table>
@@ -148,8 +145,19 @@
       @pagination="getList"
     />
   </ContentWrap>
+  </template>
 
-  <BillTemplateForm ref="formRef" @success="getList" />
+  <BillTemplateForm
+    v-else-if="viewMode === 'form'"
+    ref="formRef"
+    @success="handlePanelDone"
+    @back="handlePanelBack"
+  />
+
+  <BillTemplateLogList v-else-if="viewMode === 'log'" ref="logRef" @back="handlePanelBack" />
+
+  <!-- 取号测试：真实取号会消耗流水并回写统计，返回时刷新列表 -->
+  <BillTemplateTestPanel v-else-if="viewMode === 'test'" ref="testRef" @back="handlePanelDone" />
 </template>
 
 <script lang="ts" setup>
@@ -158,13 +166,19 @@ import { dateFormatter } from '@/utils/formatTime'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as BillTemplateApi from '@/api/infra/billTemplate'
 import BillTemplateForm from './BillTemplateForm.vue'
+import BillTemplateLogList from './BillTemplateLogList.vue'
+import BillTemplateTestPanel from './BillTemplateTestPanel.vue'
 import { GEN_TYPE, GEN_TYPE_OPTIONS, RESET_CYCLE_OPTIONS } from './constants'
+import type { TableActionButton } from '@/components/TableActions'
 
-/** 单据模板列表 */
+/** 取号管理列表（菜单原名「单据模板」） */
 defineOptions({ name: 'InfraBillTemplate' })
 
 const message = useMessage()
 const { t } = useI18n()
+
+/** 页内视图：列表 / 新建编辑表单 / 取号日志 / 取号测试 */
+const viewMode = ref<'list' | 'form' | 'log' | 'test'>('list')
 
 const loading = ref(true)
 const list = ref<BillTemplateApi.BillTemplateVO[]>([])
@@ -219,8 +233,36 @@ const resetQuery = () => {
 }
 
 const formRef = ref()
-const openForm = (type: string, id?: number) => {
-  formRef.value.open(type, id)
+const openForm = async (type: string, id?: number) => {
+  viewMode.value = 'form'
+  // 面板是条件渲染的，必须等挂载后才能拿到 ref
+  await nextTick()
+  formRef.value?.open(type, id)
+}
+
+const logRef = ref()
+const openLog = async (row: BillTemplateApi.BillTemplateVO) => {
+  viewMode.value = 'log'
+  await nextTick()
+  logRef.value?.open(row.id, row.name)
+}
+
+const testRef = ref()
+const openTest = async (row: BillTemplateApi.BillTemplateVO) => {
+  viewMode.value = 'test'
+  await nextTick()
+  testRef.value?.open(row.id, row.name)
+}
+
+/** 面板内保存成功：回列表并刷新 */
+const handlePanelDone = () => {
+  viewMode.value = 'list'
+  getList()
+}
+
+/** 面板返回：只回列表，不刷新 */
+const handlePanelBack = () => {
+  viewMode.value = 'list'
 }
 
 /** 启用 / 停用 */
@@ -246,7 +288,7 @@ const handleDelete = async (row: BillTemplateApi.BillTemplateVO) => {
     return
   }
   try {
-    await ElMessageBox.confirm(`确认删除单据模板「${row.name}」吗？此操作不可恢复。`, '删除确认', {
+    await ElMessageBox.confirm(`确认删除模板「${row.name}」吗？此操作不可恢复。`, '删除确认', {
       confirmButtonText: t('common.ok'),
       cancelButtonText: t('common.cancel'),
       type: 'warning'
@@ -258,6 +300,39 @@ const handleDelete = async (row: BillTemplateApi.BillTemplateVO) => {
   message.success(t('common.delSuccess'))
   await getList()
 }
+
+// 删除不做 disabled（已出过号的模板禁删）：置灰的按钮不解释原因，
+// 而 handleDelete 里那句 message.warning 会告诉用户「如需停止使用请改为停用」
+const rowButtons: TableActionButton[] = [
+  {
+    key: 'test',
+    label: '测试',
+    permission: ['infra:bill-template:query'],
+    onClick: (row) => openTest(row)
+  },
+  {
+    // key 仍是 log。文案从「取号日志」缩成「日志」：整页都在讲取号，
+    // 前缀是重复信息，而操作列宽度是按字数算的（见上面那条列宽注释）
+    key: 'log',
+    label: '日志',
+    permission: ['infra:bill-template:query'],
+    onClick: (row) => openLog(row)
+  },
+  {
+    key: 'update',
+    label: '编辑',
+    permission: ['infra:bill-template:update'],
+    onClick: (row) => openForm('update', row.id)
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    divided: true,
+    permission: ['infra:bill-template:delete'],
+    onClick: (row) => handleDelete(row)
+  }
+]
 
 onMounted(() => {
   getList()

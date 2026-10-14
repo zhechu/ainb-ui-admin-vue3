@@ -59,7 +59,6 @@ import {
   // ElFormItem,
   // ElOption
 } from 'element-plus'
-import FcDesigner from '@form-create/designer'
 import formCreate from '@form-create/element-ui'
 import install from '@form-create/element-ui/auto-import'
 
@@ -103,6 +102,8 @@ import FormSteps from '@/components/FormCreate/src/components/FormSteps.vue'
 import FormStep from '@/components/FormCreate/src/components/FormStep.vue'
 // 子表控件的包装：给每一行加「复制本行」。见该文件里为什么必须在组件层接
 import { registerSubTableGroup } from '@/components/FormCreate/src/subtable/registerSubTableGroup'
+// 表单配置面板里的「逻辑与扩展」入口按钮。点开弹窗，见 editor/index.vue
+import LogicEntryButton from '@/components/FormCreate/src/components/LogicEntryButton.vue'
 // 契约里有、但 form-create 解析不到渲染组件的那几个控件类型（图片 / 超链接 / 密码 / 日期区间 / 时间区间）
 import { registerExtraWidgets } from '@/components/FormCreate/src/registerExtraWidgets'
 
@@ -160,6 +161,7 @@ const components = [
   Signature,
   FormSteps,
   FormStep,
+  LogicEntryButton,
   ElCollapse,
   ElCollapseItem,
   ElCard
@@ -179,5 +181,7 @@ export const setupFormCreate = (app: App<Element>) => {
   // 这几个走 Vue 全局注册是不够的，原因见 registerExtraWidgets.ts
   registerExtraWidgets(formCreate)
   app.use(formCreate)
-  app.use(FcDesigner)
+  // FcDesigner（设计器）不在此处注册：只有 3 个页面用得到 `<fc-designer>`，
+  // 却曾让首屏 bundle 里常驻 ~926KB 的 vendored 源码。改为按需加载，见
+  // ./designer.ts 的 ensureFcDesigner，由使用它的页面在挂载前 await 一次
 }
