@@ -18,10 +18,17 @@
     ⚠️ 下面那个 `:close-on-click-modal="false"` 在穿透模式下是惰性的（overlay 已经
     pointer-events: none，永远收不到点击）。留着是为了哪天把 modal 打开时，
     不会退回「一次误点遮罩就毁掉几百个勾选」
+
+    🔴 而 `:close-on-press-escape="false"` 在穿透模式下**不是惰性的，必须显式关掉**：
+    EP 那个 Esc 监听挂在 document 上而不是 overlay 上，所以在**后面那张列表页**上按 Esc
+    也会把抽屉关掉。完整链路见 GrantForm.vue 模板顶部那段注释，这里不重抄。
+    批量抽屉是两个入口里代价更大的一个 —— 一次误按毁掉的是几百个已勾资源
+    加上一整套「保留 / 覆盖」选择，而且没有草稿、没有撤销
   -->
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
+    :close-on-press-escape="false"
     :modal="false"
     :size="drawerSize"
     modal-penetrable

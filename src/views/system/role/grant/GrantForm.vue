@@ -33,6 +33,18 @@
     ⚠️ 下面那个 `:close-on-click-modal="false"` 在穿透模式下**是惰性的**：
     它由绑在 overlay 上的 onModalClick 触发，而 overlay 已经 pointer-events: none，
     永远收不到点击。留着它是为了哪天把 modal 打开时，不会退回「误点遮罩毁掉一整份表单」。
+
+    🔴 但 `:close-on-press-escape="false"` 在穿透模式下**一点都不惰性，必须显式关掉**。
+    与遮罩点击不同，Esc 不是从 overlay 上收的：EP 的 focus-trap 走 useEscapeKeydown，
+    那个 hook 把监听器挂在 **document** 上（`document.addEventListener('keydown', ...)`），
+    链路是 document 上的 Esc → focus-trap emit release-requested → 抽屉的 onCloseRequested →
+    `if (props.closeOnPressEscape) handleClose()`，而 closeOnPressEscape 的出厂默认是 true。
+    于是「穿透」这件事把 Esc 变成了一个陷阱：操作者正在**后面那张列表页**上核对权限标识
+    （这正是穿透要交付的能力），随手按一下 Esc —— 想关掉的是别的东西 ——
+    抽屉连同填了一半的表单一起没了，没有草稿、没有撤销。
+    与 Tab 那条「已知边界」的区别就在这里：Tab 锁焦点只是不方便，Esc 会**毁掉工作**，
+    所以那条记下来忍了，这条必须关掉。关掉之后关抽屉仍然有两个入口：
+    header 右上那个关闭图标（EP 的 show-close，默认就有）与底部「取消」按钮
   -->
   <!--
     `resizable` 让 EP 在抽屉左缘渲染一个 8px 宽的拖拽柄（hover 亮 3px 主题色条，cursor 是 ew-resize）。
@@ -43,6 +55,7 @@
   <el-drawer
     v-model="drawerVisible"
     :close-on-click-modal="false"
+    :close-on-press-escape="false"
     :modal="false"
     :size="drawerSize"
     :title="drawerTitle"
