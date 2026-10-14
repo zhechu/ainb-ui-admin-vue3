@@ -69,7 +69,9 @@
       <el-table-column v-if="!isSingleInterface" label="接口编码" prop="interfaceCode" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="方式" width="90" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.invokeType === 1 ? 'info' : ''">
+          <!-- 原来这里给的是 ''：不在 el-tag 的 type 取值范围内，EP 会打一条 prop 校验告警
+               再回落到默认样式。'primary' 就是 EP 2.x 的默认外观，所以看着一样、告警没了 -->
+          <el-tag size="small" :type="row.invokeType === 1 ? 'info' : 'primary'">
             {{ row.invokeType === 1 ? '预览' : '调用' }}
           </el-tag>
         </template>
@@ -90,11 +92,21 @@
       <el-table-column label="耗时" width="90" align="center">
         <template #default="{ row }">{{ row.duration }} ms</template>
       </el-table-column>
-      <el-table-column label="调用人" width="180" align="center">
-        <template #default="{ row }">
-          {{ row.userNickname ? `[${row.userNickname}(${row.username})]` : row.userId }}
-        </template>
-      </el-table-column>
+      <!--
+        调用人库里存的是 system_users.id。后端 DataInterfaceLogRespVO 曾声明过
+        userNickname / username 两个字段，但从未被填充（BeanUtils.toBean 的源
+        DataInterfaceLogDO 只有 userId），所以这里原来那句
+        `row.userNickname ? ... : row.userId` 的条件恒为假，实际显示的永远是一串数字。
+        两个空字段已随后端一并删掉，改由前端按 id 查 simple-list 映射
+      -->
+      <el-table-column
+        label="调用人"
+        align="center"
+        prop="userId"
+        width="160"
+        :show-overflow-tooltip="true"
+        :formatter="userFormatter"
+      />
       <el-table-column label="IP" prop="userIp" width="120" align="center" />
       <el-table-column label="时间" prop="createTime" width="170" :formatter="dateFormatter" />
     </el-table>
@@ -110,6 +122,7 @@
 <script lang="ts" setup>
 import dayjs from 'dayjs'
 import { dateFormatter, formatDate } from '@/utils/formatTime'
+import { useUserLabel } from '@/hooks/web/useUserLabel'
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
 
 /** 接口调用日志（页内展示）
@@ -121,6 +134,10 @@ defineOptions({ name: 'DataInterfaceLogList' })
 const emit = defineEmits(['back'])
 
 const message = useMessage()
+
+/** 「调用人」列：userId → 昵称（用户名）。本面板是 v-else-if 条件渲染的，
+ *  打开时才挂载，用户列表也随之才拉，不打开日志就不产生这次请求 */
+const { userFormatter } = useUserLabel('调用人')
 
 const loading = ref(false)
 const list = ref<DataInterfaceApi.DataInterfaceLogVO[]>([])

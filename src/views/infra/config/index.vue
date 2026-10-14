@@ -94,7 +94,7 @@
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="参数主键" align="center" prop="id" />
+      <!-- 这里不显示「参数主键」：参数是拿 key 读的，自增 id 对使用者没有意义 -->
       <el-table-column label="参数分类" align="center" prop="category" />
       <el-table-column label="参数名称" align="center" prop="name" :show-overflow-tooltip="true" />
       <el-table-column label="参数键名" align="center" prop="key" :show-overflow-tooltip="true" />

@@ -18,7 +18,7 @@ export type DataInterfaceVO = {
   /** 责任人，手填字符串 */
   owner?: string
   code: string
-  /** 分类：internal-内部 external-外部，字典 infra_form_type */
+  /** 来源：internal-内部 external-外部，字典 infra_form_type。字段名仍是 category，理由见 index.vue */
   category?: string
   /** 标签，字典 infra_data_interface_tag。库里是逗号串，接口层收发都是数组 */
   tags?: string[]
@@ -59,7 +59,7 @@ export type DataInterfaceSaveReqVO = {
   /** 责任人，手填字符串 */
   owner?: string
   code: string
-  /** 分类：internal-内部 external-外部，字典 infra_form_type */
+  /** 来源：internal-内部 external-外部，字典 infra_form_type。字段名仍是 category，理由见 index.vue */
   category?: string
   /** 标签，必填。后端 @NotEmpty，前端也在表单规则里拦一道，省一次往返 */
   tags: string[]

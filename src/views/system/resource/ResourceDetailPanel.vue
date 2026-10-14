@@ -70,7 +70,7 @@
                 class="w-full"
                 size="small"
                 filterable
-                placeholder="搜索角色标识 / 名称 / 编号"
+                placeholder="搜索角色编码 / 名称 / 编号"
                 :filter-method="filterRoles"
                 @visible-change="handleRoleVisibleChange"
               >
@@ -812,7 +812,7 @@ const roleOptions = ref<RoleVO[]>([])
 const roleKeyword = ref('')
 
 /**
- * 角色下拉的快速查询：标识、名称、编号三个都能搜
+ * 角色下拉的快速查询：编码、名称、编号三个都能搜
  *
  * 🔴 自定义 filter-method 之后 Element Plus 就【不再】替我们过滤了，
  * 选项列表得自己算 —— 这是 filter-method 与内置过滤的分工，
@@ -835,7 +835,7 @@ const filterRoles = (query: string) => {
 const handleRoleVisibleChange = (visible: boolean) => {
   if (!visible) roleKeyword.value = ''
 }
-/** 角色标识 + 角色名称，与后端 SubjectDisplayNameResolver 的展示格式逐字一致 */
+/** 角色编码 + 角色名称，与后端 SubjectDisplayNameResolver 的展示格式逐字一致 */
 const roleLabel = (role: RoleVO) => `${role.code}（${role.name}）`
 
 const loadRoles = async () => {

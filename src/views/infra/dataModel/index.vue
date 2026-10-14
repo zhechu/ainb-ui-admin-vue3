@@ -63,7 +63,7 @@
           class-name="col-index"
           label-class-name="col-index"
         />
-        <el-table-column label="编号" align="center" prop="id" width="80" />
+        <!-- 这里不显示「编号」（自增 id）：模型是拿表名认的，id 对使用者没有意义，序号列已足够定位行 -->
         <!--
         列宽分配：文本列（模型名称/表名/表描述/备注）用 min-width 弹性伸展，
         吃掉操作列、时间列让出来的空间；创建时间、操作给固定宽，

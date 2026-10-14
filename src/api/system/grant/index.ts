@@ -28,7 +28,7 @@ export interface GrantVO {
    * 🔴 由后端从权威业务表批量解析（`SubjectDisplayNameResolver`），不是 `sys_subject.name`
    * ——那张表按需登记、USER 维度压根没有行，且 name 列自己就写明「可能过期、判定逻辑不许读」。
    * 解析不到（跨租户、已删除、被停用）时后端会给 `#123（未找到）`，前端直接展示即可，
-   * 不要再自己拼 simple-list：那需要为每种主体各拉一次全量列表，且拿不到角色标识与部门编码
+   * 不要再自己拼 simple-list：那需要为每种主体各拉一次全量列表，且拿不到角色编码与部门编码
    */
   subjectName?: string
   resourceId: number

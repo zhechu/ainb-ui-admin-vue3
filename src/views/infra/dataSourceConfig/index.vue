@@ -31,7 +31,7 @@
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod()" class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="主键编号" align="center" prop="id" />
+      <!-- 这里不显示「主键编号」：数据源是拿名称认的，id 只在编辑弹窗的 URL 里有意义 -->
       <el-table-column label="数据源名称" align="center" prop="name" />
       <el-table-column label="数据源连接" align="center" prop="url" :show-overflow-tooltip="true" />
       <el-table-column label="用户名" align="center" prop="username" />

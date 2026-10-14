@@ -329,9 +329,9 @@ const boundParams = computed(() => boundInterface.value?.params ?? [])
 /** 后端权威的「含写操作」——它分析脚本得出，比表单上填的可信 */
 const boundIsWrite = computed(() => boundInterface.value?.writeOperation === true)
 
-/** 接口分类的展示文案：字典值翻译成中文，字典里查不到就原样显示，都没有才是「未分类」 */
+/** 接口来源的展示文案：字典值翻译成中文，字典里查不到就原样显示，都没有才是「未指定来源」 */
 const categoryLabel = (category?: string) =>
-  (category && (getDictLabel(DICT_TYPE.INFRA_FORM_TYPE, category) || category)) || '未分类'
+  (category && (getDictLabel(DICT_TYPE.INFRA_FORM_TYPE, category) || category)) || '未指定来源'
 
 const isModeMismatch = computed(() => boundIsWrite.value && form.value.mode === 'QUERY')
 const isRiskUnderstated = computed(() => boundIsWrite.value && form.value.riskLevel === 'READ_ONLY')

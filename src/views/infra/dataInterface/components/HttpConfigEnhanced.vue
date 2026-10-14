@@ -102,7 +102,6 @@
 
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
-import { useVModel } from '@vueuse/core'
 import CodeEditor from '@/components/CodeEditor'
 import HttpParamTable from './HttpParamTable.vue'
 
@@ -167,19 +166,34 @@ const load = (raw?: string) => {
   if (!raw?.trim()) {
     return
   }
+  let parsed: any
   try {
-    const parsed = JSON.parse(raw)
-    // 合并配置，确保关键字段是数组
-    config.value = {
-      ...defaultConfig(),
-      ...parsed,
-      // 强制确保这些字段是数组
-      queryParams: Array.isArray(parsed.queryParams) ? parsed.queryParams : [],
-      headers: Array.isArray(parsed.headers) ? parsed.headers : [],
-      bodyParams: Array.isArray(parsed.bodyParams) ? parsed.bodyParams : []
-    }
+    parsed = JSON.parse(raw)
   } catch {
-    // 解析不了就当空配置
+    // 不能安静地当成空配置：那样表单展示的是全空默认值，用户随手改一项就会触发 sync()
+    // 发出一份空配置，保存即把库里那段 JSON 覆盖掉 —— 问题从「打不开」升级成「数据没了」
+    ElMessage.error('HTTP 配置无法解析，已按空配置展示。请勿直接保存，否则会覆盖原有配置')
+    return
+  }
+  // 合并配置，确保关键字段是数组
+  config.value = {
+    ...defaultConfig(),
+    ...parsed,
+    // 强制确保这些字段是数组
+    queryParams: Array.isArray(parsed.queryParams) ? parsed.queryParams : [],
+    headers: Array.isArray(parsed.headers) ? parsed.headers : [],
+    bodyParams: Array.isArray(parsed.bodyParams) ? parsed.bodyParams : []
+  }
+  // 旧版结构把请求参数写在 bodyTemplate 字符串里，新版没有这个字段。
+  // 上面那三行数组纠正能让表单正常打开，但 bodyTemplate 里的 #{xx} 不会自动变成
+  // queryParams —— 不提示的话用户会以为配置还在，实际请求已经不带参数了，
+  // 表现是「接口能跑通，返回的却是没过滤的全量数据」。
+  // 存量旧行由 sql/mysql/xpy-2026-10-15-http-config-migrate.sql 负责搬迁，
+  // 这里只是万一还有漏网行时的兜底告警
+  if (parsed.bodyTemplate) {
+    ElMessage.warning(
+      '检测到旧版 HTTP 配置（bodyTemplate），其中的参数未自动迁移，请重新填写 Query 参数'
+    )
   }
 }
 

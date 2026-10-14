@@ -267,7 +267,7 @@ export enum DICT_TYPE {
   INFRA_CODEGEN_SCENE = 'infra_codegen_scene',
   INFRA_FILE_STORAGE = 'infra_file_storage',
   INFRA_OPERATE_TYPE = 'infra_operate_type',
-  INFRA_FORM_TYPE = 'infra_form_type', // 接口管理·分类（内部/外部）。type 串是历史名，改它会让存量 category 全部失配
+  INFRA_FORM_TYPE = 'infra_form_type', // 接口管理·来源（内部/外部）。type 串是历史名，改它会让存量 category 全部失配
   INFRA_DATA_INTERFACE_TAG = 'infra_data_interface_tag', // 接口管理·标签
   INFRA_FORM_DESIGN_CATEGORY = 'infra_form_design_category', // 表单设计分类
   INFRA_BILL_TEMPLATE_CATEGORY = 'infra_bill_template_category', // 取号管理·分类

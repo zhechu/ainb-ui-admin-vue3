@@ -21,7 +21,14 @@
           class="!w-200px"
         />
       </el-form-item>
-      <el-form-item label="分类" prop="category">
+      <!--
+        界面叫「来源」，代码里仍叫 category、字典类型仍是 infra_form_type —— 刻意不跟着改。
+        这三个标识符已经是对外契约的一部分：/infra/data-interface/page 的查询参数、
+        DataInterfaceSaveReqVO 的字段、agent 工具层的参数名都叫 category，
+        改名要连带动前端 api、后端 VO、agent DSL 与存量数据，收益却只是「代码读起来顺一点」。
+        标识符是给代码看的，文案是给人看的，两者在这里分家
+      -->
+      <el-form-item label="来源" prop="category">
         <el-select v-model="queryParams.category" placeholder="全部" clearable class="!w-120px">
           <el-option
             v-for="dict in getStrDictOptions(DICT_TYPE.INFRA_FORM_TYPE)"
@@ -74,12 +81,16 @@
           <Icon icon="ep:plus" class="mr-5px" /> 新增
         </el-button>
         <!--
-          这里原本还有一个「调用日志」工具栏按钮（不带接口 ID，查全部接口的日志），已去掉。
-          日志本身没有下线：行内「日志」按钮还在，LogList.vue、getLogPage、
-          后端 /log-page、logEnabled 开关与写日志的链路都保留着。
-          去掉的只是这个「一次看全部接口」的入口 —— 接口一多它就是一条刷不完的流水，
-          按接口看才是有意义的粒度
+          工具栏「调用日志」查全部接口的流水，行内「日志」锁定单个接口，两者互补：
+          行内按钮答「这个接口怎么了」，工具栏按钮答「刚才谁在调什么」。
+          全局流水确实可能刷不完，所以面板默认只查近 7 天，且时间区间必填、跨度不超过 3 个月
+
+          v-hasPermi 与行内「日志」按钮同判据（后端 /log-page 上要 infra:data-interface:query）。
+          前端不预判权限会让没权限的人也看到这个按钮，点下去吃一个 403
         -->
+        <el-button plain @click="openLog()" v-hasPermi="['infra:data-interface:query']">
+          <Icon icon="ep:document" class="mr-5px" /> 调用日志
+        </el-button>
       </el-form-item>
     </el-form>
   </ContentWrap>
@@ -98,13 +109,18 @@
       <el-table-column label="接口编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="责任人" prop="owner" align="center" width="100" :show-overflow-tooltip="true" />
       <!--
-        分类只有「内部 / 外部」两个值（字典 infra_form_type），2 个汉字 ≈ 28px，
-        加 el-tag 内边距与 .cell 左右内边距 24px，90px 足够且不会折行。
-        这一列曾经要 120px —— 那时分类是自由文本，库里存着「表单设计示例」这种 6 字值，
-        100px 下会折成 2 行把整排行高从 41px 撑到 63px。存量值已统一迁到 internal，
-        那个宽度就没必要了；tooltip 仍然留着，兜住将来字典里加长标签名
+        「来源」表示这个接口是取系统内部的数据还是外部系统的（字典 infra_form_type，
+        当前只有 内部 / 外部 两项，将来加 CRM 等系统只需在字典里加一项，无需改代码）。
+
+        90px 是按 2 个汉字算的：2 字 ≈ 28px，加 el-tag 内边距与 .cell 左右内边距 24px，
+        90px 足够且不折行。这一列曾经要 120px —— 那时它是自由文本，库里存着
+        「表单设计示例」这种 6 字值，100px 下会折成 2 行把整排行高从 41px 撑到 63px。
+        存量值已统一迁到 internal，那个宽度就没必要了。
+
+        ⚠️ 往字典里加「CRM系统」这类 4 字以上的标签名，90px 会重新折行 ——
+        tooltip 只兜住被裁的文本，兜不住行高。加之前先量一下，或把 width 换成 min-width
       -->
-      <el-table-column label="分类" align="center" width="90" :show-overflow-tooltip="true">
+      <el-table-column label="来源" align="center" width="90" :show-overflow-tooltip="true">
         <template #default="{ row }">
           <dict-tag v-if="row.category" :type="DICT_TYPE.INFRA_FORM_TYPE" :value="row.category" />
           <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
@@ -235,7 +251,7 @@ import { ElMessageBox } from 'element-plus'
 import { dateFormatter } from '@/utils/formatTime'
 import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 import * as DataInterfaceApi from '@/api/infra/dataInterface'
-import * as UserApi from '@/api/system/user'
+import { useUserLabel } from '@/hooks/web/useUserLabel'
 import DataInterfaceForm from './DataInterfaceForm.vue'
 import PreviewPanel from './components/PreviewPanel.vue'
 import VersionList from './VersionList.vue'
@@ -278,35 +294,13 @@ const queryParams = reactive({
 const queryFormRef = ref()
 
 /**
- * 用户 id → 用户，用来把「更新者」列从一串数字翻译成「昵称（用户名）」
+ * 「更新者」列的展示
  *
- * 走 /system/user/simple-list：它没有 @PreAuthorize，任何登录用户都能调，
- * 不会因为某个角色没被授予「用户查询」就让整个列表页 403。
- * 代价是它只返回<b>启用状态</b>的用户 —— 停用的人查不到，见 updaterFormatter 的兜底
+ * 库里存的是 system_users.id（BaseDO.updater 由 MyBatis 元数据处理器写入
+ * getLoginUserId() 的字符串形式），直接展示是一串数字，管理员认不出是谁，
+ * 这里换成「昵称（用户名）」，例如 超级管理员（admin）
  */
-const userList = ref<UserApi.UserVO[]>([])
-const userMap = computed(() => new Map(userList.value.map((user) => [String(user.id), user])))
-
-/**
- * 更新者列的展示
- *
- * 兜底策略：查不到就把原始值显示出来，而不是显示空白。查不到有两种正常情况 ——
- * 用户被删除，或用户被停用（simple-list 只返回启用的）；历史行上的 id 仍然有效，
- * 显示数字至少能让人拿去库里查出是谁，显示空白等于把线索抹掉
- */
-const updaterFormatter = (_row: any, _column: any, cellValue: any) => {
-  const id = cellValue == null ? '' : String(cellValue)
-  if (!id) {
-    return '-'
-  }
-  const user = userMap.value.get(id)
-  const nickname = user?.nickname
-  const username = user?.username
-  if (nickname && username) {
-    return `${nickname}（${username}）`
-  }
-  return nickname || username || id
-}
+const { userFormatter: updaterFormatter } = useUserLabel('更新者')
 
 const typeLabel = (type: number) =>
   typeOptions.value.find((item) => item.value === type)?.label ?? String(type)
@@ -386,17 +380,16 @@ const handleVersionPreviewBack = async () => {
 }
 
 /**
- * 打开某个接口的调用日志
+ * 打开调用日志
  *
- * row 现在是必填的：不带接口 ID 的工具栏入口已经去掉，只剩行内按钮。
- * LogList#open 仍然接受空 id（那是「查全部」模式），这里不再用它 ——
- * 保留是为了让 LogList 本身仍然自洽，将来若要恢复全局入口，接回去就行
+ * row 为空时是工具栏入口：查全部接口的流水；带 row 时是行内入口：只看该接口。
+ * LogList#open 两种都支持，靠 interfaceId 是否为 undefined 决定是否隐藏「接口编码」列与搜索项
  */
 const logRef = ref()
-const openLog = async (row: DataInterfaceApi.DataInterfaceVO) => {
+const openLog = async (row?: DataInterfaceApi.DataInterfaceVO) => {
   viewMode.value = 'log'
   await nextTick()
-  logRef.value?.open(row.id, row.name)
+  logRef.value?.open(row?.id, row?.name)
 }
 
 /** 子视图保存/回滚成功：回列表并刷新 */
@@ -493,16 +486,8 @@ const rowButtons: TableActionButton[] = [
 ]
 
 onMounted(async () => {
-  // 用户列表单独 catch：它只影响「更新者」列好不好看（查不到就原样显示 id），
-  // 不该因为它失败就让整个列表页空白。类型与动作类型字典是筛选项的数据源，
-  // 拉不到会让下拉框空掉，那种失败必须照常抛出
-  const usersPromise = UserApi.getSimpleUserList().catch(() => {
-    message.warning('用户列表加载失败，「更新者」列将显示用户编号')
-    return [] as UserApi.UserVO[]
-  })
   typeOptions.value = await DataInterfaceApi.getTypeOptions()
   statementTypeOptions.value = await DataInterfaceApi.getStatementTypeOptions()
-  userList.value = await usersPromise
   await getList()
 })
 </script>

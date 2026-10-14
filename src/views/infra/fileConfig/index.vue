@@ -76,7 +76,7 @@
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="编号" align="center" prop="id" />
+      <!-- 这里不显示「编号」：文件配置是拿名称认的，自增 id 只在「主配置」确认弹窗里出现 -->
       <el-table-column label="配置名" align="center" prop="name" />
       <el-table-column label="存储器" align="center" prop="storage">
         <template #default="scope">
@@ -201,11 +201,20 @@ const handleDeleteBatch = async () => {
   } catch {}
 }
 
-/** 主配置按钮操作 */
-const handleMaster = async (id) => {
+/** 主配置按钮操作
+ *
+ * 后端 updateFileConfigMaster 是「先把全部置为非主配置，再把这一个置为主配置」，
+ * 也就是全站切换文件上传的落地位置，确认文案必须把这点说清楚。
+ * 原来那句「是否确认修改配置编号为 X 的数据项为主配置」既没说要切换，
+ * 编号在列表里也已经看不到了，用户拿它无从核对 —— 所以这里改用配置名
+ */
+const handleMaster = async (row: any) => {
   try {
-    await message.confirm('是否确认修改配置编号为"' + id + '"的数据项为主配置?')
-    await FileConfigApi.updateFileConfigMaster(id)
+    await message.confirm(
+      `确认将「${row.name}」设为主配置吗？此后上传的文件都会存到它这里，原来的主配置会被取消。`,
+      '切换主配置'
+    )
+    await FileConfigApi.updateFileConfigMaster(row.id)
     message.success(t('common.updateSuccess'))
     await getList()
   } catch {}
@@ -234,7 +243,7 @@ const rowButtons: TableActionButton[] = [
     label: '主配置',
     permission: ['infra:file-config:update'],
     disabled: (row) => !!row.master,
-    onClick: (row) => handleMaster(row.id)
+    onClick: (row) => handleMaster(row)
   },
   {
     key: 'test',

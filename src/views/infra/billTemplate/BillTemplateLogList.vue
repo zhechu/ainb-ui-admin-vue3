@@ -92,9 +92,14 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="取号人" prop="userId" width="90" align="center">
+      <!--
+        取号人库里存的是 system_users.id，直接显示是一串数字。
+        这里用 userLabel 而不是 :formatter，是为了保住空值那个灰色的 `-`
+        （formatter 只能返回字符串，上不了色），与本表其余列的空值样式一致
+      -->
+      <el-table-column label="取号人" width="160" align="center" :show-overflow-tooltip="true">
         <template #default="{ row }">
-          <span v-if="row.userId != null">{{ row.userId }}</span>
+          <span v-if="row.userId != null">{{ userLabel(row.userId) }}</span>
           <span v-else class="text-[var(--el-text-color-secondary)]">-</span>
         </template>
       </el-table-column>
@@ -123,6 +128,7 @@
 <script lang="ts" setup>
 import dayjs from 'dayjs'
 import { dateFormatter, formatDate } from '@/utils/formatTime'
+import { useUserLabel } from '@/hooks/web/useUserLabel'
 import * as BillTemplateApi from '@/api/infra/billTemplate'
 import { GEN_TYPE_OPTIONS } from './constants'
 
@@ -132,6 +138,9 @@ defineOptions({ name: 'BillTemplateLogList' })
 const emit = defineEmits(['back'])
 
 const message = useMessage()
+
+/** 「取号人」列：userId → 昵称（用户名）。本面板是条件渲染的，打开时才挂载并拉用户列表 */
+const { userLabel } = useUserLabel('取号人')
 
 /** 取号来源，与后端 BillTemplateServiceImpl 的 SOURCE_* 常量对应 */
 const SOURCE_OPTIONS = [

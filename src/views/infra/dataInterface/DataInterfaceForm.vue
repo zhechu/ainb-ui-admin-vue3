@@ -68,10 +68,26 @@
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="分类" prop="category">
+          <!--
+            「来源」= 数据从哪来：内部（本系统的库/接口）还是外部（第三方系统）。
+            代码里仍叫 category、字典类型仍是 infra_form_type，理由见 index.vue 里同一处说明：
+            它们是对外契约，改名要连带动前端 api、后端 VO、agent DSL 与存量数据
+          -->
+          <el-form-item prop="category">
+            <template #label>
+              <span>
+                来源
+                <el-tooltip
+                  placement="top"
+                  content="数据从哪里来：内部＝本系统的库表或接口；外部＝第三方系统。将来接入 CRM 等系统时，在字典 infra_form_type 里加一项即可，无需改代码"
+                >
+                  <Icon icon="ep:question-filled" class="ml-2px align-middle text-14px" />
+                </el-tooltip>
+              </span>
+            </template>
             <el-select
               v-model="formData.category"
-              placeholder="请选择分类"
+              placeholder="请选择来源"
               clearable
               style="width: 100%"
             >

@@ -4,7 +4,7 @@
       <el-descriptions-item label="接口名称">{{ parsed.name || '-' }}</el-descriptions-item>
       <el-descriptions-item label="接口编码">{{ parsed.code || '-' }}</el-descriptions-item>
       <el-descriptions-item label="责任人">{{ parsed.owner || '-' }}</el-descriptions-item>
-      <el-descriptions-item label="分类">{{ parsed.category || '-' }}</el-descriptions-item>
+      <el-descriptions-item label="来源">{{ categoryLabel }}</el-descriptions-item>
       <el-descriptions-item label="类型">{{ typeLabel }}</el-descriptions-item>
       <el-descriptions-item label="动作类型">{{ statementLabel }}</el-descriptions-item>
       <el-descriptions-item label="是否分页">{{ parsed.hasPage === 1 ? '是' : '否' }}</el-descriptions-item>
@@ -53,6 +53,7 @@
 
 <script lang="ts" setup>
 import type { ParamDefinitionVO } from '@/api/infra/dataInterface'
+import { DICT_TYPE, getStrDictOptions } from '@/utils/dict'
 
 /** 版本快照可视化
  *
@@ -97,6 +98,23 @@ const statementLabel = computed(() => {
     return '-'
   }
   return STATEMENT_LABELS[st] ?? st
+})
+
+/**
+ * 来源（代码里叫 category）：把 internal / external 翻成字典里的「内部 / 外部」
+ *
+ * 原来直接显示 parsed.category，用户在版本快照里看到的是一串英文码。
+ * 刻意不用 dict-tag 而用文本查表：快照是<b>历史</b>数据，管理员日后从字典里删掉某一项后，
+ * dict-tag 会渲染成空白（它遍历的是字典项而不是传入值），
+ * 而这里查不到就退回显示原始值 —— 版本历史的职责是「当时配的是什么」，宁可显示码也不要显示空
+ */
+const categoryLabel = computed(() => {
+  const value = parsed.value?.category
+  if (!value) {
+    return '-'
+  }
+  const dict = getStrDictOptions(DICT_TYPE.INFRA_FORM_TYPE).find((item) => item.value === value)
+  return dict?.label ?? value
 })
 
 const configTitle = computed(() => {

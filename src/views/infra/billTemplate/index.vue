@@ -67,7 +67,7 @@
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="编号" align="center" prop="id" width="70" />
+      <!-- 这里不显示「编号」：模板是拿 code 取号的，自增 id 对使用者没有意义 -->
       <el-table-column label="模板名称" prop="name" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="模板编码" prop="code" :show-overflow-tooltip="true" min-width="140" />
       <el-table-column label="分类" align="center" width="100">

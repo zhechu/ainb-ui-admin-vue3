@@ -88,7 +88,7 @@
       <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="岗位编号" align="center" prop="id" />
+      <!-- 这里不显示「岗位编号」：岗位是拿名称和编码认的，自增 id 对使用者没有意义 -->
       <el-table-column label="岗位名称" align="center" prop="name" />
       <el-table-column label="岗位编码" align="center" prop="code" />
       <el-table-column label="岗位顺序" align="center" prop="sort" />

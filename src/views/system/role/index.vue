@@ -20,12 +20,12 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="角色标识" prop="code">
+      <el-form-item label="角色编码" prop="code">
         <el-input
           v-model="queryParams.code"
           class="!w-240px"
           clearable
-          placeholder="请输入角色标识"
+          placeholder="请输入角色编码"
           @keyup.enter="handleQuery"
         />
       </el-form-item>
@@ -111,20 +111,15 @@
         label-class-name="col-index"
         :index="indexMethod(queryParams)"
       />
-      <!-- 实测：10 位角色编号（如 9000000543）在 100px 下会折成 2 行、把整行顶到 63px -->
-      <el-table-column align="center" label="角色编号" prop="id" width="110" />
+      <!-- 这里不显示「角色编号」：角色是拿名称和编码认的，自增 id 对使用者没有意义。
+           ⚠️ 上面 el-table 的 row-key="id" 必须保留 —— 它引用的是行数据的 id 字段，不是这一列 -->
       <el-table-column label="角色名称" prop="name" min-width="140" show-overflow-tooltip />
       <el-table-column align="center" label="角色类型" prop="type" width="110">
         <template #default="scope">
           <dict-tag :type="DICT_TYPE.SYSTEM_ROLE_TYPE" :value="scope.row.type" />
         </template>
       </el-table-column>
-      <el-table-column
-        label="角色标识"
-        prop="code"
-        min-width="140"
-        show-overflow-tooltip
-      />
+      <el-table-column label="角色编码" prop="code" min-width="140" show-overflow-tooltip />
       <el-table-column align="center" label="显示顺序" prop="sort" width="90" />
       <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip>
         <template #default="scope">

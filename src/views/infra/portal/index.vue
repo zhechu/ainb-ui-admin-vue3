@@ -50,7 +50,7 @@
       class-name="col-index"
         label-class-name="col-index"
       />
-      <el-table-column label="编号" prop="id" width="75" align="center" />
+      <!-- 这里不显示「编号」：门户是拿名称和编码认的，自增 id 对使用者没有意义 -->
       <el-table-column label="门户名称" prop="name" min-width="150" show-overflow-tooltip />
       <el-table-column label="编码" prop="code" min-width="150" show-overflow-tooltip />
       <el-table-column label="类型" width="90" align="center">
