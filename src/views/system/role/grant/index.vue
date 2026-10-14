@@ -131,6 +131,13 @@
           所以「一边看地图一边配授权」是真的能一边看一边配。
 
           ⚠️ 【批量删除】不一样，它**只属于列表模式**，理由见下面那个 template 前的注释
+
+          🔴 这两个按钮是**常驻**的（两种模式下都在），所以它们的权限判据用 v-hasPermi 指令是安全的 ——
+          指令已经改成「打标记 + CSS display:none」，不再把节点从 DOM 里摘掉。
+          改之前这里被迫写成 v-if="canCreate"：老实现摘了节点却不动 vnode 树，
+          常驻按钮因此变成游离的 insertBefore 锚点，切换视图时 Vue 直接抛 NotFoundError
+          （实测无 system:grant:create 的账号切两次视图 = 29 条 JS 错误，超管 0 条）。
+          完整理由与实测数据在 directives/permission/hasPermi.ts，别在这里重抄一遍再漂移
         -->
         <el-button
           v-hasPermi="['system:grant:create']"

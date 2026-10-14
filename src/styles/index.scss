@@ -228,3 +228,47 @@
 .v-content-wrap .el-form--inline .el-form-item {
   margin-bottom: var(--app-content-padding);
 }
+
+/*
+  v-hasPermi / v-hasRole 的隐藏机制：打标记 + display:none。
+
+  属性名与 directives/permission/hasPermi.ts 里那个 HIDDEN_ATTR 常量是同一个字符串，
+  SCSS 读不到 TS 的常量，改名时两处一起改。
+
+  🔴 **不是**把节点从 DOM 里摘掉。摘节点只动 DOM、不动 Vue 的 vnode 树，
+  `vnode.el` 仍指向那个已游离的元素，Vue 打补丁时拿它当 insertBefore 的锚点就抛
+  NotFoundError（实测：无权限账号在角色资源授权页切两次视图 = 29 条 JS 错误，
+  超管 0 条 —— 只有没权限的人踩得到）。完整理由写在 hasPermi.ts 的注释里。
+
+  ⚠️ !important 是必需的：EP 给 .el-button 写的是 display:inline-flex，
+  与本条选择器同为 (0,1,0)，靠加载顺序取胜太脆 —— main.ts 里
+  setupElementPlus 排在 @/styles/index.scss 前面，但 unocss 又排在两者前面，
+  将来谁调一次 import 顺序，这里就会静默失效（权限按钮重新显示出来）
+*/
+[data-permission-hidden] {
+  display: none !important;
+}
+
+/*
+  🔴 上一条的配套归位规则，删掉它就会出现「第一个看得见的按钮白拿 12px 左缩进」。
+
+  display:none 的元素**仍然是 CSS 兄弟**：`+` 组合器匹配的是文档树，不是渲染树。
+  而 EP 有一条**不带作用域**的全局规则 `.el-button+.el-button{margin-left:12px}`，
+  本文件上面还有一条 `.xpy-list-table .el-button + .el-button{margin-left:12px}`。
+  于是「前一个按钮因为没权限被隐藏」时，下一个可见按钮会被这两条命中并缩进 12px。
+  摘节点的老实现没有这个问题（节点真没了，`+` 匹配不上）。
+
+  !important 的理由是**压过那两条的 specificity**：`.xpy-list-table .el-button + .el-button`
+  是 (0,3,0)，本条不加 !important 就只有 (0,2,0)，写在文件末尾也照样输 ——
+  而表格操作列正是 v-hasPermi 最密集的地方（改 / 删两个按钮），输在这里等于没修。
+
+  ⚠️ 会不会误伤一处合法的间距？会，形状是「v-hasPermi 元素紧跟一个自带 ml-* 或内联
+  margin-left 的 el-button / el-dropdown」。全库扫过，**0 处**
+  （唯一一处 el-button 上同时有 v-hasPermi 与 ml-auto 的是 agent/config/index.vue 的
+  「新增配额」，那是同一个元素、不是被归位的下一个兄弟，且它的上一个兄弟是标题 span）。
+  将来真要写这种形状，把 ml-* 换成在容器上用 gap —— 那才是 display:none 天然正确的间距方式
+*/
+[data-permission-hidden] + .el-button,
+[data-permission-hidden] + .el-dropdown {
+  margin-left: 0 !important;
+}
