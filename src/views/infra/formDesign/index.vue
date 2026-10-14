@@ -301,32 +301,54 @@ const rowButtons: TableActionButton[] = [
 /**
  * 下线：同样是两步操作
  *
- * 后端清掉线上版本号与菜单关联并返回菜单编号，前端再逐个调 /system/menu/delete。
- * 用户可能手工删过这些菜单，所以删除失败要容错跳过而不是中断整个流程。
+ * 后端清掉线上版本号与菜单关联并返回菜单编号，前端再回收这些菜单。
+ *
+ * 🔴 回收必须用 delete-list 一次删整棵树，不能逐个调 /system/menu/delete。
+ *    menuIds 的顺序就是 infra_form_design_menu 的插入顺序，而 bindMenu 是先插父菜单再插按钮，
+ *    所以**父菜单永远排在第一个**；MenuServiceImpl#deleteMenu 一见「还有子菜单」就抛
+ *    MENU_EXISTS_CHILDREN。逐个删的必然结果是：第一个（父菜单）失败、7 个按钮随后删光，
+ *    侧边栏里留下一棵点得开却什么都不是的孤儿父菜单，而且没有任何东西拦住它 ——
+ *    旧代码把这个失败算进 failedCount，然后提示「可能已被手工删除」，把真因说反了。
+ *    库里有实证：「图书借阅登记」的 7 个按钮在 2026-10-13 01:25:07~09 被这个循环删掉，
+ *    父菜单却直到 01:32:49 才消失，且与另外 7 个父菜单**同一秒** ——
+ *    那是有人受不了了，去菜单管理页手工批量清理的。
+ *    delete-list 的判据刻意排除了「同批一起被选中」的子菜单（见 MenuServiceImpl#deleteMenuList），
+ *    正是为删一整棵子树写的；顺带少了 7 个来回，整棵树在一个事务里同生共死。
+ *
+ * ⚠️ 「用户已经手工删过这些菜单」这个原本要容错的场景照样容错：
+ *    delete-list 不像单删那样校验存在性，deleteByIds 对不存在的行只是命中 0 行。
  */
 const handleUnpublish = async (row: FormDesignApi.FormDesignVO) => {
   try {
     await message.confirm(
       `确认下线表单「${row.name}」吗？会删除它生成的菜单与按钮权限，表单状态回到草稿。`
     )
-    const menuIds = await FormDesignApi.unpublishFormDesign(row.id)
-    let failedCount = 0
-    for (const menuId of menuIds) {
-      try {
-        await MenuApi.deleteMenu(menuId)
-      } catch (e) {
-        // 菜单可能已被用户手工删除，容错跳过
-        failedCount++
-        console.warn(`删除菜单 ${menuId} 失败，可能已不存在`, e)
-      }
-    }
-    if (failedCount > 0) {
-      message.warning(`已下线，但有 ${failedCount} 个菜单删除失败（可能已被手工删除）`)
-    } else {
-      message.success('下线成功')
-    }
+  } catch {
+    return // 用户点了取消
+  }
+  let menuIds: number[]
+  try {
+    menuIds = await FormDesignApi.unpublishFormDesign(row.id)
+  } catch {
+    // 后端事务回滚了，表单侧什么都没变。错误提示由 axios 拦截器给，这里只把列表刷回真实状态
     await getList()
-  } catch {}
+    return
+  }
+  try {
+    // 空数组不能发这个请求：join 出来是空串，后端 @RequestParam List<Long> 绑不上
+    if (menuIds?.length) {
+      await MenuApi.deleteMenuList(menuIds)
+    }
+    message.success('下线成功')
+  } catch {
+    // 🔴 到这一步表单侧【已经下线并提交】（unpublish 是它自己的事务，早已提交），菜单却还活着。
+    //    绝不能报「下线成功」，也绝不能像旧代码那样报「可能已被手工删除」——
+    //    必须直说菜单没回收掉、去哪儿收拾，否则用户看到的就是一棵莫名多出来的孤儿菜单树。
+    message.error(
+      `表单已下线，但菜单回收失败：请到「系统管理 → 菜单管理」手工删除「${row.name}」及其按钮权限`
+    )
+  }
+  await getList()
 }
 
 const handleCopy = async (row: FormDesignApi.FormDesignVO) => {
