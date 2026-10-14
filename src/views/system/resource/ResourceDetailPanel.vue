@@ -55,7 +55,13 @@
         >
           <div class="text-12px leading-snug">{{ actionWarning }}</div>
         </el-alert>
-        <el-table :data="grantRows" border size="small" v-loading="grantLoading">
+        <el-table
+          :data="grantRows"
+          border
+          size="small"
+          v-loading="grantLoading"
+          :max-height="tableMaxHeight"
+        >
           <el-table-column label="授权主体（角色）" min-width="200">
             <template #default="{ row }">
               <el-select
@@ -281,7 +287,13 @@
             >新增槽位</el-button
           >
         </div>
-        <el-table :data="slotRows" border size="small" v-loading="slotLoading">
+        <el-table
+          :data="slotRows"
+          border
+          size="small"
+          v-loading="slotLoading"
+          :max-height="tableMaxHeight"
+        >
           <el-table-column label="槽位名称" min-width="200">
             <template #default="{ row }">
               <!--
@@ -336,22 +348,23 @@
               </template>
             </template>
           </el-table-column>
-          <el-table-column label="真实列名" min-width="260">
+          <!--
+            🔴「所属表」单独占一列，不再和「真实列名」叠在同一个格子里。
+
+            它以前是筛选字段用的临时导航状态、【不落库】，所以塞在列名下拉上面当个辅助控件。
+            现在它是配置项了：列表查询是带 JOIN 的，同一个列名（create_user_id）在主表和
+            关联表上都可能有，不记表名就表达不出「这个槽位对应关联表上的那一列」。
+            既然要落库、要能被求值读到，就该像配置项一样看得见、改得动
+          -->
+          <el-table-column label="所属表" min-width="200">
             <template #default="{ row }">
               <template v-if="row.__editing">
-                <!--
-                  「先选表、再选字段」两级下拉，两级都能搜、也都能跳过直接手输。
-                  ⚠️ 选中的表【不落库】：sys_slot_mapping 只存列名，而列名是在
-                  sys_resource.dataset_table 那张表上求值的。所以选表这一级的作用
-                  是把几千个列名收窄到一张表里让人挑得到，它本身不是配置项
-                -->
                 <el-select
                   v-model="slotForm.tableName"
-                  class="w-full mb-4px"
+                  class="w-full"
                   size="small"
                   filterable
-                  clearable
-                  placeholder="① 选表以筛选字段（可跳过）"
+                  placeholder="选择所属表（必选）"
                   :filter-method="filterTables"
                   :loading="slotTableLoading"
                   @change="handleSlotTableChange"
@@ -364,20 +377,51 @@
                     :value="t.tableName"
                   >
                     <span>{{ t.tableName }}</span>
+                    <span v-if="isMainTable(t.tableName)" class="ml-6px text-11px text-green-500"
+                      >（主表）</span
+                    >
                     <span v-if="t.tableComment" class="ml-8px text-11px text-gray-400">{{
                       t.tableComment
                     }}</span>
                   </el-option>
                 </el-select>
+                <div v-if="!isMainTable(slotForm.tableName)" class="text-11px text-orange-500">
+                  ⚠️ 非主表：只有列表查询真的 JOIN 了它，这条映射才生效
+                </div>
+              </template>
+              <template v-else>
+                <div>{{ row.tableName }}</div>
+                <div v-if="!isMainTable(row.tableName)" class="text-11px text-orange-500">
+                  非主表
+                </div>
+              </template>
+            </template>
+          </el-table-column>
+          <el-table-column label="真实列名" min-width="220">
+            <template #default="{ row }">
+              <!--
+                🔴 只能选、不能手输（没有 allow-create）。
+
+                这一列会被原样拼进行过滤的 WHERE，而它的正确性机器是能核实的
+                （information_schema 一查就知道这列在不在这张表上）。既然能核实就不该让人手打：
+                手打省下的那几秒，换来的是运行期一条【静默失效】的权限规则 ——
+                条件求不出来 ⟹ 整条授权按「求不出来」处理 ⟹ 一行都看不到，且不报错。
+                后端 /create、/update 也会核实这一列真的存在，所以下拉里选不出来的东西存不进去
+
+                ⚠️ 与「槽位名称」那一列的口径刻意不同：槽位名仍可手输，
+                因为规则模板允许引用枚举之外的自定义槽位，锁成白名单会让那类规则永远配不出来；
+                而填一个没人引用的槽位，代价只是这行映射白配，不会放大任何人的权限
+              -->
+              <template v-if="row.__editing">
                 <el-select
                   v-model="slotForm.columnName"
                   class="w-full"
                   size="small"
                   filterable
-                  allow-create
-                  default-first-option
-                  clearable
-                  placeholder="② 选字段，或直接输入列名"
+                  :disabled="!slotForm.tableName"
+                  :placeholder="
+                    slotForm.tableName ? '选择字段（可按列名/注释搜索）' : '请先选择所属表'
+                  "
                   :filter-method="filterColumns"
                   :loading="slotTableLoading"
                   @visible-change="handleColumnVisibleChange"
@@ -394,8 +438,27 @@
                     }}</span>
                   </el-option>
                 </el-select>
+                <div v-if="slotColumnHint" class="text-11px text-orange-500">
+                  {{ slotColumnHint }}
+                </div>
               </template>
-              <span v-else>{{ row.columnName }}</span>
+              <template v-else>
+                <span>{{ row.columnName }}</span>
+                <!--
+                  🔴 存量脏数据的唯一出口。写入口现在会核实列存在，但库里已经有早期
+                  自动推断写进去的行（那时不核实）—— 它们求不出来，而界面上看着和一条
+                  好配置没有区别，后果是引用它的规则恒假（一行都看不到且不报错）。
+                  标记文案用「失效」而不是「列不存在」：表压根没建出来（表单未发布）时
+                  列同样不存在，但让人去找一个不存在的列是找错方向，所以详情放 tooltip 里说
+                -->
+                <el-tooltip
+                  v-if="row.columnExists === false"
+                  placement="top"
+                  :content="`列 ${row.columnName} 不在表 ${row.tableName} 上，引用它的规则会恒假（一行都看不到且不报错）。表可能还没建出来，或列名记错了`"
+                >
+                  <span class="ml-6px text-11px text-red-500">失效</span>
+                </el-tooltip>
+              </template>
             </template>
           </el-table-column>
           <el-table-column label="说明" min-width="180" show-overflow-tooltip>
@@ -518,7 +581,13 @@
           :closable="false"
           title="字段权限管理：给 COLUMN/FIELD 类型的子资源配置 可编辑 / 只读 / 隐藏（EDITABLE / READONLY / HIDDEN）。通常只需对「敏感列」配置。"
         />
-        <el-table :data="fieldResources" border size="small" v-loading="childLoading">
+        <el-table
+          :data="fieldResources"
+          border
+          size="small"
+          v-loading="childLoading"
+          :max-height="tableMaxHeight"
+        >
           <el-table-column label="字段名" min-width="160">
             <template #default="{ row }">
               <span>{{ row.name }}</span>
@@ -547,7 +616,13 @@
 
       <!-- 页签四：子资源列表（不含 COLUMN/FIELD，那些在「字段权限」页签里） -->
       <el-tab-pane v-if="childResources.length" label="子资源" name="children">
-        <el-table :data="childResources" border size="small" v-loading="childLoading">
+        <el-table
+          :data="childResources"
+          border
+          size="small"
+          v-loading="childLoading"
+          :max-height="tableMaxHeight"
+        >
           <el-table-column label="资源名称" min-width="160">
             <template #default="{ row }">
               <span>{{ row.name }}</span>
@@ -585,6 +660,7 @@
 
 <script lang="ts" setup>
 import dayjs from 'dayjs'
+import { useWindowSize } from '@vueuse/core'
 import * as GrantApi from '@/api/system/grant'
 import type {
   ResourceVO,
@@ -629,6 +705,23 @@ const activeTab = ref('grants')
 const resource = ref<ResourceVO>()
 /** 标题与列表页那个按钮同名：点「明细设计」就该打开一个叫「明细设计」的面板 */
 const panelTitle = computed(() => `明细设计 — ${resource.value?.name ?? ''}`)
+
+/**
+ * 四张表格共用的最大高度：让表体内部滚动、表头钉住
+ *
+ * 🔴 el-table 只有拿到 height / max-height 才会把表头拆成独立的一层；
+ * 不给的话表格会一直长高，把整个 el-dialog 顶出视口 —— 于是滚的是页面而不是表格，
+ * 表头照样跟着滚走，而这恰恰是最需要它的场景（授权列表、槽位映射都是几十行起）
+ *
+ * 减掉的 300px 是表格上方那些固定内容的高度（弹窗标题、资源概要、页签栏、警告条、工具栏），
+ * 按最高的那个页签（槽位映射：警告条 + 工具栏）算，所以别的页签会略保守。
+ * 保守的代价是表格矮几十像素；激进的代价是弹窗溢出视口、表头重新跟着滚 —— 两边不对等
+ *
+ * ⚠️ 必须是【数值】，不能是 calc() 字符串：el-table 内部走 TableLayout.setHeight，
+ * 那里对值做 Number() 转换，calc() 会得到 NaN，等于没设
+ */
+const { height: windowHeight } = useWindowSize()
+const tableMaxHeight = computed(() => Math.max(240, Math.round(windowHeight.value * 0.89) - 300))
 
 /** 槽位映射与记录分享都只对数据集有意义，判据见各自 DO 上的注释 */
 const isDataset = computed(() => resource.value?.type === 'DATASET')
@@ -848,13 +941,26 @@ const slotSaving = ref(false)
 
 /** 槽位词表，来自后端 PermissionSlotEnum 全集（前端不自带副本，见 SlotMappingOptionsRespVO） */
 const slotOptions = ref<SlotOptionVO[]>([])
-/** 库里的物理表，「先选表」那一级下拉的数据 */
+/** 库里的物理表，「所属表」下拉的数据 */
 const tableOptions = ref<SlotTableOptionVO[]>([])
-/** 选中表之后才拉到的列，「再选字段」那一级下拉的数据 */
+/** 选中表之后才拉到的列，「真实列名」下拉的数据 */
 const slotTableColumns = ref<SlotColumnOptionVO[]>([])
 const slotTableLoading = ref(false)
 const tableKeyword = ref('')
 const columnKeyword = ref('')
+/** 本数据集的主表名，由 /options 带回；用来在下拉里标出主表、并对选了别的表给一句提示 */
+const mainTable = ref('')
+
+/**
+ * 这张表是不是本数据集的主表
+ *
+ * ⚠️ 主表名取不到时一律当「是」：这只是给人看的一句提示，不是安全控制，
+ * 拿不到基准就把每一行都标成「非主表」是纯粹的噪音，还会让人以为配置坏了
+ */
+const isMainTable = (name?: string) => {
+  if (!name || !mainTable.value) return true
+  return name.toLowerCase() === mainTable.value.toLowerCase()
+}
 
 interface SlotRow extends Partial<SlotMappingVO> {
   __editing?: boolean
@@ -863,23 +969,24 @@ interface SlotRow extends Partial<SlotMappingVO> {
 interface SlotEditForm {
   id: number
   slot: string
+  /**
+   * 列所在的物理表名，【落库】
+   *
+   * 🔴 它是配置项，不是导航状态：求值时拿它去查「这张表在本次查询里叫什么」
+   * （关联表带别名时物理表名不是合法限定符）。所以列表查询没 JOIN 它的时候，
+   * 这条映射求不出来，整条授权按「求不出来」失效 —— 这也是提交前必须校验它非空的原因
+   */
+  tableName: string
   columnName: string
   description?: string
-  /**
-   * 「先选表、再选字段」里选中的那张表
-   *
-   * ⚠️ 只是导航用的临时状态，【不落库】：sys_slot_mapping 只存列名，
-   * 而列名是在 sys_resource.dataset_table 那张表上求值的
-   */
-  tableName?: string
 }
 
 const emptySlotForm = (): SlotEditForm => ({
   id: NEW_ROW_ID,
   slot: '',
+  tableName: '',
   columnName: '',
-  description: undefined,
-  tableName: undefined
+  description: undefined
 })
 
 const slotForm = ref<SlotEditForm>(emptySlotForm())
@@ -908,6 +1015,7 @@ const loadSlotOptions = async () => {
   const options = await GrantApi.getSlotMappingOptions(resource.value.id).catch(() => undefined)
   slotOptions.value = options?.slots ?? []
   tableOptions.value = options?.tables ?? []
+  mainTable.value = options?.mainTable ?? ''
 }
 
 const slotDescription = (slot: string) =>
@@ -955,12 +1063,36 @@ const handleColumnVisibleChange = (visible: boolean) => {
 }
 
 /**
- * 换了表就重新拉那张表的列
+ * 「真实列名」下面那句行内提示：只在【这一格配不下去】时才出现
  *
- * 表名走参数绑定传给后端，不拼 SQL。选了个不存在的表 ⟹ 后端返回空数组 ⟹
- * 下拉里没东西可挑，人照样能手输列名 —— 两级下拉都只是提速，不是白名单
+ * 🔴 这一格是只能选、不能填的，所以「选不出来」会把人堵死 —— 而堵住的两种原因，
+ * 光盯着一个空下拉一个都猜不到：
+ *   · 表压根不在当前库里（表单还没发布、没建表；或绑在别的数据源上）⟹ 一列都拉不出来；
+ *   · 表在、但框里那个值不是这张表的列 ⟹ 下拉里明明有列，只是没有当前这个，
+ *     看着完全像「已经配好了」。
+ * 第二种最坏：引用它的规则会恒假（fail-closed，一行都看不到且不报错），
+ * 而界面上一点迹象都没有。机器已经知道的事，就别让人去猜
  */
-const handleSlotTableChange = async (tableName?: string) => {
+const slotColumnHint = computed(() => {
+  const form = slotForm.value
+  if (!form.tableName || slotTableLoading.value) return ''
+  if (slotTableColumns.value.length === 0) {
+    return `⚠️ 表 ${form.tableName} 上查不到任何列：它可能还没建出来（表单未发布），或不在当前库里。列名只能从真实存在的列中选，所以这条映射暂时配不出来`
+  }
+  if (form.columnName && !slotTableColumns.value.some((c) => c.columnName === form.columnName)) {
+    return `⚠️ 列 ${form.columnName} 不在这张表上，引用它的规则会恒假（一行都看不到且不报错），请重新选择`
+  }
+  return ''
+})
+
+/**
+ * 拉某张表的列，填进「真实列名」下拉
+ *
+ * 表名走参数绑定传给后端，不拼 SQL。表不存在 ⟹ 后端返回空数组 ⟹ 下拉里没东西可挑；
+ * 而列名现在是【只能选】的，所以那张表压根配不出槽位映射 —— 后端保存时同样会核实
+ * 这一列真的存在（见 SlotMappingAdminController#validateColumnExists），两边一个口径
+ */
+const loadTableColumns = async (tableName?: string) => {
   slotTableColumns.value = []
   columnKeyword.value = ''
   if (!tableName) return
@@ -970,6 +1102,18 @@ const handleSlotTableChange = async (tableName?: string) => {
   } finally {
     slotTableLoading.value = false
   }
+}
+
+/**
+ * 换了所属表：先清掉已选的列，再拉新表的列
+ *
+ * 🔴 必须清：旧列名是【上一张表】的列，在新表上不存在。留着它的话下拉里会显示一个
+ * 新表里找不到的值（列名不能手输，所以也选不回来），提交时前端只校验非空、后端会拒 ——
+ * 用户看到一句莫名的报错，却看不出是「换了表没重选列」造成的
+ */
+const handleSlotTableChange = async (tableName?: string) => {
+  slotForm.value.columnName = ''
+  await loadTableColumns(tableName)
   autofillColumnName()
 }
 
@@ -989,26 +1133,31 @@ const autofillColumnName = () => {
   if (hit) form.columnName = hit
 }
 
-const openSlotAdd = () => {
+const openSlotAdd = async () => {
   slotForm.value = emptySlotForm()
   slotEditingId.value = NEW_ROW_ID
-  slotTableColumns.value = []
   tableKeyword.value = ''
-  columnKeyword.value = ''
+  // 所属表默认选主表：owner / dept / status / bizKey 这几个槽位绝大多数就在主表上，
+  // 让人每次都从两百多张表里挑回自己那张纯属重复劳动。选别的表随时能改，
+  // 改了会给出「非主表」的提示（见 isMainTable）
+  slotForm.value.tableName = mainTable.value
+  await loadTableColumns(mainTable.value)
 }
 
-const openSlotEdit = (row: SlotMappingVO) => {
+const openSlotEdit = async (row: SlotMappingVO) => {
   slotForm.value = {
     id: row.id,
     slot: row.slot,
+    tableName: row.tableName ?? '',
     columnName: row.columnName,
-    description: row.description,
-    tableName: undefined
+    description: row.description
   }
   slotEditingId.value = row.id
-  slotTableColumns.value = []
   tableKeyword.value = ''
-  columnKeyword.value = ''
+  // 得把这张表的列拉出来，否则「真实列名」下拉是空的：框里显示的还是存的值，
+  // 但用户一改就没得选了。⚠️ 走 loadTableColumns 而不是 handleSlotTableChange ——
+  // 后者会先清掉 columnName，把刚从行里读出来的值抹掉
+  await loadTableColumns(row.tableName)
 }
 
 const cancelSlotEdit = () => {
@@ -1021,17 +1170,26 @@ const submitSlotEdit = async () => {
   if (slotSaving.value) return
   const form = slotForm.value
   const slot = form.slot.trim()
+  const tableName = form.tableName.trim()
   const columnName = form.columnName.trim()
   if (!slot) {
     message.error('请选择或输入槽位名称')
     return
   }
-  if (!columnName) {
-    message.error('请选择或输入真实列名')
+  // 所属表与真实列名都是【只能选】，所以提示语是「请选择」而不是旧版的「请选择或输入」。
+  // 后端 @NotBlank 也会拦，且拦下来是一条读得懂的 400（实测「请求参数不正确:所属表不能为空」）；
+  // 在这里先拦只是省一次往返，并且能把话说到具体是哪一格，而不是一条弹窗
+  if (!tableName) {
+    message.error('请选择所属表')
     return
   }
-  // 手输一个已存在的槽位名会撞唯一索引 uk_resource_slot，后端抛的是 500，
-  // 这里提前拦成一句行内提示（下拉里已配的槽位本来是禁用的，只有手输能绕过去）
+  if (!columnName) {
+    message.error('请选择真实列名')
+    return
+  }
+  // 手输一个已存在的槽位名会被后端 create 里的查重拦下（在撞上唯一索引 uk_resource_slot 之前），
+  // 返回业务码 SLOT_MAPPING_DUPLICATE +「该资源下 slot=owner 的映射已存在，请直接修改那一行」。
+  // 这里提前拦成一句行内提示，少一次往返（下拉里已配的槽位本来是禁用的，只有手输能绕过去）
   if (slots.value.some((s) => s.slot === slot && s.id !== form.id)) {
     message.error(`该资源下 slot=${slot} 的映射已存在`)
     return
@@ -1041,6 +1199,7 @@ const submitSlotEdit = async () => {
     const payload = {
       resourceId: resource.value!.id,
       slot,
+      tableName,
       columnName,
       description: form.description
     }
@@ -1125,6 +1284,9 @@ const open = async (res: ResourceVO) => {
   slotEditingId.value = null
   slotForm.value = emptySlotForm()
   slotTableColumns.value = []
+  // 主表名也要清：它由 loadSlotOptions 重填，而非数据集类型压根不发那个请求。
+  // 留着上一个数据集的主表名，切到别的资源后「新增槽位」会默认选上一个资源的表
+  mainTable.value = ''
   grants.value = []
   slots.value = []
   fieldResources.value = []

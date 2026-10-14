@@ -402,8 +402,29 @@ export interface SlotMappingVO {
   id: number
   resourceId: number
   slot: string
+  /**
+   * 列所在的物理表名
+   *
+   * 🔴 必填，而且只能从下拉里选：列表查询是带 JOIN 的，
+   * 同一个列名（如 create_user_id）在主表和关联表上都可能有，
+   * 不记表名就表达不出「这个槽位对应关联表上的那一列」。
+   * 后端存的时候一律转小写 —— 求值时它是查限定符的 key，大小写不统一会让
+   * 一条配置正确的映射静默失效
+   */
+  tableName: string
   columnName: string
   description?: string
+  /**
+   * 这一列在 `tableName` 上是否真的存在（后端查 information_schema 得出，只在
+   * `list-by-resource` 里返回；新增/修改的入参不带它）
+   *
+   * 🔴 专门用来把【历史脏数据】暴露出来。写入口现在会核实列存在，但存量的行
+   * 是早期自动推断写进去的 —— 那时候不核实，于是留下了「配了但求不出来」的行。
+   * 这种行的后果不是报错，而是引用它的规则恒假（fail-closed，一行都看不到），
+   * 而界面上看着和一条好配置一模一样。所以宁可多查一次也要把它标红：
+   * 「看不到数据」会有人来报，「不知道为什么看不到」才是真正耗人的那种
+   */
+  columnExists?: boolean
 }
 
 /** 槽位候选项，来自后端 PermissionSlotEnum 全集 */
@@ -444,6 +465,13 @@ export interface SlotMappingOptionsVO {
    * （不写精确数字：它随建模变动漂移，而「几百 KB vs 一行」这个量级差不会）
    */
   tables: SlotTableOptionVO[]
+  /**
+   * 本资源数据集的主表名
+   *
+   * 前端拿它做两件事：新增时把「所属表」默认选成主表（绝大多数槽位都在主表上），
+   * 以及当用户选了别的表时提示一句 —— 那张表只有真的被 JOIN 进列表查询时才有效
+   */
+  mainTable?: string
 }
 
 /** 查询槽位映射编辑器的候选项（槽位词表 + 物理表名） */
@@ -454,9 +482,18 @@ export const getSlotMappingOptions = async (resourceId: number): Promise<SlotMap
 /**
  * 查询某张物理表的列
  *
- * ⚠️ 表不存在时返回空数组而不是报错 —— 此时下拉里没东西可挑，只剩手输。
- * 两级下拉都必须 allow-create，它们只是提速、不是白名单：
- * 做成白名单的后果是「查不出来的列永远配不上槽位」，而那是唯一能让规则生效的办法
+ * 🔴 这个返回就是「真实列名」下拉的**全部**可选项 —— 两级下拉都是只能选、不能填
+ * （只有槽位名称保留 allow-create）。
+ *
+ * 早先的口径是「两级下拉都必须 allow-create，做成白名单的后果是查不出来的列永远配不上槽位」。
+ * 那条顾虑现在不成立了：后端 `SlotMappingAdminController#validateColumnExists` 会拿
+ * information_schema 核实「这一列在这张表上真的存在」，写得进去的列必然是查得出来的列，
+ * 所以不存在「白名单挡住一个合法列」这种情形。反过来，允许手填才是有害的 ——
+ * 填一个不存在的列名，后果不是报错，而是那条规则永远求不出来、整条授权按 fail-closed 失效，
+ * 界面上一点迹象都没有（「配错了」和「没配」长得一模一样）。
+ *
+ * ⚠️ 表不存在时返回空数组而不是报错。此时列下拉没有可选项，前端把它禁用掉即可；
+ * 真要保存也会被上面那道校验拦下
  */
 export const getSlotMappingTableColumns = async (
   tableName: string
