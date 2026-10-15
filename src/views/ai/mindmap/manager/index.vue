@@ -1,5 +1,5 @@
 <template>
-  <!-- <doc-alert title="AI 思维导图" url="https://doc.iocoder.cn/ai/mindmap/" /> -->
+  <!-- <doc-alert title="AI 思维导图" url="https://doc.enlev.cn/ai/mindmap/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

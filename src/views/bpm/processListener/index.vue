@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="执行监听器、任务监听器" url="https://doc.iocoder.cn/bpm/listener/" />
+  <doc-alert title="执行监听器、任务监听器" url="https://doc.enlev.cn/bpm/listener/" />
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

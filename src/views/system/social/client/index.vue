@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="三方登录" url="https://doc.iocoder.cn/social-user/" />
+  <doc-alert title="三方登录" url="https://doc.enlev.cn/social-user/" />
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

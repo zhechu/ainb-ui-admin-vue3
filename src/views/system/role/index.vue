@@ -1,6 +1,6 @@
 <template>
-  <doc-alert title="功能权限" url="https://doc.iocoder.cn/resource-permission" />
-  <doc-alert title="数据权限" url="https://doc.iocoder.cn/data-permission" />
+  <doc-alert title="功能权限" url="https://doc.enlev.cn/resource-permission" />
+  <doc-alert title="数据权限" url="https://doc.enlev.cn/data-permission" />
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

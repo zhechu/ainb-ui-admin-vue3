@@ -1,6 +1,6 @@
 <template>
-  <doc-alert title="【客户】客户管理、公海客户" url="https://doc.iocoder.cn/crm/customer/" />
-  <doc-alert title="【通用】数据权限" url="https://doc.iocoder.cn/crm/permission/" />
+  <doc-alert title="【客户】客户管理、公海客户" url="https://doc.enlev.cn/crm/customer/" />
+  <doc-alert title="【通用】数据权限" url="https://doc.enlev.cn/crm/permission/" />
 
   <ContentWrap>
     <el-form

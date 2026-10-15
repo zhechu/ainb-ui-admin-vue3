@@ -1,5 +1,5 @@
 <template>
-  <!-- <doc-alert title="AI 音乐创作" url="https://doc.iocoder.cn/ai/music/" /> -->
+  <!-- <doc-alert title="AI 音乐创作" url="https://doc.enlev.cn/ai/music/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

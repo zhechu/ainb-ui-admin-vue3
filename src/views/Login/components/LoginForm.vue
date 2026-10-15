@@ -123,12 +123,12 @@
       <el-col :span="24" class="px-10px">
         <el-form-item>
           <div class="w-full flex justify-between">
-            <el-link href="https://doc.iocoder.cn/" target="_blank">📚开发指南</el-link>
-            <el-link href="https://doc.iocoder.cn/video/" target="_blank">🔥视频教程</el-link>
-            <el-link href="https://www.iocoder.cn/Interview/good-collection/" target="_blank">
+            <el-link href="https://doc.enlev.cn/" target="_blank">📚开发指南</el-link>
+            <el-link href="https://doc.enlev.cn/video/" target="_blank">🔥视频教程</el-link>
+            <el-link href="https://www.enlev.cn/Interview/good-collection/" target="_blank">
               ⚡面试手册
             </el-link>
-            <el-link href="http://static.yudao.iocoder.cn/mp/Aix9975.jpeg" target="_blank">
+            <el-link href="http://static.enlev.cn/mp/Aix9975.jpeg" target="_blank">
               🤝外包咨询
             </el-link>
           </div>

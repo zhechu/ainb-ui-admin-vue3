@@ -41,8 +41,8 @@ export const component = {
     interval: 3,
     height: 174,
     items: [
-      { type: 'img', imgUrl: 'https://static.iocoder.cn/mall/banner-01.jpg', videoUrl: '' },
-      { type: 'img', imgUrl: 'https://static.iocoder.cn/mall/banner-02.jpg', videoUrl: '' }
+      { type: 'img', imgUrl: 'https://static.enlev.cn/mall/banner-01.jpg', videoUrl: '' },
+      { type: 'img', imgUrl: 'https://static.enlev.cn/mall/banner-02.jpg', videoUrl: '' }
     ] as CarouselItemProperty[],
     style: {
       bgType: 'color',

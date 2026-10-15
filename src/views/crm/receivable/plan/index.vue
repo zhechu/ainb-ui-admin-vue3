@@ -1,6 +1,6 @@
 <template>
-  <doc-alert title="【回款】回款管理、回款计划" url="https://doc.iocoder.cn/crm/receivable/" />
-  <doc-alert title="【通用】数据权限" url="https://doc.iocoder.cn/crm/permission/" />
+  <doc-alert title="【回款】回款管理、回款计划" url="https://doc.enlev.cn/crm/receivable/" />
+  <doc-alert title="【通用】数据权限" url="https://doc.enlev.cn/crm/permission/" />
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

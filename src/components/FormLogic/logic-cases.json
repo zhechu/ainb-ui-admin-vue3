@@ -156,33 +156,33 @@
           "id": "gt",
           "trigger": "CHANGE",
           "when": { "logic": "AND", "items": [{ "field": "amount", "operator": "GT", "value": 9999 }] },
-          "then": [{ "type": "REQUIRE", "target": "f_gt" }]
+          "then": [{ "type": "REQUIRE", "target": "gt" }]
         },
         {
           "id": "ge",
           "trigger": "CHANGE",
           "when": { "logic": "AND", "items": [{ "field": "amount", "operator": "GE", "value": 10000 }] },
-          "then": [{ "type": "REQUIRE", "target": "f_ge" }]
+          "then": [{ "type": "REQUIRE", "target": "ge" }]
         },
         {
           "id": "lt",
           "trigger": "CHANGE",
           "when": { "logic": "AND", "items": [{ "field": "amount", "operator": "LT", "value": 10000 }] },
-          "then": [{ "type": "REQUIRE", "target": "f_lt" }]
+          "then": [{ "type": "REQUIRE", "target": "lt" }]
         },
         {
           "id": "le",
           "trigger": "CHANGE",
           "when": { "logic": "AND", "items": [{ "field": "amount", "operator": "LE", "value": 10000 }] },
-          "then": [{ "type": "REQUIRE", "target": "f_le" }]
+          "then": [{ "type": "REQUIRE", "target": "le" }]
         }
       ],
       "expect": {
         "state": {
-          "f_gt": { "required": true },
-          "f_ge": { "required": true },
-          "f_lt": { "required": false },
-          "f_le": { "required": true }
+          "gt": { "required": true },
+          "ge": { "required": true },
+          "lt": { "required": false },
+          "le": { "required": true }
         },
         "stable": true
       }
@@ -215,7 +215,7 @@
               { "field": "endDate", "operator": "GT", "valueType": "FIELD", "value": "startDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_later" }]
+          "then": [{ "type": "REQUIRE", "target": "later" }]
         },
         {
           "id": "equal",
@@ -226,7 +226,7 @@
               { "field": "sameDate", "operator": "GE", "valueType": "FIELD", "value": "startDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_equal" }]
+          "then": [{ "type": "REQUIRE", "target": "equal" }]
         },
         {
           "id": "earlier",
@@ -237,7 +237,7 @@
               { "field": "startDate", "operator": "LT", "valueType": "FIELD", "value": "endDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_earlier" }]
+          "then": [{ "type": "REQUIRE", "target": "earlier" }]
         },
         {
           "id": "wrong",
@@ -248,15 +248,15 @@
               { "field": "startDate", "operator": "GT", "valueType": "FIELD", "value": "endDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_wrong" }]
+          "then": [{ "type": "REQUIRE", "target": "wrong" }]
         }
       ],
       "expect": {
         "state": {
-          "f_later": { "required": true },
-          "f_equal": { "required": true },
-          "f_earlier": { "required": true },
-          "f_wrong": { "required": false }
+          "later": { "required": true },
+          "equal": { "required": true },
+          "earlier": { "required": true },
+          "wrong": { "required": false }
         },
         "stable": true
       }
@@ -275,7 +275,7 @@
               { "field": "endDate", "operator": "GE", "valueType": "FIELD", "value": "startDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_ge" }]
+          "then": [{ "type": "REQUIRE", "target": "ge" }]
         },
         {
           "id": "le",
@@ -286,11 +286,11 @@
               { "field": "endDate", "operator": "LE", "valueType": "FIELD", "value": "startDate" }
             ]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_le" }]
+          "then": [{ "type": "REQUIRE", "target": "le" }]
         }
       ],
       "expect": {
-        "state": { "f_ge": { "required": false }, "f_le": { "required": false } },
+        "state": { "ge": { "required": false }, "le": { "required": false } },
         "stable": true
       }
     },
@@ -307,7 +307,7 @@
             "logic": "AND",
             "items": [{ "field": "city", "operator": "IN", "value": ["杭州", "上海"] }]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_in" }]
+          "then": [{ "type": "REQUIRE", "target": "in" }]
         },
         {
           "id": "notin",
@@ -316,11 +316,11 @@
             "logic": "AND",
             "items": [{ "field": "city", "operator": "NOT_IN", "value": ["北京"] }]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_notin" }]
+          "then": [{ "type": "REQUIRE", "target": "notin" }]
         }
       ],
       "expect": {
-        "state": { "f_in": { "required": true }, "f_notin": { "required": true } },
+        "state": { "in": { "required": true }, "notin": { "required": true } },
         "stable": true
       }
     },
@@ -370,7 +370,7 @@
             "logic": "AND",
             "items": [{ "field": "code", "operator": "STARTS_WITH", "value": "SO-" }]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_sw" }]
+          "then": [{ "type": "REQUIRE", "target": "sw" }]
         },
         {
           "id": "ew",
@@ -379,11 +379,11 @@
             "logic": "AND",
             "items": [{ "field": "code", "operator": "ENDS_WITH", "value": "001" }]
           },
-          "then": [{ "type": "REQUIRE", "target": "f_ew" }]
+          "then": [{ "type": "REQUIRE", "target": "ew" }]
         }
       ],
       "expect": {
-        "state": { "f_sw": { "required": true }, "f_ew": { "required": true } },
+        "state": { "sw": { "required": true }, "ew": { "required": true } },
         "stable": true
       }
     },

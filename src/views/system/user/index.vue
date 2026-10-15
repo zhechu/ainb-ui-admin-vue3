@@ -1,7 +1,7 @@
 <template>
-  <doc-alert title="用户体系" url="https://doc.iocoder.cn/user-center/" />
-  <doc-alert title="三方登陆" url="https://doc.iocoder.cn/social-user/" />
-  <doc-alert title="Excel 导入导出" url="https://doc.iocoder.cn/excel-import-and-export/" />
+  <doc-alert title="用户体系" url="https://doc.enlev.cn/user-center/" />
+  <doc-alert title="三方登陆" url="https://doc.enlev.cn/social-user/" />
+  <doc-alert title="Excel 导入导出" url="https://doc.enlev.cn/excel-import-and-export/" />
 
   <!-- gutter 收到与页面外边距同值（9px，--app-content-padding）：默认 20 时左右两卡片之间会有一条贯穿整页的宽灰缝，观感松散 -->
   <el-row :gutter="9">

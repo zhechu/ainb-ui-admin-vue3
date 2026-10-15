@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="配置中心" url="https://doc.iocoder.cn/config-center/" />
+  <doc-alert title="配置中心" url="https://doc.enlev.cn/config-center/" />
 
   <!-- 搜索 -->
   <ContentWrap>

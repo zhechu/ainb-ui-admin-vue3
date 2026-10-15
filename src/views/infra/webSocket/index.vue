@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="WebSocket 实时通信" url="https://doc.iocoder.cn/websocket/" />
+  <doc-alert title="WebSocket 实时通信" url="https://doc.enlev.cn/websocket/" />
 
   <div class="flex">
     <!-- 左侧：建立连接、发送消息 -->

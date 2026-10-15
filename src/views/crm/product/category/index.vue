@@ -1,5 +1,5 @@
 <template>
-  <doc-alert title="【产品】产品管理、产品分类" url="https://doc.iocoder.cn/crm/product/" />
+  <doc-alert title="【产品】产品管理、产品分类" url="https://doc.enlev.cn/crm/product/" />
 
   <ContentWrap>
     <!-- 搜索工作栏 -->

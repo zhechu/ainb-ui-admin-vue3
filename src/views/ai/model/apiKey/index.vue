@@ -1,5 +1,5 @@
 <template>
-  <!-- <doc-alert title="AI 手册" url="https://doc.iocoder.cn/ai/build/" /> -->
+  <!-- <doc-alert title="AI 手册" url="https://doc.enlev.cn/ai/build/" /> -->
 
   <ContentWrap>
     <!-- 搜索工作栏 -->
