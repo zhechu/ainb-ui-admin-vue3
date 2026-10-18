@@ -202,7 +202,8 @@
                 <div class="form-hint mb-8px">
                   绑定后该 Agent 聊天时会先「思考→调工具查现状→再思考」直到给出结论，而非凭空作答。
                   <b>仅可绑定只读工具</b>（写操作须走 Plan 确认或工作流 tool 节点）；留空=直连问答。
-                  已被管理员停用的工具在候选里是灰的、挑不动（D4-25）。
+                  候选里既有平台内置工具，也有你在「工具管理」页登记的自定义工具；
+                  已被停用、或来源暂不可执行的行是灰的、挑不动，鼠标停在上面会说原因（D4-25）。
                 </div>
                 <el-form-item prop="toolKeys" class="!mb-0">
                   <el-select
@@ -222,16 +223,16 @@
                       :key="t.name"
                       :label="keyedLabel(t.name, t.displayName)"
                       :value="t.name"
-                      :disabled="!t.enabled"
-                      :title="t.enabled ? undefined : disabledToolTitle(t)"
+                      :disabled="!!toolBlockReason(t)"
+                      :title="toolBlockReason(t) ? disabledToolTitle(t) : undefined"
                     >
                       <span>{{ keyedLabel(t.name, t.displayName) }}</span>
                       <span class="text-12px text-[var(--el-text-color-secondary)] ml-8px">{{ t.description }}</span>
                       <span
-                        v-if="!t.enabled"
+                        v-if="toolBlockReason(t)"
                         class="float-right text-12px text-[var(--el-text-color-danger)] ml-12px"
                         data-testid="tool-option-block"
-                        >已停用</span
+                        >{{ toolBlockReason(t) }}</span
                       >
                     </el-option>
                     <!-- 🔴 G7：目录加载失败时这里会是空的，必须说清原因而不是留一个空列表 -->
@@ -271,7 +272,7 @@
 import { AgentDefApi, type AgentDefSaveVO } from '@/api/agent/def'
 import { ModelApi, type ModelVO } from '@/api/ai/model/model'
 import { KnowledgeApi, type KnowledgeVO } from '@/api/ai/knowledge/knowledge'
-import { getToolList, type AgentToolVO } from '@/api/agent/config'
+import { getToolList, toolSourceLabel, type AgentToolVO } from '@/api/agent/config'
 import { keyedLabel } from '@/views/agent/workflow/nameCatalog'
 
 defineOptions({ name: 'AgentDefEditor' })
@@ -363,6 +364,12 @@ const loadKnowledge = async () => {
  *   风险那几道闸（`AgentDefServiceImpl` / V3 / V11）读 `getDeclaredRisk()`，降险改不动它们；
  *   而安全网关 `AgentSecurityGateway#checkTool` 读的是 `tool.isEnabled()`，即覆盖后的生效值，
  *   「停用」这个维护动作**当次就真生效**。所以判「能不能用」必须按生效值，判「算不算只读」必须按声明值。
+ *
+ * 🔴 B2 之后这里同时有内置工具与当前租户登记的自定义工具（后端 `AgentToolCatalog` 合流下发，
+ *   靠 `source` 区分）。`executable=false` 的行（`source=FORM`/`SCRIPT` 这两个预留位）
+ *   **照样留在候选里、置灰 + 说原因**，与停用同一套处置、同样三条理由：滤掉只会让存量绑定
+ *   退化成一串裸机器键，而后端 `validateToolKeys` 发布期本来就会拦它（报「来源(x)当前不可执行」），
+ *   界面主动指反方向没有意义。
  */
 const toolList = ref<AgentToolVO[]>([])
 /** 目录加载失败的人话原因；🔴 G7 要求它可见 —— 空下拉 + 零提示就是原来的病 */
@@ -424,12 +431,38 @@ const disabledBoundWarning = computed(() => {
   )
 })
 
-/** 候选行 title：为什么挑不动，以及两条出路 */
-const disabledToolTitle = (t: AgentToolVO): string =>
-  `「${t.displayName || t.name}」已被停用，不能再绑定。`
-  + '停用来自「工具管理」页的在线维护开关（或代码里本就声明为停用），安全网关读到停用会直接拒绝调用，'
-  + `后端报「AI 助手工具(${t.name})已被停用」。`
-  + '已经绑着的话请把它移除，或到「工具管理」页重新打开该工具的「启用」开关。'
+/**
+ * 候选行为什么挑不动；挑得动时返回空串（模板据此既不置灰、也不画右侧红字）。
+ *
+ * 🔴 `executable === false` 必须是**严格等于 false**，不能写成 `!t.executable`：
+ *    这个字段是 B2 才下发的，后端没升级时它是 `undefined`，取反会把**整张**下拉一次性灰掉。
+ *    那比原来的病更糟 —— 原来是「配了不生效且无提示」，那样就成了「什么都配不了，也不说为什么」。
+ *    同一份谨慎上面 `declaredRequireConfirm ?? requireConfirm` 已经用过一次。
+ */
+const toolBlockReason = (t: AgentToolVO): string => {
+  if (!t.enabled) return '已停用'
+  if (t.executable === false) return '暂不可执行'
+  return ''
+}
+
+/** 候选行 title：为什么挑不动，以及出路 */
+const disabledToolTitle = (t: AgentToolVO): string => {
+  const label = t.displayName || t.name
+  if (t.enabled && t.executable === false) {
+    return (
+      `「${label}」的来源类型（${toolSourceLabel(t.source)}）当前还不能执行，绑上去点发布就会被后端拒`
+      + `（报「工具(${t.name})的来源(${t.source})当前不可执行，不能绑定到 Agent」——`
+      + '报错里是英文枚举值，与本句说的同一个东西）。'
+      + '这类登记项是预留位：请到「工具管理」页把它的来源改成「数据接口」后再绑定。'
+    )
+  }
+  return (
+    `「${label}」已被停用，不能再绑定。`
+    + '停用来自「工具管理」页的在线维护开关（或代码里本就声明为停用），安全网关读到停用会直接拒绝调用，'
+    + `后端报「AI 助手工具(${t.name})已被停用」。`
+    + '已经绑着的话请把它移除，或到「工具管理」页重新打开该工具的「启用」开关。'
+  )
+}
 
 const formRules = reactive({
   code: [

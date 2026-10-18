@@ -10,7 +10,7 @@ export interface AgentConfigVO {
   updater?: string
 }
 
-/** 已注册的工具（只读） */
+/** 工具目录快照（只读）：内置注册表 ∪ 当前租户登记的自定义工具，靠 source 区分 */
 export interface AgentToolVO {
   name: string
   /**
@@ -45,7 +45,40 @@ export interface AgentToolVO {
   riskOverridden?: boolean
   /** 当前租户是否在线维护过这个工具（管理页据此打「已维护」标记） */
   overridden?: boolean
+  /**
+   * 工具来源：`BUILTIN`（代码里 `@AgentTool` 声明的内置工具）或 `agent_tool_def.source`
+   * 的取值（`DATA_INTERFACE` / `FORM` / `SCRIPT`）。与名称目录 `AgentNameCatalogRespVO.ToolItem#source`
+   * 同一个取值域，界面上用它区分「平台自带」与「我在工具管理页登记的」。
+   */
+  source?: string
+  /**
+   * 这个工具当前是否真的能被执行。
+   * 🔴 `false` 的行（`source=FORM`/`SCRIPT` 这两个预留位）**照样下发、不能从列表里藏掉**：
+   *    存量 Agent 可能已经绑了它，一藏起来绑定就退化成一串没人看得懂的裸机器键。
+   *    正确做法是在可选下拉里置灰并说明原因 —— 让用户看得见「为什么选不了」，
+   *    而不是让已绑的东西凭空消失。
+   */
+  executable?: boolean
 }
+
+/**
+ * 工具来源的中文标签，取值域与后端 `AgentToolCatalog.SOURCE_BUILTIN` / `ToolSourceEnum` 一致。
+ *
+ * 🔴 认不出的来源**原样显示英文枚举值**，不回落成「内置」：后端哪天加一档预留位，
+ *    回落会把「还没实现的用户登记项」画成「平台自带的工具」—— 而区分这两件事
+ *    正是这张表下发 source 的全部目的。
+ * 🔴 `FORM`/`SCRIPT` 标着「预留」是因为它们登记得下、执行不了（`executable=false`），
+ *    后端 buildFunction 遇到就抛 AGENT_TOOL_SOURCE_UNSUPPORTED。
+ */
+export const TOOL_SOURCE_LABEL: Record<string, string> = {
+  BUILTIN: '内置',
+  DATA_INTERFACE: '数据接口',
+  FORM: '表单（预留）',
+  SCRIPT: '脚本（预留）'
+}
+
+export const toolSourceLabel = (source?: string): string =>
+  source ? (TOOL_SOURCE_LABEL[source] ?? source) : '—'
 
 /** 配额 */
 export interface AgentQuotaVO {
@@ -72,7 +105,6 @@ export interface AgentQuotaVO {
 }
 
 export const getAgentConfig = () => request.get<AgentConfigVO>({ url: '/agent/config/get' })
-
 export const updateAgentConfig = (data: { enabled: boolean; remark?: string }) =>
   request.put({ url: '/agent/config/update', data })
 

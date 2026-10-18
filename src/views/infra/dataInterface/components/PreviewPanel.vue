@@ -111,8 +111,8 @@
         <span v-if="isWriteAction && resultRows?.affectedRows !== undefined" class="ml-6px text-12px text-[var(--el-text-color-secondary)]">
           影响 {{ resultRows.affectedRows }} 行
         </span>
-        <span v-else-if="Array.isArray(resultRows)" class="ml-6px text-12px text-[var(--el-text-color-secondary)]">
-          共 {{ resultRows.length }} 条
+        <span v-else-if="rowCount !== undefined" class="ml-6px text-12px text-[var(--el-text-color-secondary)]">
+          共 {{ rowCount }} 条
         </span>
       </div>
       <el-alert v-if="errorMsg" type="error" :closable="false" :title="errorMsg" class="mb-8px" />
@@ -192,6 +192,44 @@ const jsonResultText = computed(() => {
   }
   return JSON.stringify(resultRows.value, null, 2)
 })
+
+/** 结果条数：查询返回数组，或分页对象 {total, list}；写操作没有条数概念 */
+const rowCount = computed(() => {
+  const v = resultRows.value
+  if (Array.isArray(v)) {
+    return v.length
+  }
+  if (v && typeof v === 'object' && Array.isArray(v.list) && typeof v.total === 'number') {
+    return v.total
+  }
+  return undefined
+})
+
+/**
+ * 剥掉 SQL / 静态 JSON 接口的标准响应信封 {code, msg, data}
+ *
+ * 后端 DataInterfaceServiceImpl#wrapStandardResponse 把这两类接口的执行器输出统一包成
+ * 信封（正式调用的契约就是它），preview 又把它塞进自己的 {data, executeSql} 里回传，
+ * 于是这里拿到的是套了两层的结果。不解包：结果区多两行信封噪声、
+ * 「共 N 条」「影响 N 行」因为类型对不上而永远不显示。
+ *
+ * 🔴 判据收紧到「code 是数字且 msg 是字符串且带 data 键」：查询结果理论上也可能
+ *    是恰好含 code/data 键的对象，加上类型判定后误剥的概率才够低。
+ *    HTTP 类型不包信封，原样返回。
+ */
+const unwrapEnvelope = (payload: any) => {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    typeof payload.code === 'number' &&
+    typeof payload.msg === 'string' &&
+    'data' in payload
+  ) {
+    return payload.data
+  }
+  return payload
+}
 
 const isDateType = (type: string) => ['DATE', 'DATETIME'].includes(type)
 
@@ -279,7 +317,7 @@ const doPreview = async () => {
       requestArgs['pageSize'] = pageSize.value
     }
     const res = await DataInterfaceApi.preview(interfaceId.value, requestArgs)
-    resultRows.value = res?.data ?? null
+    resultRows.value = unwrapEnvelope(res?.data) ?? null
     executeSql.value = res?.executeSql ?? ''
   } catch (e: any) {
     // 执行失败也要展示原因，这是测试最有价值的场景之一

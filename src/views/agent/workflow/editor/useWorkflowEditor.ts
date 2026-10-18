@@ -100,11 +100,15 @@ export type TagsOption = {
  * 🔴 字段缺失（后端未升级 / 目录加载失败）时返回 undefined = 不置灰。宁可少拦一个，
  *    也不要把整个下拉全灰掉；真正的闸在后端，这里只负责别把用户往坑里指。
  *
- * ⚠️ 还有一条这里**刻意没判**：`agent_loop.tools` 只认内置注册表（`AgentLoopGraphBuilder` 里
- *    `toolRegistry.get(name) == null` 就抛「未登记」），故自定义工具（`source !== 'BUILTIN'`）
- *    体检的结构层不报、要到编译期干跑才报。不在前端补这一条的理由与后端
- *    `WorkflowDslValidator.validateToolRefs` 注释里那条「刻意不复制」相同：哪天编译期支持了
- *    自定义只读工具，前端这份副本就成了假拦截。要补得先裁定，别顺手加。
+ * ⚠️ 还有一条这里**刻意没判**：`executable=false` 的自定义工具（`source` 是 `FORM`/`SCRIPT`
+ *    这两个预留位）。B2 之后 `agent_loop.tools` 已经认自定义工具了（`AgentLoopGraphBuilder`
+ *    改走 `AgentToolCatalog`，即内置注册表 ∪ 当前租户的「工具管理」目录），上面那段
+ *    「只认内置注册表、故自定义工具要等编译期干跑才报」的旧账已经结清；但名称目录
+ *    （`/agent/workflow-def/name-catalog`）**不下发 `executable`**，前端拿不到判据。
+ *    不在前端补的理由与后端 `WorkflowDslValidator.validateToolRefs` 注释里那条「刻意不复制」相同：
+ *    登记入口只放行 `DATA_INTERFACE`，`FORM`/`SCRIPT` 行只有绕过接口直接改库才造得出来，
+ *    为这条路径先给目录 VO 加一列、再在前端抄一份判据，等于把「后端才是闸」这件事说反。
+ *    真拦它在后端：`AgentDefServiceImpl.validateToolKeys` 已经按 `executable` 拒发布。
  */
 const agentLoopToolBlock = (t: NameCatalogToolVO): { short: string; long: string } | undefined => {
   // 🔴 「已停用」排在「非只读」**前面**，与后端 `checkToolRef` 的判定顺序一致（先判能不能用，

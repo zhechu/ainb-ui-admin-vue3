@@ -2,9 +2,13 @@
   AI 助手管理员配置：总开关、配额、工具清单（**本页只读**）
 
   🔴 本页的工具清单只读，但「内置工具不可在线维护」这个说法**已经不成立了**（2026-09-28 起）：
-     维护入口在「工具目录 → 内置工具」页（views/agent/tooldef），落 agent_tool_override 覆盖行、
-     按当前租户生效。本页保留只读，是因为它答的是另一个问题 ——「助手整体开没开、配额多少、
-     当前有哪些工具」，不是「逐个工具怎么调」。
+     维护入口在「AI 助手 → 工具管理」页的「内置工具」页签（views/agent/tooldef），
+     落 agent_tool_override 覆盖行、按当前租户生效。本页保留只读，是因为它答的是另一个问题 ——
+     「助手整体开没开、配额多少、当前有哪些工具」，不是「逐个工具怎么调」。
+
+  🔴 B2 之后这张表同时列**内置工具**与当前租户登记的**自定义工具**（后端 AgentToolCatalog 合流下发，
+     靠 source 区分，故新增了「来源」列）。两类的维护路径不同：内置的只能落覆盖行（改不动代码里的
+     声明值），自定义的整行都在「自定义工具」页签里改 —— 它没有覆盖表，risk_level 那一列**就是**声明值。
 
   🔴 本页这里曾写过：「工具的权限串与风险等级属于实现的一部分，让它可被运行时改写等于把安全约束
      交给数据。把 datamodel_create 的风险等级在界面上改成「低风险」，它就不再需要用户确认了。」
@@ -118,13 +122,17 @@
     </el-table>
   </ContentWrap>
 
-  <!-- 工具清单（只读） -->
-  <ContentWrap title="已注册的工具">
+  <!-- 工具清单（只读快照） -->
+  <ContentWrap title="工具清单">
     <el-alert type="warning" :closable="false" class="mb-12px" show-icon>
       <template #title>
-        工具清单是<b>只读</b>的，不能在线开关。工具的权限串与风险等级属于实现的一部分 ——
-        能在界面上把「不可逆」改成「低风险」的话，它就不再需要用户确认了。
-        要下线某个工具，改代码并发布，这样留得下痕迹。
+        这一屏是<b>只读快照</b>，改工具去「AI 助手 → 工具管理」页：来源为「内置」的在
+        <b>内置工具</b>页签（落 agent_tool_override 覆盖行，按当前租户生效），其余是你在
+        <b>自定义工具</b>页签登记的，整行都在那里改。
+        <br />
+        ⚠️ 在线维护改得动的是<b>启用开关与权限串</b>（安全网关读的正是这两个覆盖后的值）；
+        改风险等级只改界面上的标注 —— 运行期各道闸读的始终是代码里的<b>声明</b>值，
+        所以把「不可逆」降成「低风险」并不会让它跳过用户确认。
       </template>
     </el-alert>
     <el-table :data="tools" v-loading="toolLoading" stripe max-height="460" class="xpy-list-table">
@@ -140,6 +148,26 @@
         <template #default="{ row }">
           <span v-if="row.groupName">{{ row.groupName }}</span>
           <span v-else class="text-[var(--el-text-color-placeholder)]">未分组</span>
+        </template>
+      </el-table-column>
+      <!-- 🔴 来源列是 B2 之后才必要的：这张表现在同时列内置工具与当前租户登记的自定义工具，
+           而两者的维护路径完全不同（内置走 agent_tool_override 覆盖行，自定义走「工具管理」页整行编辑）。
+           不分出来的话，下面那段提示无论怎么写都会对一半行说错话。 -->
+      <el-table-column label="来源" width="120">
+        <template #default="{ row }">
+          <el-tag :type="row.source === 'BUILTIN' ? 'info' : 'success'" size="small">
+            {{ toolSourceLabel(row.source) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <!-- 🔴 停用的工具后端照样下发（藏掉会让存量绑定在别处退化成裸机器键），
+           于是这一屏必须自己标出来：否则「已停用」与「生效中」长得一模一样，
+           而这一屏答的问题正是「当前有哪些工具（可用）」。 -->
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+            {{ row.enabled ? '启用' : '已停用' }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="风险" width="110">
@@ -253,7 +281,7 @@
 import { formatDate } from '@/utils/formatTime'
 import { checkPermi } from '@/utils/permission'
 import * as ConfigApi from '@/api/agent/config'
-import type { AgentQuotaVO } from '@/api/agent/config'
+import { toolSourceLabel, type AgentQuotaVO } from '@/api/agent/config'
 import { AgentDefApi } from '@/api/agent/def'
 import { AgentWorkflowApi } from '@/api/agent/workflow'
 // 🔴 风险色不在这儿定义：`riskTagType` 的权威副本在 workflow/nameCatalog.ts（画布下拉的风险色点也用它）。

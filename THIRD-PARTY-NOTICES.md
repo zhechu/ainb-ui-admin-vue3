@@ -8,6 +8,6 @@
 4. Vue: MIT
 5. yudao-ui-admin-vue3: MIT
 6. ruoyi-vue-pro：MIT
-7. yudao-ui-admin-vue3：MIT
+7. yudao-ui-admin-uniapp：MIT
 
 > 说明：项目存在大量底层传递依赖（transitive dependencies），由上述组件自身引入，各自遵循其自带开源许可，本清单不再逐一列举。

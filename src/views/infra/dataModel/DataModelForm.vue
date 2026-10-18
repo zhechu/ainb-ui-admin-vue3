@@ -105,6 +105,16 @@
       </template>
     </el-alert>
 
+    <!-- 🔴 两列已在、但类型/长度不合格：常驻红条，见 flowColumnProblem 的注释 -->
+    <el-alert
+      v-if="flowColumnProblem"
+      type="error"
+      show-icon
+      :closable="false"
+      class="mb-10px"
+      :title="flowColumnProblem"
+    />
+
     <!-- 字段编辑区 -->
     <div class="mb-10px flex items-center justify-between">
       <span class="font-bold">字段列表</span>
@@ -774,7 +784,12 @@ const presetColumn = (
 
 /**
  * 流程字段预设：参考内置 test_leave 表。
- * process_status 在真实表里是 tinyint，本模块的受控类型集没有 tinyint，用 INT 承载即可。
+ *
+ * 🔴 这两列的类型不是随手挑的，是平台**校验**的：BPM 挂流程前会查
+ * `process_instance_id` 是不是字符串且不短于 64、`process_status` 是不是整数型，
+ * 不合格就把这张表单标成「不可用」（后端 `FormDesignApiImpl#resolveUnavailableReason` 第 6/7 条）。
+ * process_status 用 INT 而不是 TINYINT —— 两者都过整数型判定，这里与「状态」预设保持一致；
+ * 受控类型集里**是有** TINYINT 的（本页字段类型那栏的提示就在推荐它）。
  */
 const PROCESS_FIELD_PRESETS: ColumnRow[] = [
   presetColumn('process_instance_id', '流程实例编号', 'STRING', 64),
@@ -823,11 +838,89 @@ const addPresetColumns = (presets: ColumnRow[]) => {
     added++
   })
   if (added === 0) {
-    message.info('相关字段已存在，无需重复添加')
+    // 🔴 「已存在」不等于「已合格」：流程那两列名对而类型不对时，这张表照样挂不上审批流。
+    //    此前这里只有一句「无需重复添加」，用户被留在死路上（B18）。
+    //    具体差在哪由 flowColumnProblem 那条常驻红条说 —— toast 只活 3 秒，说不完也不够改。
+    message.info(
+      flowColumnProblem.value ? '相关字段已存在，但类型不合格，见上方红色提示' : '相关字段已存在，无需重复添加'
+    )
   } else {
     message.success(`已快速添加 ${added} 个字段`)
   }
 }
+
+/**
+ * 流程回写列已存在、但类型或长度不合格时的那句常驻提示；合格时为空串（红条不出现）
+ *
+ * <h3>为什么要一条常驻提示，而不是点「快速添加」时弹一句</h3>
+ * 这是个<b>不报错的坏状态</b>：表建得成、表单发得出去、列表能查能录，
+ * 只有在【流程模型 → 表单设计】选在线表单时才被标成「不可用」，
+ * 而那一刻用户已经离根因四段路远了。既有的黄色提示只说「要有这两列」，
+ * 两列在、类型错的时候它一声不响 —— 于是唯一的线索是流程那一侧的一句
+ * 「process_status 列类型为 VARCHAR，需改为整数型」，而回到这一页没有任何东西与之对应。
+ *
+ * <p>🔴 只<b>说</b>、不替用户改：把 varchar 改成 int 是一次可能失败、可能截断数据的 ALTER，
+ * 那必须是人看着表里的数据做的决定。类型下拉就在下面那张表里，一次点击的事。
+ *
+ * <p>🔴 「合格」不等于「等于预设里写的那一个类型」：后端判 `process_status` 收的是<b>整数族</b>
+ * （TINYINT / INT / LONG，见 `DataModelApiImpl#integerColumnTypes`），预设只写 INT。
+ * 拿预设当判据的话，AI 照 `datamodel_create` 的说明建成 TINYINT（那边推荐的正是它），
+ * 人打开这一页却看到红字说它不合格 —— 提示与后端各说一套，比不提示更坏（B18，方案 §10.13）。
+ * 所以整数族从 `columnTypeList` 的 `javaType` 现推，判据与后端同一个（`javaType ∈ {Integer, Long}`），
+ * 枚举里日后多一个整数类型这里自动跟上；非整数型的预设仍只收它自己。
+ *
+ * <p>⚠️ 类型词表还没加载到（接口失败）时<b>整条沉默</b>：判据缺一半还去报「不合格」，
+ * 报出来的是错误结论。与后端那条约束读不到名单就沉默同口径。
+ */
+const INTEGER_JAVA_TYPES = ['Integer', 'Long']
+
+/** 受控类型里的整数族；判据取自后端下发的 javaType，不在前端再抄一份类型名 */
+const integerColumnTypes = computed(() =>
+  columnTypeList.value
+    .filter((item) => INTEGER_JAVA_TYPES.includes(item.javaType))
+    .map((item) => item.type.toUpperCase())
+)
+
+/** 某个预设类型的「合格集合」：整数型收整个整数族，其余只收它自己 */
+const acceptedTypesOf = (presetType: string) => {
+  const upper = presetType.toUpperCase()
+  const integers = integerColumnTypes.value
+  return integers.includes(upper) ? integers : [upper]
+}
+
+const flowColumnProblem = computed(() => {
+  if (columnTypeList.value.length === 0) {
+    return ''
+  }
+  const bad: string[] = []
+  PROCESS_FIELD_PRESETS.forEach((preset) => {
+    const row = formData.value.columns.find(
+      (item) => (item.columnName || '').toLowerCase() === preset.columnName.toLowerCase()
+    )
+    if (!row) {
+      return
+    }
+    const accepted = acceptedTypesOf(preset.columnType)
+    const type = (row.columnType || '').toUpperCase()
+    if (!accepted.includes(type)) {
+      bad.push(`${preset.columnName} 现在是 ${row.columnType || '未设置'}，要求 ${accepted.join(' / ')}`)
+      return
+    }
+    if (preset.length && (row.length || 0) < preset.length) {
+      bad.push(
+        `${preset.columnName} 长度现在是 ${row.length || '未设置'}，要求不小于 ${preset.length}`
+      )
+    }
+  })
+  if (bad.length === 0) {
+    return ''
+  }
+  return (
+    `${bad.join('；')}。类型不合格时建表与发布都不会报错，` +
+    `但这张表上的在线表单会被【流程模型 → 表单设计】标成「不可用」，挂不上审批流。` +
+    `请在下方字段列表里改这一列的类型/长度，改完点「保存」（会执行 ALTER TABLE）`
+  )
+})
 
 const handleQuickAdd = (command: string) => {
   if (command === '__process__') {

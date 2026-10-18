@@ -2712,13 +2712,16 @@ const loadConfig = async () => {
       // 详情态是只读的，两种情况下这个按钮都没有意义
       applyPlainTextToggle(rules, {
         pk: () => currentPk.value,
-        fetch: (field) =>
-          RuntimeApi.getPlainField(formCode.value, currentPk.value, field),
+        // pk 由 plainText 传进来（它刚判过非空）；这里再读一遍 currentPk 类型上会多出 undefined
+        fetch: (field, pk) => RuntimeApi.getPlainField(formCode.value, pk, field),
         setValue: (field, value) => {
           fApi.value?.setValue?.(field, value)
         },
-        notify: (type, text) =>
-          type === 'success' ? message.success(text) : message.error(text)
+        notify: (type, text) => (type === 'success' ? message.success(text) : message.error(text)),
+        // ⚠️ 用 hasPermission 而不是给按钮挂 v-hasPermi：按钮是 form-create 规则树里
+        //  programmatically 建出来的，指令挂不上去；而且 hasPermi 在空数组时会 throw
+        // （同 customButtons 那条注释里记的坑）。权限串与后端 getPlainField 的第二道门逐字一致
+        permitted: () => hasPermission([`infra:form-design-run:${formCode.value}:view-plain`])
       })
       allRules.value = rules
       // 折叠分组要在挂开关与算规则树之前先收集出来
