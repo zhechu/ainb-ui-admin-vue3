@@ -25,6 +25,14 @@ export interface AgentReferenceVO {
   id: number
   documentId: number
   documentName?: string
+  /**
+   * 文档公开地址（后端取自 `ai_knowledge_document.url`）。
+   * 🔴 渲染成 `<a href>` 前必须过 `isManualDocUrl`：这个值是灌库时写进去的字符串，
+   * 后端给了值不等于前端可以无条件信（`javascript:` / 站外地址都会顺着这里变成 XSS 面）。
+   */
+  documentUrl?: string
+  /** 文档标题（后端现算 content 的首个一级标题），如「用户管理 ★」；取不到时回落 documentName */
+  documentTitle?: string
   content: string
   score: number
 }

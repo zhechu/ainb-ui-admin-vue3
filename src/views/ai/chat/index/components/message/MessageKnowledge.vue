@@ -13,8 +13,24 @@
         @click="handleClick(doc)"
       >
         <div class="text-14px text-[#333] mb-4px">
-          {{ doc.title }}
+          <!-- 🔴 只有过了 isManualDocUrl 的地址才渲染成 <a>；其余降级成纯文本。
+               死链 / 站外链比没有链接更坏，故宁可少一个可点的东西 -->
+          <a
+            v-if="doc.url"
+            :href="doc.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[var(--el-color-primary)] no-underline hover:underline"
+            @click.stop
+          >
+            {{ doc.title }}
+          </a>
+          <template v-else>{{ doc.title }}</template>
           <span class="text-12px text-[#999] ml-4px">（{{ doc.segments.length }} 条）</span>
+        </div>
+        <!-- 文档名是相对路径（也是幂等键），与标题不是一回事：标题给人读，路径给人核对是哪一页 -->
+        <div v-if="doc.name && doc.name !== doc.title" class="text-12px text-[#999]">
+          {{ doc.name }}
         </div>
       </div>
     </div>
@@ -33,7 +49,18 @@
       <div ref="documentRef"></div>
     </template>
     <template #default>
-      <div class="text-16px font-bold mb-12px">{{ document?.title }}</div>
+      <div class="text-16px font-bold mb-12px">
+        {{ document?.title }}
+        <a
+          v-if="document?.url"
+          :href="document.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ml-8px text-12px font-normal text-[var(--el-color-primary)] no-underline hover:underline"
+        >
+          打开手册页
+        </a>
+      </div>
       <el-scrollbar max-height="60vh">
         <div
           v-for="(segment, index) in document?.segments"
@@ -55,11 +82,15 @@
 </template>
 
 <script setup lang="ts">
+import { isManualDocUrl } from '@/utils/url'
+
 const props = defineProps<{
   segments: {
     id: number
     documentId: number
     documentName: string
+    documentUrl?: string
+    documentTitle?: string
     content: string
   }[]
 }>()
@@ -67,6 +98,8 @@ const props = defineProps<{
 const document = ref<{
   id: number
   title: string
+  name: string
+  url?: string
   segments: {
     id: number
     content: string
@@ -83,7 +116,11 @@ const documentList = computed(() => {
     if (!docMap.has(segment.documentId)) {
       docMap.set(segment.documentId, {
         id: segment.documentId,
-        title: segment.documentName,
+        // 标题优先用后端现算的 H1（「用户管理 ★」），退回文档名（相对路径）
+        title: segment.documentTitle || segment.documentName,
+        name: segment.documentName,
+        // 🔴 白名单校验放在聚合处、只算一次：模板里就不用每条都判，也不会漏判
+        url: isManualDocUrl(segment.documentUrl) ? segment.documentUrl : undefined,
         segments: []
       })
     }
