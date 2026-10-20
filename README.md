@@ -27,17 +27,15 @@
 
 **启凌智搭**的前端不是一个「后台模板」，而是低代码平台的**运行时宿主**：表单设计器、门户设计器、流程编排画布、资源授权树、AI 助手对话流 —— 这些界面本身就是产品能力，业务应用在浏览器里被拖出来、发布、然后立刻能用。
 
-**884 个 `.vue` + 597 个 `.ts`、约 28 万行**；169 个业务页面、64 个通用组件、143 个接口封装文件；**59 个 spec / 1021 个单测用例**（2026-10-20 实测）。
-
 ---
 
 ## 🐶 新手必读
 
-* **Node ≥ 20.19.0 && pnpm ≥ 8.6.0**（🔴 **强制使用 pnpm**，`package.json` 的 `engines` 已钉住）
-* **在线演示**：<https://demo.enlev.cn>（域名备案中，不影响访问）
-* **官方文档**：<https://doc.enlev.cn> —— 使用手册 79 页 + 开发手册 40 页，含 316 张截图与演示账号
-* **后端仓库**：`ainb`，Java 17 + Spring Boot 3.5，端口 48080
-* **五分钟跑起来**：见下文 [🚀 快速开始](#-快速开始)
+- **Node ≥ 20.19.0 && pnpm ≥ 8.6.0**（🔴 **强制使用 pnpm**，`package.json` 的 `engines` 已钉住）
+- **在线演示**：<https://demo.enlev.cn>
+- **官方文档**：<https://doc.enlev.cn> —— 使用手册 79 页 + 开发手册 40 页，含 316 张截图与演示账号
+- **后端仓库**：`ainb`，Java 17 + Spring Boot 3.5，端口 48080
+- **五分钟跑起来**：见下文 [🚀 快速开始](#-快速开始)
 
 ### 演示账号
 
@@ -72,19 +70,19 @@
 | ★ **AI 助手与编排** | 智能助手对话、流程编排画布、智能体 / 工具 / 提示词模板 / 用量看板 | `src/views/agent/` |
 | ★ **vendored form-create** | 上游 form-create + designer 的**源码副本**（不是 npm 依赖） | `src/lib/{form-create,form-designer}/` |
 
-* **最新技术栈**：Vue 3.5 + Vite 8（`minify: 'oxc'`）+ TypeScript 6 + Element Plus 2.13 + Pinia 3 + UnoCSS
-* **权限**：动态路由按菜单生成，按钮级权限用 `v-hasPermi` / `v-hasRole` 指令，字段级权限走 `useFieldPermission`（`EDITABLE / READONLY / HIDDEN` 三态）
-* **多租户**：登录页带租户名，超管顶部可切换租户
-* **主题**：可配置主题 + 暗黑模式 + 项目配置抽屉
-* **国际化**：内置 `zh-CN` / `en` 两套
-* **组件**：64 个通用组件全部自动注册，含 `Form*` 系列重型表单组件、`DiyEditor`、`MagicCubeEditor`、`Portal`、`CodeEditor`、`JsonEditor`、`Table` / `TableActions`
-* **hooks**：`useTable` / `useCrudSchemas` / `useForm` / `useFieldPermission` 等，CRUD 页面按 schema 驱动
-* **设计器**：表单设计器（vendored form-create designer）、门户设计器（24 栏画布）、流程编排画布（`@vue-flow/core`）、BPMN 设计器（bpmn-js）
-* **AI**：SSE 流式对话、推理过程可展开、草稿卡与人工确认（HITL）、知识引用可点来源
-* **编辑器**：Monaco Editor、CodeMirror 6、wangEditor-next、jsoneditor
-* **图表**：ECharts 6 + echarts-wordcloud
+- **最新技术栈**：Vue 3.5 + Vite 8（`minify: 'oxc'`）+ TypeScript 6 + Element Plus 2.13 + Pinia 3 + UnoCSS
+- **权限**：动态路由按菜单生成，按钮级权限用 `v-hasPermi` / `v-hasRole` 指令，字段级权限走 `useFieldPermission`（`EDITABLE / READONLY / HIDDEN` 三态）
+- **多租户**：登录页带租户名，超管顶部可切换租户
+- **主题**：可配置主题 + 暗黑模式 + 项目配置抽屉
+- **国际化**：内置 `zh-CN` / `en` 两套
+- **组件**：64 个通用组件全部自动注册，含 `Form*` 系列重型表单组件、`DiyEditor`、`MagicCubeEditor`、`Portal`、`CodeEditor`、`JsonEditor`、`Table` / `TableActions`
+- **hooks**：`useTable` / `useCrudSchemas` / `useForm` / `useFieldPermission` 等，CRUD 页面按 schema 驱动
+- **设计器**：表单设计器（vendored form-create designer）、门户设计器（24 栏画布）、流程编排画布（`@vue-flow/core`）、BPMN 设计器（bpmn-js）
+- **AI**：SSE 流式对话、推理过程可展开、草稿卡与人工确认（HITL）、知识引用可点来源
+- **编辑器**：Monaco Editor、CodeMirror 6、wangEditor-next、jsoneditor
+- **图表**：ECharts 6 + echarts-wordcloud
 
-> **上游与改名**：本仓库派生自 [yudao-ui-admin-vue3](https://gitee.com/yudaocode/yudao-ui-admin-vue3)（MIT，Copyright (c) 芋道源码），产品已改名为「启凌智搭」。仓库里残留的上游文档与 `yudao` 字样**只作参考，不要把命名改回去**。
+> **上游与改名**：本仓库派生自 [yudao-ui-admin-vue3](https://gitee.com/yudaocode/yudao-ui-admin-vue3)（MIT，Copyright (c) 芋道源码），产品已改名为「启凌智搭」。
 
 ---
 
@@ -94,7 +92,6 @@
 | --- | --- | --- |
 | **ainb-ui-admin-vue3**（本仓库） | Vue 3.5 + Vite 8 + Element Plus | 管理后台前端，`pnpm dev` 起在 80 端口 |
 | **ainb** | Java 17 + Spring Boot 3.5 + Maven | 后端服务，端口 48080，接口前缀 `/admin-api` |
-| **xpy-blog** | VitePress | 文档站，部署在 <https://doc.enlev.cn> |
 
 🔴 **前端不走 Vite proxy**：`vite.config.ts` 的 `server.proxy` 整段是注释掉的（注释原文：「server 端已经支持跨域」），浏览器**直连** `http://localhost:48080/admin-api`。
 
@@ -118,70 +115,70 @@
 
 功能清单与[使用手册](https://doc.enlev.cn/guide/)的侧边栏严格一一对应，手册里每一页都有截图与多视角对照。
 
-> * **★** 标记：本项目**自研**界面，上游没有对应物。
-> * 无标记：继承自上游芋道底座，本项目做了适配与增强。
+> - **★** 标记：本项目**自研**界面，上游没有对应物。
+> - 无标记：继承自上游芋道底座，本项目做了适配与增强。
 
 ### 系统管理
 
-|     | 功能 | 描述 |
-| --- | --- | --- |
-|     | 用户管理 | 左组织树 + 右用户表，分配角色、重置密码、导入导出 |
-|     | 组织管理 / 岗位管理 | 树形表格展现组织机构，岗位维护 |
-|     | 角色管理 | 角色列表、菜单权限分配、数据范围、成员配置 |
-| ★   | **角色资源授权** | 资源树勾选 + 批量授权抽屉 + 授权台账 + 生效结果回溯树 |
-| ★   | **权限资源** | 资源目录树 + 明细面板，动作词表 `GRANT_ACTION_OPTIONS` |
-| ★   | **权限规则** | 行级规则模板表单，规则元信息驱动的下拉 |
-| ★   | **权限诊断** | 静默失效排查页，把「配了但不生效」变成可查路径 |
-|     | 菜单管理 | 三级菜单树，`component` 路径决定白屏与否 |
-|     | 租户管理 / 租户套餐 | 租户列表与套餐菜单树勾选 |
-| ★   | 字典管理 | 字典分类抽屉 + 平铺字典数据表，导入导出与迁移包 |
-|     | 地区管理 | 省份树 + IP 归属地查询弹窗 |
-|     | 站内信 / 通知公告 | 模板、消息记录、公告发布 |
-|     | 操作日志 / 登录日志 | 列表 + 详情弹窗 |
+|     | 功能                | 描述                                                   |
+| --- | ------------------- | ------------------------------------------------------ |
+|     | 用户管理            | 左组织树 + 右用户表，分配角色、重置密码、导入导出      |
+|     | 组织管理 / 岗位管理 | 树形表格展现组织机构，岗位维护                         |
+|     | 角色管理            | 角色列表、菜单权限分配、数据范围、成员配置             |
+| ★   | **角色资源授权**    | 资源树勾选 + 批量授权抽屉 + 授权台账 + 生效结果回溯树  |
+| ★   | **权限资源**        | 资源目录树 + 明细面板，动作词表 `GRANT_ACTION_OPTIONS` |
+| ★   | **权限规则**        | 行级规则模板表单，规则元信息驱动的下拉                 |
+| ★   | **权限诊断**        | 静默失效排查页，把「配了但不生效」变成可查路径         |
+|     | 菜单管理            | 三级菜单树，`component` 路径决定白屏与否               |
+|     | 租户管理 / 租户套餐 | 租户列表与套餐菜单树勾选                               |
+| ★   | 字典管理            | 字典分类抽屉 + 平铺字典数据表，导入导出与迁移包        |
+|     | 地区管理            | 省份树 + IP 归属地查询弹窗                             |
+|     | 站内信 / 通知公告   | 模板、消息记录、公告发布                               |
+|     | 操作日志 / 登录日志 | 列表 + 详情弹窗                                        |
 
 ### 基础设施与低代码
 
-|     | 功能 | 描述 |
+|  | 功能 | 描述 |
 | --- | --- | --- |
-|     | 配置管理 / 文件配置 / 文件列表 | 参数配置，S3 / 本地 / 数据库多种主配置在线切换 |
-|     | 定时任务 | 任务列表、详情面板（含后续执行时间推算）、二次确认、调度日志 |
-|     | 数据源配置 | 多数据源在线配置 |
-| ★   | **数据模型** | 在线建表与结构变更：模型表单、结构设计、DDL 日志弹窗、导入已有表 |
-| ★   | **数据查看** | 直接浏览物理表，支持合计行、多级分组表头、树形表格 |
-| ★   | **数据接口** | SQL / JSON / HTTP 取数端点，SQL 编辑区 + 表结构树 + 内置变量、在线测试、版本历史 |
-| ★   | **取号管理** | 单据编号模板、模拟取号测试面板、出号日志 |
-| ★   | **表单设计** | 列表 + 三态状态 + 线上版本 vN，发布 / 版本 / 回滚 / 复制 / 下线 |
-| ★   | **表单设计器** | 分步设计器：基本信息、数据绑定、控件库拖拽、字段映射一键生成、逻辑与扩展、列表设计、高级设置、设计期体检 |
-| ★   | **表单运行时** | 解释 JSON 产物渲染真实页面：查询区、工具栏、合计列表、行内编辑 / 详情 / 打印、导入导出、左侧树、标签页 |
-| ★   | **门户设计** | 24 栏画布 + 四组控件库 + 属性面板三页签，门户预览按登录身份取数，版本管理 |
-|     | 代码生成器 | 单表 / 树表 / 主子表，预览与下载 |
-|     | 访问日志 / 错误日志 | 列表 + 详情，按结果码过滤 |
-|     | 监控中心 | MySQL（Druid）、Redis、Java 三块监控 |
-| ★   | **在线示例** | 控件与联动、表格呈现、校验体系、导入导出四组活样例 |
+|  | 配置管理 / 文件配置 / 文件列表 | 参数配置，S3 / 本地 / 数据库多种主配置在线切换 |
+|  | 定时任务 | 任务列表、详情面板（含后续执行时间推算）、二次确认、调度日志 |
+|  | 数据源配置 | 多数据源在线配置 |
+| ★ | **数据模型** | 在线建表与结构变更：模型表单、结构设计、DDL 日志弹窗、导入已有表 |
+| ★ | **数据查看** | 直接浏览物理表，支持合计行、多级分组表头、树形表格 |
+| ★ | **数据接口** | SQL / JSON / HTTP 取数端点，SQL 编辑区 + 表结构树 + 内置变量、在线测试、版本历史 |
+| ★ | **取号管理** | 单据编号模板、模拟取号测试面板、出号日志 |
+| ★ | **表单设计** | 列表 + 三态状态 + 线上版本 vN，发布 / 版本 / 回滚 / 复制 / 下线 |
+| ★ | **表单设计器** | 分步设计器：基本信息、数据绑定、控件库拖拽、字段映射一键生成、逻辑与扩展、列表设计、高级设置、设计期体检 |
+| ★ | **表单运行时** | 解释 JSON 产物渲染真实页面：查询区、工具栏、合计列表、行内编辑 / 详情 / 打印、导入导出、左侧树、标签页 |
+| ★ | **门户设计** | 24 栏画布 + 四组控件库 + 属性面板三页签，门户预览按登录身份取数，版本管理 |
+|  | 代码生成器 | 单表 / 树表 / 主子表，预览与下载 |
+|  | 访问日志 / 错误日志 | 列表 + 详情，按结果码过滤 |
+|  | 监控中心 | MySQL（Druid）、Redis、Java 三块监控 |
+| ★ | **在线示例** | 控件与联动、表格呈现、校验体系、导入导出四组活样例 |
 
 ### 工作流程
 
-|     | 功能 | 描述 |
+|  | 功能 | 描述 |
 | --- | --- | --- |
-|     | 流程模型 | 四步向导 + **SIMPLE 仿钉钉设计器**与 **BPMN 设计器**双轨 |
-|     | 审批节点配置 | 审批人 15 种方式、会签 / 或签、六个操作按钮改名启用、逐字段设只读 / 可编辑 / 隐藏 |
-|     | 流程表单 | 表单设计器整页（非弹窗）、详情预览按真实填写态渲染 |
-|     | 流程分类 / 用户分组 / 监听器 / 表达式 | 分类抽屉、成员多选、执行与任务监听器、JUEL 表达式 |
-|     | 审批中心 | 发起流程（分类列表 + 卡片墙 → 表单 + 审批预测时间线）、我的流程、待办、已办、抄送我的、请假查询 |
-|     | 流程实例 / 任务 | 取消（原因必填）、转办 / 委派 / 加签 / 退回，审批意见 + 附件 |
+|  | 流程模型 | 四步向导 + **SIMPLE 仿钉钉设计器**与 **BPMN 设计器**双轨 |
+|  | 审批节点配置 | 审批人 15 种方式、会签 / 或签、六个操作按钮改名启用、逐字段设只读 / 可编辑 / 隐藏 |
+|  | 流程表单 | 表单设计器整页（非弹窗）、详情预览按真实填写态渲染 |
+|  | 流程分类 / 用户分组 / 监听器 / 表达式 | 分类抽屉、成员多选、执行与任务监听器、JUEL 表达式 |
+|  | 审批中心 | 发起流程（分类列表 + 卡片墙 → 表单 + 审批预测时间线）、我的流程、待办、已办、抄送我的、请假查询 |
+|  | 流程实例 / 任务 | 取消（原因必填）、转办 / 委派 / 加签 / 退回，审批意见 + 附件 |
 
 ### AI 与 Agent
 
-|     | 功能 | 描述 |
+|  | 功能 | 描述 |
 | --- | --- | --- |
-|     | API 密钥 / 模型配置 | 密钥列打码，模型在线连通性测试（耗时、token 用量、厂商原始响应逐字回显） |
-| ★   | **智能助手** | SSE 流式对话，「已深度思考」逐段展开，草稿卡与「确认并运行」，知识引用可点到手册原文分段 |
-| ★   | **智能体管理** | 五段式人设、知识库绑定、工具勾选、版本派生 |
-| ★   | **工具管理** | 内置 / 自定义工具两个页签，风险等级与「需确认」打标，维护面板带「代码默认」对照 |
-| ★   | **流程编排 / 工作流编辑器** | `@vue-flow/core` 画布，13 种节点类型，设计期体检 + 影响面面板，版本管理与 DSL 对比，执行历史与画布回放 |
-| ★   | **提示词模板** | 模板管理 + 占位符识别与光标插入，聊天面板一键插入 |
-| ★   | **用量看板 / 助手配置** | 按场景与按用户两个维度，配额告警条 + 统计卡 + 占比表 + 调用明细 |
-|     | 知识库 / 对话 / 绘图 / 音乐 / 思维导图 / 写作 | 上游 AI 域界面 |
+|  | API 密钥 / 模型配置 | 密钥列打码，模型在线连通性测试（耗时、token 用量、厂商原始响应逐字回显） |
+| ★ | **智能助手** | SSE 流式对话，「已深度思考」逐段展开，草稿卡与「确认并运行」，知识引用可点到手册原文分段 |
+| ★ | **智能体管理** | 五段式人设、知识库绑定、工具勾选、版本派生 |
+| ★ | **工具管理** | 内置 / 自定义工具两个页签，风险等级与「需确认」打标，维护面板带「代码默认」对照 |
+| ★ | **流程编排 / 工作流编辑器** | `@vue-flow/core` 画布，13 种节点类型，设计期体检 + 影响面面板，版本管理与 DSL 对比，执行历史与画布回放 |
+| ★ | **提示词模板** | 模板管理 + 占位符识别与光标插入，聊天面板一键插入 |
+| ★ | **用量看板 / 助手配置** | 按场景与按用户两个维度，配额告警条 + 统计卡 + 占比表 + 调用明细 |
+|  | 知识库 / 对话 / 绘图 / 音乐 / 思维导图 / 写作 | 上游 AI 域界面 |
 
 ---
 
@@ -256,22 +253,22 @@ src/api/<module>/<feature>/index.ts   ↔   src/views/<module>/<feature>/index.v
 
 推荐 VS Code 开发。仓库已带 `.vscode/extensions.json`，打开工程会自动提示安装这 14 个插件：
 
-| 插件 | 功能 |
-| --- | --- |
-| `Vue.volar` | Vue 与 TypeScript 支持（**必装**） |
-| `antfu.unocss` | UnoCSS 类名提示 |
-| `antfu.iconify` | 图标内联预览 |
-| `dbaeumer.vscode-eslint` | ESLint |
-| `esbenp.prettier-vscode` | Prettier |
-| `lokalise.i18n-ally` | 国际化键值内联显示 |
-| `christian-kohler.path-intellisense` | 路径自动补全 |
-| `csstools.postcss` | PostCSS 语法支持 |
-| `mrmlnc.vscode-less` | Less 语法支持 |
-| `redhat.vscode-yaml` | YAML |
-| `mikestead.dotenv` | `.env` 语法高亮 |
-| `davidanson.vscode-markdownlint` | Markdown 检查 |
-| `eamodio.gitlens` | Git 增强 |
-| `vscode-icons-team.vscode-icons` | 文件图标 |
+| 插件                                 | 功能                               |
+| ------------------------------------ | ---------------------------------- |
+| `Vue.volar`                          | Vue 与 TypeScript 支持（**必装**） |
+| `antfu.unocss`                       | UnoCSS 类名提示                    |
+| `antfu.iconify`                      | 图标内联预览                       |
+| `dbaeumer.vscode-eslint`             | ESLint                             |
+| `esbenp.prettier-vscode`             | Prettier                           |
+| `lokalise.i18n-ally`                 | 国际化键值内联显示                 |
+| `christian-kohler.path-intellisense` | 路径自动补全                       |
+| `csstools.postcss`                   | PostCSS 语法支持                   |
+| `mrmlnc.vscode-less`                 | Less 语法支持                      |
+| `redhat.vscode-yaml`                 | YAML                               |
+| `mikestead.dotenv`                   | `.env` 语法高亮                    |
+| `davidanson.vscode-markdownlint`     | Markdown 检查                      |
+| `eamodio.gitlens`                    | Git 增强                           |
+| `vscode-icons-team.vscode-icons`     | 文件图标                           |
 
 ---
 
@@ -292,12 +289,12 @@ pnpm dev            # = vite --mode env.local
 
 ### 验证跑通了
 
-| 检查 | 期望 |
-| --- | --- |
-| <http://localhost> | 登录页正常渲染 |
-| `admin / admin123` 登录 | 进首页，左侧菜单完整 |
-| 浏览器 Network | 请求打到 `http://localhost:48080/admin-api/...`，返回 `code: 0` |
-| 接口一直 401 | 后端没起、或 `.env.local` 的 `VITE_BASE_URL` 指错了地方 |
+| 检查                    | 期望                                                            |
+| ----------------------- | --------------------------------------------------------------- |
+| <http://localhost>      | 登录页正常渲染                                                  |
+| `admin / admin123` 登录 | 进首页，左侧菜单完整                                            |
+| 浏览器 Network          | 请求打到 `http://localhost:48080/admin-api/...`，返回 `code: 0` |
+| 接口一直 401            | 后端没起、或 `.env.local` 的 `VITE_BASE_URL` 指错了地方         |
 
 ---
 
@@ -319,8 +316,6 @@ pnpm dev            # = vite --mode env.local
 | `pnpm clean` / `clean:cache` | 删 `node_modules` / 删各类缓存 |
 
 构建脚本已内置 `--max_old_space_size=8192`，直接 `pnpm build:prod` 即可，不用额外调内存。
-
-🔴 **`pnpm test:e2e` 是坏的**：`playwright.config.ts` 与 `tests/e2e/` 都不存在（`vitest.config.ts` 的注释还在引用它们，已过期）。不要运行，也不要「顺手补全」。需要浏览器级验证时，用文档站 `xpy-blog` 的 playwright 门禁脚本。
 
 ---
 
@@ -381,8 +376,7 @@ pnpm dev            # = vite --mode env.local
 
 ### ★ AI 与 Agent 界面
 
-`src/views/agent/`：`assistant`（智能助手对话，SSE 流式）、`workflow`（流程编排画布）、`def`（智能体管理）、`tooldef`（工具管理）、`promptTemplate`（提示词模板）、`usage`（用量看板）、`config`（助手配置）。
-`src/views/ai/`：`model` / `chat` / `knowledge` / `image` / `music` / `mindmap` / `write`（上游 AI 域）。
+`src/views/agent/`：`assistant`（智能助手对话，SSE 流式）、`workflow`（流程编排画布）、`def`（智能体管理）、`tooldef`（工具管理）、`promptTemplate`（提示词模板）、`usage`（用量看板）、`config`（助手配置）。 `src/views/ai/`：`model` / `chat` / `knowledge` / `image` / `music` / `mindmap` / `write`（上游 AI 域）。
 
 AI 助手答案的「知识引用」带可点来源，**只有手册站地址才渲染成链接**。
 
@@ -390,14 +384,14 @@ AI 助手答案的「知识引用」带可点来源，**只有手册站地址才
 | --- | --- | --- |
 | ![智能助手](.image/agent-assistant.jpeg) | ![推理过程](.image/agent-reasoning.jpeg) | ![草稿卡](.image/agent-hitl.jpeg) |
 
-| 工作流编辑器画布 | 节点目录：13 种节点类型 |
-| --- | --- |
+| 工作流编辑器画布                           | 节点目录：13 种节点类型                   |
+| ------------------------------------------ | ----------------------------------------- |
 | ![工作流画布](.image/workflow-canvas.jpeg) | ![节点目录](.image/workflow-palette.jpeg) |
 
 ### ★ 工作流（BPM）界面
 
-| SIMPLE 仿钉钉设计器 | BPMN 设计器（bpmn-js） |
-| --- | --- |
+| SIMPLE 仿钉钉设计器                      | BPMN 设计器（bpmn-js）               |
+| ---------------------------------------- | ------------------------------------ |
 | ![SIMPLE 设计器](.image/bpm-simple.jpeg) | ![BPMN 设计器](.image/bpm-bpmn.jpeg) |
 
 ### ★ vendored form-create（务必先读 VENDOR.md）
@@ -445,12 +439,6 @@ type（范围）：中文描述
 
 **全角括号与全角冒号**，type 取 `feat` / `fix` / `refactor` / `chore` / `docs`，范围用中文（如 `前端`、`UI`、`表单`），描述写清行为变化与动机。
 
-### 产物纪律
-
-`dist-prod*`、`node_modules/.cache`、`_logs/`、`_evidence/` 一律不进 git。**永远不要用 `git add -A` / `git add .`**，按文件名逐个 add。
-
-🔴 `.env.local` **是纳入 git 跟踪的**（不合常理但确实如此）。不要把它加进 `.gitignore`，也不要把里面的值搬到别处 —— `vite.config.ts` 的 mode 名叫 `env.local` 只是为了不和 `dev` 撞。
-
 ---
 
 ## 🌍 环境变量与构建
@@ -465,24 +453,6 @@ type（范围）：中文描述
 | `.env.test` | 测试 | `http://localhost:48080` |
 | `.env.stage` | 预发 | `http://api-dashboard.enlev.cn` |
 | `.env.prod` | 生产，同源相对路径 | `''`（空） |
-
-### 加载顺序与一个生产陷阱
-
-Vite 的 `loadEnv` 按固定顺序合并，**后面的覆盖前面的**：
-
-```
-.env  →  .env.local  →  .env.${mode}  →  .env.${mode}.local
-```
-
-`pnpm build:prod` 时 `mode=prod`，于是 `.env` + `.env.local` + `.env.prod` **三个文件全部参与**（`.env.local` 入库，克隆下来就存在）。`.env.prod` 里定义的变量会盖掉 `.env.local`，这没问题；问题出在 `.env.prod` **没定义**、而 `.env.local` 定义了的变量。
-
-🔴 **`pnpm build:prod` 打出来的包，登录页验证码是关的**：
-
-- `.env` → `VITE_APP_CAPTCHA_ENABLE=true`
-- `.env.local` → `VITE_APP_CAPTCHA_ENABLE=false`
-- `.env.prod` → **没有这一项**
-
-合并结果 `false`，消费点是 `src/views/Login/components/LoginForm.vue`（判断写法 `captchaEnable === 'true'`），滑块验证码不渲染。想真正打开，要么在 `.env.prod` 里显式写 `VITE_APP_CAPTCHA_ENABLE=true`，要么构建前临时移走 `.env.local`。**别只改 `.env` —— 它优先级最低，改了没用。**
 
 ### 构建产物
 
@@ -608,7 +578,7 @@ pnpm test:unit:watch                            # watch
 
 ## 📚 文档
 
-产品手册与开发手册部署在 <https://doc.enlev.cn>（源在独立仓库 `xpy-blog`，VitePress 静态站）：
+产品手册与开发手册部署在 <https://doc.enlev.cn>：
 
 | 想了解 | 去哪 |
 | --- | --- |
@@ -638,7 +608,7 @@ pnpm test:unit:watch                            # watch
 
 ### [ruoyi-vue-pro](https://gitee.com/zhijiantianya/ruoyi-vue-pro) · 芋道源码
 
-本项目的**后端底座**（见兄弟仓库 `ainb`）。芋道源码以开发者为中心，把 Spring Boot 多模块架构、多租户、工作流、支付、商城、CRM、ERP、AI 大模型等一整套企业级能力做成了全部开源、可 100% 免费使用的快速开发平台。前端每一个页面的接口形状、字典约定、分页协议、错误码结构，都来自这套后端的长期打磨 —— 前后端能这样严丝合缝地配对，靠的是上游把约定写清楚了。感谢 ruoyi-vue-pro 全体贡献者。
+本项目的**后端底座**（`ainb`）。芋道源码以开发者为中心，把 Spring Boot 多模块架构、多租户、工作流、支付、商城、CRM、ERP、AI 大模型等一整套企业级能力做成了全部开源、可 100% 免费使用的快速开发平台。前端每一个页面的接口形状、字典约定、分页协议、错误码结构，都来自这套后端的长期打磨 —— 前后端能这样严丝合缝地配对，靠的是上游把约定写清楚了。感谢 ruoyi-vue-pro 全体贡献者。
 
 ### [form-create](https://github.com/xaboy/form-create) · xaboy
 
@@ -654,6 +624,6 @@ pnpm test:unit:watch                            # watch
 
 ## 📄 许可证
 
-本项目以 **[MIT 协议](./LICENSE)** 开源，Copyright (c) 2026 启凌智搭。
+本项目以 **[MIT 协议](./LICENSE)** 开源，Copyright (c) 2026 启凌。
 
 个人与企业可 100% 免费使用，可自由复制、修改、分发，也可用于商业用途。本项目派生自上游 MIT 项目并内嵌 MIT 协议的 form-create 源码副本，完整归属见 [🙏 鸣谢](#-鸣谢)。
