@@ -19,130 +19,130 @@
         滚动监听，留在 DOM 里对着一张看不见的表格做布局计算纯属浪费。
       -->
       <template v-if="!inlineFormActive">
-      <!-- 查询区 -->
-      <ContentWrap v-if="searchItems.length > 0 || hasToolbar">
-        <el-form :inline="true" class="-mb-15px" label-width="90px">
-          <el-form-item
-            v-for="(item, index) in visibleSearchItems"
-            :key="`${item.field}#${index}`"
-            :label="item.label"
-          >
-            <!-- 为空 / 不为空：条件本身就是全部信息，没有值要填 -->
-            <span v-if="isValuelessOperator(item.operator)" class="text-13px text-gray-400">
-              {{ item.operator === 'IS_NULL' ? '筛选为空的记录' : '筛选非空的记录' }}
-            </span>
-
-            <!-- 日期区间 -->
-            <el-date-picker
-              v-else-if="item.widget === 'DATE_RANGE'"
-              v-model="searchValues[rangeKey(index)]"
-              class="!w-240px"
-              end-placeholder="结束日期"
-              start-placeholder="开始日期"
-              type="daterange"
-              value-format="YYYY-MM-DD"
-              @change="handleQuery"
-            />
-
-            <!-- 单个日期 -->
-            <el-date-picker
-              v-else-if="item.widget === 'DATE'"
-              v-model="searchValues[valueKey(index)]"
-              class="!w-160px"
-              placeholder="选择日期"
-              type="date"
-              value-format="YYYY-MM-DD"
-              @change="handleQuery"
-            />
-
-            <!-- 数字区间 -->
-            <template v-else-if="item.widget === 'NUMBER_RANGE'">
-              <el-input-number
-                v-model="searchValues[startKey(index)]"
-                class="!w-120px"
-                controls-position="right"
-                placeholder="最小值"
-              />
-              <span class="mx-5px">~</span>
-              <el-input-number
-                v-model="searchValues[endKey(index)]"
-                class="!w-120px"
-                controls-position="right"
-                placeholder="最大值"
-              />
-            </template>
-
-            <!-- 单个数字 -->
-            <el-input-number
-              v-else-if="item.widget === 'NUMBER'"
-              v-model="searchValues[valueKey(index)]"
-              class="!w-150px"
-              controls-position="right"
-              :placeholder="`请输入${item.label}`"
-            />
-
-            <!-- 字典下拉。IN 操作符时允许多选 -->
-            <el-select
-              v-else-if="item.widget === 'SELECT' && item.dictType"
-              v-model="searchValues[valueKey(index)]"
-              class="!w-180px"
-              clearable
-              filterable
-              :multiple="item.operator === 'IN'"
-              :placeholder="`请选择${item.label}`"
-              @change="handleQuery"
+        <!-- 查询区 -->
+        <ContentWrap v-if="searchItems.length > 0 || hasToolbar">
+          <el-form :inline="true" class="-mb-15px" label-width="90px">
+            <el-form-item
+              v-for="(item, index) in visibleSearchItems"
+              :key="`${item.field}#${index}`"
+              :label="item.label"
             >
-              <el-option
-                v-for="opt in dictOptionsOf(item.dictType)"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
+              <!-- 为空 / 不为空：条件本身就是全部信息，没有值要填 -->
+              <span v-if="isValuelessOperator(item.operator)" class="text-13px text-gray-400">
+                {{ item.operator === 'IS_NULL' ? '筛选为空的记录' : '筛选非空的记录' }}
+              </span>
+
+              <!-- 日期区间 -->
+              <el-date-picker
+                v-else-if="item.widget === 'DATE_RANGE'"
+                v-model="searchValues[rangeKey(index)]"
+                class="!w-240px"
+                end-placeholder="结束日期"
+                start-placeholder="开始日期"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+                @change="handleQuery"
               />
-            </el-select>
 
-            <!-- 是 / 否 -->
-            <el-select
-              v-else-if="item.widget === 'SWITCH'"
-              v-model="searchValues[valueKey(index)]"
-              class="!w-120px"
-              clearable
-              :placeholder="`请选择${item.label}`"
-              @change="handleQuery"
-            >
-              <el-option label="是" value="1" />
-              <el-option label="否" value="0" />
-            </el-select>
+              <!-- 单个日期 -->
+              <el-date-picker
+                v-else-if="item.widget === 'DATE'"
+                v-model="searchValues[valueKey(index)]"
+                class="!w-160px"
+                placeholder="选择日期"
+                type="date"
+                value-format="YYYY-MM-DD"
+                @change="handleQuery"
+              />
 
-            <!-- 文本区间：编号区间这类用法 -->
-            <template v-else-if="item.operator === 'BETWEEN'">
-              <el-input
-                v-model="searchValues[startKey(index)]"
-                class="!w-95px"
+              <!-- 数字区间 -->
+              <template v-else-if="item.widget === 'NUMBER_RANGE'">
+                <el-input-number
+                  v-model="searchValues[startKey(index)]"
+                  class="!w-120px"
+                  controls-position="right"
+                  placeholder="最小值"
+                />
+                <span class="mx-5px">~</span>
+                <el-input-number
+                  v-model="searchValues[endKey(index)]"
+                  class="!w-120px"
+                  controls-position="right"
+                  placeholder="最大值"
+                />
+              </template>
+
+              <!-- 单个数字 -->
+              <el-input-number
+                v-else-if="item.widget === 'NUMBER'"
+                v-model="searchValues[valueKey(index)]"
+                class="!w-150px"
+                controls-position="right"
+                :placeholder="`请输入${item.label}`"
+              />
+
+              <!-- 字典下拉。IN 操作符时允许多选 -->
+              <el-select
+                v-else-if="item.widget === 'SELECT' && item.dictType"
+                v-model="searchValues[valueKey(index)]"
+                class="!w-180px"
                 clearable
-                placeholder="起始值"
+                filterable
+                :multiple="item.operator === 'IN'"
+                :placeholder="`请选择${item.label}`"
+                @change="handleQuery"
+              >
+                <el-option
+                  v-for="opt in dictOptionsOf(item.dictType)"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+
+              <!-- 是 / 否 -->
+              <el-select
+                v-else-if="item.widget === 'SWITCH'"
+                v-model="searchValues[valueKey(index)]"
+                class="!w-120px"
+                clearable
+                :placeholder="`请选择${item.label}`"
+                @change="handleQuery"
+              >
+                <el-option label="是" value="1" />
+                <el-option label="否" value="0" />
+              </el-select>
+
+              <!-- 文本区间：编号区间这类用法 -->
+              <template v-else-if="item.operator === 'BETWEEN'">
+                <el-input
+                  v-model="searchValues[startKey(index)]"
+                  class="!w-95px"
+                  clearable
+                  placeholder="起始值"
+                  @keyup.enter="handleQuery"
+                />
+                <span class="mx-5px">~</span>
+                <el-input
+                  v-model="searchValues[endKey(index)]"
+                  class="!w-95px"
+                  clearable
+                  placeholder="结束值"
+                  @keyup.enter="handleQuery"
+                />
+              </template>
+
+              <!-- 兜底：文本框。认不出的配置走这里，至少还能查 -->
+              <el-input
+                v-else
+                v-model="searchValues[valueKey(index)]"
+                class="!w-200px"
+                clearable
+                :placeholder="`请输入${item.label}`"
                 @keyup.enter="handleQuery"
               />
-              <span class="mx-5px">~</span>
-              <el-input
-                v-model="searchValues[endKey(index)]"
-                class="!w-95px"
-                clearable
-                placeholder="结束值"
-                @keyup.enter="handleQuery"
-              />
-            </template>
-
-            <!-- 兜底：文本框。认不出的配置走这里，至少还能查 -->
-            <el-input
-              v-else
-              v-model="searchValues[valueKey(index)]"
-              class="!w-200px"
-              clearable
-              :placeholder="`请输入${item.label}`"
-              @keyup.enter="handleQuery"
-            />
-          </el-form-item>
-          <!--
+            </el-form-item>
+            <!--
             搜索/重置、工具栏、展开收起同处一个 form-item。
 
             ⚠️ 不能拆成多个 form-item：inline 表单里 EP 给每个 form-item 加 margin-right:32px，
@@ -156,101 +156,101 @@
             原来整张卡片靠 searchItems.length > 0 整体不渲染，这条分支从没暴露过；
             现在卡片还要为工具栏渲染，所以门挪到了这对按钮上。
           -->
-          <el-form-item v-if="searchItems.length > 0 || hasToolbar">
-            <template v-if="searchItems.length > 0">
-              <el-button @click="handleQuery">
-                <Icon class="mr-5px" icon="ep:search" />
-                搜索
-              </el-button>
-              <el-button @click="resetQuery">
-                <Icon class="mr-5px" icon="ep:refresh" />
-                重置
-              </el-button>
-            </template>
-            <!--
+            <el-form-item v-if="searchItems.length > 0 || hasToolbar">
+              <template v-if="searchItems.length > 0">
+                <el-button @click="handleQuery">
+                  <Icon class="mr-5px" icon="ep:search" />
+                  搜索
+                </el-button>
+                <el-button @click="resetQuery">
+                  <Icon class="mr-5px" icon="ep:refresh" />
+                  重置
+                </el-button>
+              </template>
+              <!--
               工具栏按钮搬进查询区（需求4）：与全站静态列表页同一排「搜索 > 重置 > 新增 > 批量删除」。
               按钮本身一字未改 —— 原来就已经是 plain + 按动作性质给色，批量按钮的 disabled
               与选中数角标也原样搬过来，只换了外层容器（div → el-form-item）。
             -->
-            <el-button
-              v-for="btn in builtinToolbarButtons"
-              :key="btn.key"
-              :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
-              plain
-              :type="toolbarButtonType(btn.key)"
-              @click="runBuiltinButton(btn.key)"
-            >
-              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-              {{ btn.label }}
-              <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
-                ({{ selectedRows.length }})
-              </span>
-            </el-button>
-            <!--
+              <el-button
+                v-for="btn in builtinToolbarButtons"
+                :key="btn.key"
+                :disabled="isBatchButton(btn.key) && selectedRows.length === 0"
+                plain
+                :type="toolbarButtonType(btn.key)"
+                @click="runBuiltinButton(btn.key)"
+              >
+                <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+                {{ btn.label }}
+                <span v-if="isBatchButton(btn.key) && selectedRows.length > 0">
+                  ({{ selectedRows.length }})
+                </span>
+              </el-button>
+              <!--
               自定义按钮（工具栏）。⚠️ 这里【不】判可见条件 ——
               工具栏没有「当前记录」可以求值，见 customButton.ts 的说明
             -->
-            <el-button
-              v-for="btn in toolbarButtons"
-              :key="btn.key"
-              plain
-              @click="runCustomButton(btn)"
-            >
-              <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
-              {{ btn.label }}
-            </el-button>
-            <!--
+              <el-button
+                v-for="btn in toolbarButtons"
+                :key="btn.key"
+                plain
+                @click="runCustomButton(btn)"
+              >
+                <Icon v-if="btn.icon" class="mr-5px" :icon="btn.icon" />
+                {{ btn.label }}
+              </el-button>
+              <!--
               展开/收起排在最后：它调的是「查询区长什么样」，不是对数据做事的动作。
               放在搜索/重置紧后面时，「新增」会被挤到一个折叠开关之后 —— 一行里最次要的
               控件排在最主要的动作前面，读起来像是新增属于折叠功能的一部分。
             -->
-            <el-button
-              v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD"
-              link
-              type="primary"
-              @click="searchCollapsed = !searchCollapsed"
-            >
-              {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
-              <Icon class="ml-2px" :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </ContentWrap>
-
-      <!-- 主体区：有左侧树时左右分栏 -->
-      <div :class="leftTree?.enabled ? 'list-with-tree' : ''">
-        <!-- 左侧树筛选 -->
-        <ContentWrap v-if="leftTree?.enabled" class="left-tree-panel">
-          <div class="left-tree-title">{{ leftTree.title || '筛选' }}</div>
-          <el-tree
-            :current-node-key="currentTreeKey"
-            :data="treeNodes"
-            :expand-on-click-node="false"
-            highlight-current
-            node-key="value"
-            :props="{ label: 'label' }"
-            @node-click="handleTreeNodeClick"
-          />
+              <el-button
+                v-if="searchItems.length > SEARCH_COLLAPSE_THRESHOLD"
+                link
+                type="primary"
+                @click="searchCollapsed = !searchCollapsed"
+              >
+                {{ searchCollapsed ? `展开(${searchItems.length})` : '收起' }}
+                <Icon class="ml-2px" :icon="searchCollapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
+              </el-button>
+            </el-form-item>
+          </el-form>
         </ContentWrap>
 
-        <!-- 列表 -->
-        <ContentWrap class="flex-1 min-w-0">
-        <!-- 标签页筛选：切换等价于追加一个 EQ 条件 -->
-        <el-tabs
-          v-if="tabConfig?.enabled && tabConfig.field"
-          v-model="activeTab"
-          @tab-change="handleTabChange"
-        >
-          <el-tab-pane label="全部" name="__all__" />
-          <el-tab-pane
-            v-for="tab in tabConfig.tabs"
-            :key="tab.value"
-            :label="tab.label || tab.value"
-            :name="tab.value"
-          />
-        </el-tabs>
+        <!-- 主体区：有左侧树时左右分栏 -->
+        <div :class="leftTree?.enabled ? 'list-with-tree' : ''">
+          <!-- 左侧树筛选 -->
+          <ContentWrap v-if="leftTree?.enabled" class="left-tree-panel">
+            <div class="left-tree-title">{{ leftTree.title || '筛选' }}</div>
+            <el-tree
+              :current-node-key="currentTreeKey"
+              :data="treeNodes"
+              :expand-on-click-node="false"
+              highlight-current
+              node-key="value"
+              :props="{ label: 'label' }"
+              @node-click="handleTreeNodeClick"
+            />
+          </ContentWrap>
 
-        <!--
+          <!-- 列表 -->
+          <ContentWrap class="flex-1 min-w-0">
+            <!-- 标签页筛选：切换等价于追加一个 EQ 条件 -->
+            <el-tabs
+              v-if="tabConfig?.enabled && tabConfig.field"
+              v-model="activeTab"
+              @tab-change="handleTabChange"
+            >
+              <el-tab-pane label="全部" name="__all__" />
+              <el-tab-pane
+                v-for="tab in tabConfig.tabs"
+                :key="tab.value"
+                :label="tab.label || tab.value"
+                :name="tab.value"
+              />
+            </el-tabs>
+
+            <!--
           列设置：它是「调整视图」而不是「对数据做事」，与查询区那排工具栏不同类 ——
           这条理由原来就写在工具栏那个 div 里，工具栏搬进查询区之后，留在列表卡片内
           反而更贴近它作用的对象（这张表的视图）。
@@ -258,166 +258,170 @@
           （item 宽度由内容决定，没有可分配的自由空间），而查询卡片没有 title、
           ContentWrap 的 #header 插槽也不渲染，找不到第二个可以右靠的位置。
         -->
-        <div v-if="columnSettingEnabled" class="mb-10px flex justify-end">
-          <ColumnSettingPanel
-            :items="settingColumns"
-            @reorder="handleColumnReorder"
-            @reset="handleColumnReset"
-            @resize="handleColumnResize"
-            @toggle="handleColumnToggle"
-          />
-        </div>
+            <div v-if="columnSettingEnabled" class="mb-10px flex justify-end">
+              <ColumnSettingPanel
+                :items="settingColumns"
+                @reorder="handleColumnReorder"
+                @reset="handleColumnReset"
+                @resize="handleColumnResize"
+                @toggle="handleColumnToggle"
+              />
+            </div>
 
-        <el-table
-          ref="tableRef"
-          v-loading="listLoading"
-          :border="gridBorderNeeded"
-          class="runtime-table xpy-list-table"
-          :data="tableData"
-          :default-sort="defaultSortProp"
-          :row-class-name="rowClassName"
-          :row-key="tableRowKey"
-          :show-summary="showSummary"
-          :span-method="spanMethod"
-          :stripe="!gridBorderNeeded"
-          :summary-method="getSummaries"
-          :tree-props="{ children: 'children' }"
-          @selection-change="handleSelectionChange"
-          @sort-change="handleSortChange"
-        >
-          <!--
+            <el-table
+              ref="tableRef"
+              v-loading="listLoading"
+              :border="gridBorderNeeded"
+              class="runtime-table xpy-list-table"
+              :data="tableData"
+              :default-sort="defaultSortProp"
+              :row-class-name="rowClassName"
+              :row-key="tableRowKey"
+              :show-summary="showSummary"
+              :span-method="spanMethod"
+              :stripe="!gridBorderNeeded"
+              :summary-method="getSummaries"
+              :tree-props="{ children: 'children' }"
+              @selection-change="handleSelectionChange"
+              @sort-change="handleSortChange"
+            >
+              <!--
             多选列。只在配了批量按钮时出现 —— 无条件放一列勾选框，
             却没有任何批量操作可用，用户会一直找那个「然后呢」
 
             ⚠️ 明细展开模式下不放：一条主记录被摊平成多行，勾一行的语义不明确
             （是勾了这条主记录，还是只勾了这一条明细？）
           -->
-          <el-table-column
-            v-if="selectionEnabled"
-            align="center"
-            :reserve-selection="true"
-            type="selection"
-            width="46"
-          />
-          <!--
+              <el-table-column
+                v-if="selectionEnabled"
+                align="center"
+                :reserve-selection="true"
+                type="selection"
+                width="46"
+              />
+              <!--
             序号列
 
             不用 type="index"：那个只会在当前页内从 1 数起，翻到第二页又变回 1。
             自己算的话能跨页连续，用户报「第 37 条有问题」时才对得上。
             树形与明细展开模式下不出现，理由见 indexColumnVisible。
           -->
-          <el-table-column
-            v-if="indexColumnVisible"
-            align="center"
-            :fixed="hasLeftFixedColumn ? 'left' : false"
-            label="序号"
-            width="44"
-            class-name="col-index"
-            label-class-name="col-index"
-          >
-            <template #default="scope">{{ rowIndexOf(scope.$index) }}</template>
-          </el-table-column>
-          <!-- 列。有复杂表头配置时，分组渲染成嵌套表头 -->
-          <template v-for="(item, idx) in renderColumns" :key="idx">
-            <el-table-column
-              v-if="item.type === 'group'"
-              :label="item.label"
-              align="center"
-            >
               <el-table-column
-                v-for="col in item.cols"
-                :key="col.field"
-                :align="col.align || 'left'"
-                :label="col.label"
-                :prop="displayProp(col)"
-                :show-overflow-tooltip="true"
-                :sortable="col.sortable && !col.subField ? 'custom' : false"
-                v-bind="col.widthType === 'fixed' ? { width: col.width || 140 } : { minWidth: col.width || 140 }"
+                v-if="indexColumnVisible"
+                align="center"
+                :fixed="hasLeftFixedColumn ? 'left' : false"
+                label="序号"
+                width="44"
+                class-name="col-index"
+                label-class-name="col-index"
               >
-                <template #default="scope">
-                  <GroupRowCell
-                    v-if="isGroupRow(scope.row)"
-                    :columns="columns"
-                    :row="scope.row"
-                    :show-count="rowGroup?.showCount !== false"
-                    @toggle="toggleGroup"
-                  />
-                  <InlineEditCell
-                    v-else-if="isEditingCell(scope.row, col)"
-                    v-model="editingValues[col.field]"
-                    :col="col"
-                  />
-                  <ListCell v-else :col="col" :value="scope.row[displayProp(col)]" />
-                </template>
+                <template #default="scope">{{ rowIndexOf(scope.$index) }}</template>
               </el-table-column>
-            </el-table-column>
+              <!-- 列。有复杂表头配置时，分组渲染成嵌套表头 -->
+              <template v-for="(item, idx) in renderColumns" :key="idx">
+                <el-table-column v-if="item.type === 'group'" :label="item.label" align="center">
+                  <el-table-column
+                    v-for="col in item.cols"
+                    :key="col.field"
+                    :align="col.align || 'left'"
+                    :label="col.label"
+                    :prop="displayProp(col)"
+                    :show-overflow-tooltip="true"
+                    :sortable="col.sortable && !col.subField ? 'custom' : false"
+                    v-bind="
+                      col.widthType === 'fixed'
+                        ? { width: col.width || 140 }
+                        : { minWidth: col.width || 140 }
+                    "
+                  >
+                    <template #default="scope">
+                      <GroupRowCell
+                        v-if="isGroupRow(scope.row)"
+                        :columns="columns"
+                        :row="scope.row"
+                        :show-count="rowGroup?.showCount !== false"
+                        @toggle="toggleGroup"
+                      />
+                      <InlineEditCell
+                        v-else-if="isEditingCell(scope.row, col)"
+                        v-model="editingValues[col.field]"
+                        :col="col"
+                      />
+                      <ListCell v-else :col="col" :value="scope.row[displayProp(col)]" />
+                    </template>
+                  </el-table-column>
+                </el-table-column>
 
-            <el-table-column
-              v-else
-              :align="item.col.align || 'left'"
-              :fixed="item.col.fixed || false"
-              :label="item.col.label"
-              :prop="displayProp(item.col)"
-              :show-overflow-tooltip="true"
-              :sortable="item.col.sortable && !item.col.subField ? 'custom' : false"
-              v-bind="item.col.widthType === 'fixed' ? { width: item.col.width || 140 } : { minWidth: item.col.width || 140 }"
-            >
-              <template #default="scope">
-                <!--
+                <el-table-column
+                  v-else
+                  :align="item.col.align || 'left'"
+                  :fixed="item.col.fixed || false"
+                  :label="item.col.label"
+                  :prop="displayProp(item.col)"
+                  :show-overflow-tooltip="true"
+                  :sortable="item.col.sortable && !item.col.subField ? 'custom' : false"
+                  v-bind="
+                    item.col.widthType === 'fixed'
+                      ? { width: item.col.width || 140 }
+                      : { minWidth: item.col.width || 140 }
+                  "
+                >
+                  <template #default="scope">
+                    <!--
                   分组行只渲染一个横跨整张表的单元格（colspan 由 span-method 给），
                   所以每一列的模板里都要判一次 —— 判漏了哪一列，
                   分组行落到那一列上时会渲染成一片空白
                 -->
-                <GroupRowCell
-                  v-if="isGroupRow(scope.row)"
-                  :columns="columns"
-                  :row="scope.row"
-                  :show-count="rowGroup?.showCount !== false"
-                  @toggle="toggleGroup"
-                />
-                <InlineEditCell
-                  v-else-if="isEditingCell(scope.row, item.col)"
-                  v-model="editingValues[item.col.field]"
-                  :col="item.col"
-                />
-                <ListCell v-else :col="item.col" :value="scope.row[displayProp(item.col)]" />
+                    <GroupRowCell
+                      v-if="isGroupRow(scope.row)"
+                      :columns="columns"
+                      :row="scope.row"
+                      :show-count="rowGroup?.showCount !== false"
+                      @toggle="toggleGroup"
+                    />
+                    <InlineEditCell
+                      v-else-if="isEditingCell(scope.row, item.col)"
+                      v-model="editingValues[item.col.field]"
+                      :col="item.col"
+                    />
+                    <ListCell v-else :col="item.col" :value="scope.row[displayProp(item.col)]" />
+                  </template>
+                </el-table-column>
               </template>
-            </el-table-column>
-          </template>
 
-          <el-table-column
-            v-if="operationColumn.show && hasRowButtons"
-            align="center"
-            fixed="right"
-            :label="operationColumn.label || '操作'"
-            :width="operationColumn.width || 160"
-          >
-            <template #default="scope">
-              <!--
+              <el-table-column
+                v-if="operationColumn.show && hasRowButtons"
+                align="center"
+                fixed="right"
+                :label="operationColumn.label || '操作'"
+                :width="operationColumn.width || 160"
+              >
+                <template #default="scope">
+                  <!--
                 分组行上不放任何按钮。它不是一条记录 —— 放了按钮，
                 点「删除」删的是谁？这正是「把分组塞进 children 当树父节点」
                 那种做法要在每个分支里特判的东西，这里只需判这一处
               -->
-              <template v-if="isGroupRow(scope.row)" />
-              <!--
+                  <template v-if="isGroupRow(scope.row)"></template>
+                  <!--
                 行内编辑态：只留「保存 / 取消」。
                 其余按钮在编辑态下都没有确定语义 —— 点「详情」是带着没存的改动过去，
                 还是丢掉？不给这个选择比猜一个更好
               -->
-              <template v-else-if="isEditingRow(scope.row)">
-                <el-button
-                  link
-                  :loading="inlineSaving"
-                  type="primary"
-                  @click="saveInlineEdit(scope.row)"
-                >
-                  保存
-                </el-button>
-                <el-button link :disabled="inlineSaving" @click="cancelInlineEdit">
-                  取消
-                </el-button>
-              </template>
-              <!--
+                  <template v-else-if="isEditingRow(scope.row)">
+                    <el-button
+                      link
+                      :loading="inlineSaving"
+                      type="primary"
+                      @click="saveInlineEdit(scope.row)"
+                    >
+                      保存
+                    </el-button>
+                    <el-button link :disabled="inlineSaving" @click="cancelInlineEdit">
+                      取消
+                    </el-button>
+                  </template>
+                  <!--
                 行内按钮。文案、图标、顺序都来自列表设计的按钮清单；
                 超过「按钮折叠阈值」的收进「更多」下拉（见 rowActionsOf）。
 
@@ -425,64 +429,63 @@
                 用户看到的是一整排按钮，按来源分两次折叠会折出
                 「三个 + 更多 + 两个 + 更多」这种没人能预期的结果
               -->
-              <template v-else>
-                <el-button
-                  v-for="action in rowActionsOf(scope.row).inline"
-                  :key="action.key"
-                  link
-                  :type="action.type"
-                  @click="runRowAction(action, scope.row)"
-                >
-                  <Icon v-if="action.icon" class="mr-2px" :icon="action.icon" />
-                  {{ action.label }}
-                </el-button>
-                <el-dropdown
-                  v-if="rowActionsOf(scope.row).folded.length > 0"
-                  class="ml-8px"
-                  @command="(action: any) => runRowAction(action, scope.row)"
-                >
-                  <el-button link type="primary">
-                    更多<Icon class="ml-2px" icon="ep:arrow-down" />
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="action in rowActionsOf(scope.row).folded"
-                        :key="action.key"
-                        :command="action"
-                      >
-                        <span :class="action.type === 'danger' ? 'text-[var(--el-color-danger)]' : ''">
-                          {{ action.label }}
-                        </span>
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
+                  <template v-else>
+                    <el-button
+                      v-for="action in rowActionsOf(scope.row).inline"
+                      :key="action.key"
+                      link
+                      :type="action.type"
+                      @click="runRowAction(action, scope.row)"
+                    >
+                      <Icon v-if="action.icon" class="mr-2px" :icon="action.icon" />
+                      {{ action.label }}
+                    </el-button>
+                    <el-dropdown
+                      v-if="rowActionsOf(scope.row).folded.length > 0"
+                      class="ml-8px"
+                      @command="(action: any) => runRowAction(action, scope.row)"
+                    >
+                      <el-button link type="primary">
+                        更多<Icon class="ml-2px" icon="ep:arrow-down" />
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item
+                            v-for="action in rowActionsOf(scope.row).folded"
+                            :key="action.key"
+                            :command="action"
+                          >
+                            <span
+                              :class="
+                                action.type === 'danger' ? 'text-[var(--el-color-danger)]' : ''
+                              "
+                            >
+                              {{ action.label }}
+                            </span>
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </template>
-                </el-dropdown>
-              </template>
-            </template>
-          </el-table-column>
-        </el-table>
+                </template>
+              </el-table-column>
+            </el-table>
 
-        <Pagination
-          v-if="pagination"
-          v-model:limit="queryParams.pageSize"
-          v-model:page="queryParams.pageNo"
-          :total="total"
-          @pagination="loadList"
-        />
-        </ContentWrap>
-      </div>
+            <Pagination
+              v-if="pagination"
+              v-model:limit="queryParams.pageSize"
+              v-model:page="queryParams.pageNo"
+              :total="total"
+              @pagination="loadList"
+            />
+          </ContentWrap>
+        </div>
       </template>
     </template>
 
     <!-- 纯表单：直接渲染表单 -->
     <ContentWrap v-else>
-      <form-create
-        v-model="formValues"
-        v-model:api="fApi"
-        :option="formOption"
-        :rule="formRule"
-      />
+      <form-create v-model="formValues" v-model:api="fApi" :option="formOption" :rule="formRule" />
       <div class="text-center mt-20px">
         <el-button :loading="submitLoading" type="primary" @click="handleSubmitStandalone">
           提 交
@@ -670,10 +673,7 @@ import type { LogicRule } from '@/components/FormLogic/types'
 import { useFormulaRuntime } from '@/components/FormFormula/useFormulaRuntime'
 import { useScriptRuntime } from '@/components/FormScript/useScriptRuntime'
 import { filterRulesByScene } from '@/components/FormWidgets/renderScene'
-import {
-  parseFormViewMode,
-  type FormViewMode
-} from '@/components/FormWidgets/formViewMode'
+import { parseFormViewMode, type FormViewMode } from '@/components/FormWidgets/formViewMode'
 import FormContainer from './FormContainer.vue'
 import {
   collectCollapseGroups,
@@ -832,9 +832,7 @@ const columnPrefStorageKey = computed(() =>
 )
 
 const reloadColumnPrefs = () => {
-  columnPrefs.value = columnSettingEnabled.value
-    ? readColumnPrefs(columnPrefStorageKey.value)
-    : []
+  columnPrefs.value = columnSettingEnabled.value ? readColumnPrefs(columnPrefStorageKey.value) : []
 }
 
 /** 改完偏好立刻落盘 —— 用户不会去点一个「保存列设置」的按钮 */
@@ -857,9 +855,7 @@ const handleColumnResize = (key: string, width: number) => {
   if (!width) return
   persistColumnPrefs(
     toColumnPrefs(
-      settingColumns.value.map((col) =>
-        columnKeyOf(col) === key ? { ...col, width } : col
-      )
+      settingColumns.value.map((col) => (columnKeyOf(col) === key ? { ...col, width } : col))
     )
   )
 }
@@ -990,9 +986,7 @@ const rowIndexOf = (rowIndex: number): number => {
  * 有的话序号列也得跟着固定。否则横向滚动时序号会滑到固定列底下 ——
  * 表现是「序号这一列被左边的列吃掉了半截」。
  */
-const hasLeftFixedColumn = computed(() =>
-  columns.value.some((col: any) => col.fixed === 'left')
-)
+const hasLeftFixedColumn = computed(() => columns.value.some((col: any) => col.fixed === 'left'))
 
 /** 标签页筛选配置 */
 const tabConfig = ref<
@@ -1007,9 +1001,9 @@ const handleTabChange = () => {
 }
 
 /** 树形列表配置 */
-const treeConfig = ref<
-  { enabled: boolean; parentField: string; rowKey?: string } | undefined
->(undefined)
+const treeConfig = ref<{ enabled: boolean; parentField: string; rowKey?: string } | undefined>(
+  undefined
+)
 
 /**
  * 树形模式的单次加载条数
@@ -1140,10 +1134,8 @@ const renderColumns = computed(() => {
     })
   })
 
-  const result: Array<
-    | { type: 'plain'; col: any }
-    | { type: 'group'; label: string; cols: any[] }
-  > = []
+  const result: Array<{ type: 'plain'; col: any } | { type: 'group'; label: string; cols: any[] }> =
+    []
   const emitted = new Set<{ label: string; children: string[] }>()
 
   columns.value.forEach((col) => {
@@ -1189,9 +1181,7 @@ const subTableFields = computed(() =>
  * 树靠 children 递归渲染，展开靠平铺加合并，合起来的结果没有确定语义。
  * 设计器那边树形与明细列互斥，这里再兜一层。
  */
-const expandSubRows = computed(
-  () => subTableFields.value.length > 0 && !treeConfig.value?.enabled
-)
+const expandSubRows = computed(() => subTableFields.value.length > 0 && !treeConfig.value?.enabled)
 
 /**
  * 开了同值合并的列，按配置顺序
@@ -1222,9 +1212,7 @@ const mergeSameEnabled = computed(
 )
 
 /** 参与合并的列在行数据上的取值键，顺序即级联优先级 */
-const mergeSameColumnProps = computed(() =>
-  mergeSameColumns.value.map((c: any) => displayProp(c))
-)
+const mergeSameColumnProps = computed(() => mergeSameColumns.value.map((c: any) => displayProp(c)))
 
 /**
  * 表格数据。五种形态：树形、主子表展开、行分组、同值合并、普通平铺
@@ -1241,19 +1229,11 @@ const tableData = computed(() => {
     return flattenWithDetails(list.value)
   }
   if (rowGroupEnabled.value) {
-    return buildGroupedRows(
-      list.value,
-      rowGroup.value!,
-      groupLabelOf,
-      collapsedGroupKeys.value
-    )
+    return buildGroupedRows(list.value, rowGroup.value!, groupLabelOf, collapsedGroupKeys.value)
   }
   if (mergeSameEnabled.value) {
     // 合并只在当前页内做 —— list 就是当前页。跨页合并没有确定语义
-    return attachMergeSpans(
-      list.value,
-      mergeSameColumnProps.value
-    )
+    return attachMergeSpans(list.value, mergeSameColumnProps.value)
   }
   return list.value
 })
@@ -1270,10 +1250,7 @@ const collapsedGroupKeys = ref<Set<string>>(new Set())
  * 设计器里是互斥开关，这里兜底防手工改过的配置。
  */
 const rowGroupEnabled = computed(
-  () =>
-    isRowGroupUsable(rowGroup.value) &&
-    !treeConfig.value?.enabled &&
-    !expandSubRows.value
+  () => isRowGroupUsable(rowGroup.value) && !treeConfig.value?.enabled && !expandSubRows.value
 )
 
 /**
@@ -1283,9 +1260,7 @@ const rowGroupEnabled = computed(
  * 分组行上印的是 `SOFT` 而不是「软件开发」。
  */
 const groupLabelOf = (value: any): string => {
-  const col = columns.value.find(
-    (c: any) => c.field === rowGroup.value?.field && !c.subField
-  )
+  const col = columns.value.find((c: any) => c.field === rowGroup.value?.field && !c.subField)
   return formatCellText(value, col?.formatter)
 }
 
@@ -1343,8 +1318,8 @@ const flattenWithDetails = (mainRows: any[]): any[] => {
   const result: any[] = []
   mainRows.forEach((mainRow) => {
     // 各子表的明细行数可能不同，取最大值，短的那张表在多出来的行里留空
-    const detailCounts = subTableFields.value.map(
-      (f) => (Array.isArray(mainRow[f!]) ? mainRow[f!].length : 0)
+    const detailCounts = subTableFields.value.map((f) =>
+      Array.isArray(mainRow[f!]) ? mainRow[f!].length : 0
     )
     const rowCount = Math.max(1, ...detailCounts)
 
@@ -1421,9 +1396,8 @@ const buildTree = (rows: any[], rowKey: string, parentField: string): any[] => {
   const roots: any[] = []
   nodeMap.forEach((node) => {
     const parentId = node[parentField]
-    const parent = parentId == null || parentId === '' || parentId === 0
-      ? undefined
-      : nodeMap.get(parentId)
+    const parent =
+      parentId == null || parentId === '' || parentId === 0 ? undefined : nodeMap.get(parentId)
     // 自引用行（parent 指向自己）也当顶层，否则会造成死循环
     if (parent && parent !== node) {
       parent.children = parent.children ?? []
@@ -1822,8 +1796,9 @@ const runRowAction = (action: RowAction, row: any) => {
   if (action.custom) return runCustomButton(action.custom, row)
 }
 
-const hasRowButtons = computed(() =>
-  builtinRowButtons.value.some((b) => isRowButtonAvailable(b.key)) || rowButtons.value.length > 0
+const hasRowButtons = computed(
+  () =>
+    builtinRowButtons.value.some((b) => isRowButtonAvailable(b.key)) || rowButtons.value.length > 0
 )
 
 /** 需要勾选行的按钮 */
@@ -1908,9 +1883,7 @@ const inlineEdit = ref<{ enabled: boolean } | undefined>(undefined)
  * 明细展开模式下一律关掉：一条主记录被摊平成多行，
  * 改其中一行的主表值没有确定语义。设计器那边已经互斥，这里再兜一层。
  */
-const inlineEditEnabled = computed(
-  () => inlineEdit.value?.enabled === true && !expandSubRows.value
-)
+const inlineEditEnabled = computed(() => inlineEdit.value?.enabled === true && !expandSubRows.value)
 
 /** 正在编辑的那一行的主键。同一时刻只允许编辑一行 */
 const editingPk = ref<any>(undefined)
@@ -2068,7 +2041,9 @@ const handlePrintList = () => {
         align: col.align || 'left',
         // 合并状态直接沿用屏幕上的那一份，两处各算一遍必然漂移
         rowspan: expandSubRows.value
-          ? (col.subField ? 1 : (row.__span ?? 1))
+          ? col.subField
+            ? 1
+            : (row.__span ?? 1)
           : mergeSpanOf(row, prop)
       }
     })
@@ -2121,9 +2096,7 @@ const handleBatchPrint = async () => {
   // page-break-after 是打印时才生效的样式，屏幕预览上看不出来
   const html = pages
     .map((page, index) =>
-      index === pages.length - 1
-        ? page
-        : `<div style="page-break-after: always">${page}</div>`
+      index === pages.length - 1 ? page : `<div style="page-break-after: always">${page}</div>`
     )
     .join('')
   printHtml(html, config.value?.name ?? '打印')
@@ -3003,7 +2976,6 @@ const resetQuery = () => {
   handleQuery()
 }
 
-
 const openForm = async (type: 'create' | 'update' | 'detail', row?: any) => {
   dialogType.value = type
   // 场景可能变了（详情态与新增态的字段集不同），重算规则树
@@ -3133,10 +3105,15 @@ watch(
 /** 从两次拼接结果里找出值变了的字段 */
 const diffDependentFields = (before: string, now: string): string[] => {
   const parse = (raw: string) =>
-    new Map(raw.split('&').filter(Boolean).map((pair) => {
-      const index = pair.indexOf('=')
-      return [pair.slice(0, index), pair.slice(index + 1)] as [string, string]
-    }))
+    new Map(
+      raw
+        .split('&')
+        .filter(Boolean)
+        .map((pair) => {
+          const index = pair.indexOf('=')
+          return [pair.slice(0, index), pair.slice(index + 1)] as [string, string]
+        })
+    )
   const previous = parse(before)
   const changed: string[] = []
   parse(now).forEach((value, field) => {
@@ -3275,7 +3252,6 @@ const handleExport = () => {
   })
 }
 
-
 onMounted(() => {
   loadConfig()
 })
@@ -3283,7 +3259,7 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 /*
-  列表观感 = 模型配置列表（参考站 81.71.100.62）= 全站 xpy-list-table
+  列表观感 = 模型配置列表（参考站 https://doc.enlev.cn）= 全站 xpy-list-table
 
   表格挂了 xpy-list-table，行高 41 / 表头白底灰字 600 / 按钮间距 12px / 序号列窄内边距
   全部由 src/styles/index.scss 统一给，这里不再各写一套。
