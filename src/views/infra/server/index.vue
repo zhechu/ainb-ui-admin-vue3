@@ -18,7 +18,7 @@ onMounted(async () => {
   try {
     // 友情提示：如果访问出现 404 问题：
     // 1）boot 参考 https://doc.enlev.cn/server-monitor/ 解决；
-    // 2）cloud 参考 https://cloud.enlev.cn/server-monitor/ 解决
+    // 2）cloud 参考 https://doc.enlev.cn/server-monitor/ 解决
     const data = await ConfigApi.getConfigKey('url.spring-boot-admin')
     if (data && data.length > 0) {
       src.value = data

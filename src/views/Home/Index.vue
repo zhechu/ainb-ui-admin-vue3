@@ -4,7 +4,12 @@
     class="home-portal-runtime"
     :portal="portalRuntime"
   />
-  <PortalRuntime v-else-if="portalRuntime" class="home-portal-runtime" :portal="portalRuntime" flush />
+  <PortalRuntime
+    v-else-if="portalRuntime"
+    class="home-portal-runtime"
+    :portal="portalRuntime"
+    flush
+  />
   <div v-else>
     <el-card shadow="never" class="home-hero">
       <el-skeleton :loading="loading" animated>
@@ -252,22 +257,6 @@ const getProject = async () => {
       color: '#6DB33F'
     },
     {
-      name: 'ERP',
-      icon: 'ep:element-plus',
-      message: '企业资源计划管理系统',
-      personal: '智能制造',
-      time: new Date('2025-02-03'),
-      color: '#409EFF'
-    },
-    {
-      name: 'CRM',
-      icon: 'icon-park-outline:mall-bag',
-      message: '客户关系管理系统',
-      personal: 'AI获客',
-      time: new Date('2025-03-04'),
-      color: '#ff4d4f'
-    },
-    {
       name: '资产房地产土地评估系统',
       icon: 'material-symbols:cloud-outline',
       message: '资产房地产土地评估系统',
@@ -300,7 +289,7 @@ let notice = reactive<Notice[]>([])
 const getNotice = async () => {
   const data = [
     {
-      title: '启凌智搭SaaS上线',
+      title: '启凌智搭上线',
       type: '系统升级',
       keys: ['JDK', 'Vue'],
       date: new Date()
