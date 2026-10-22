@@ -20,7 +20,7 @@
   <a href="https://doc.enlev.cn"><b>📚 官方文档</b></a> &nbsp;|&nbsp;
   <a href="https://doc.enlev.cn/guide/"><b>使用手册</b></a> &nbsp;|&nbsp;
   <a href="https://doc.enlev.cn/develop/"><b>开发手册</b></a> &nbsp;|&nbsp;
-  <b>后端仓库</b> ainb
+  <a href="https://gitee.com/enlev/ainb"><b>后端仓库</b></a> 
 </p>
 
 ![后台首页](.image/home.jpeg)
@@ -33,8 +33,8 @@
 
 - **Node ≥ 20.19.0 && pnpm ≥ 8.6.0**（🔴 **强制使用 pnpm**，`package.json` 的 `engines` 已钉住）
 - **在线演示**：<https://demo.enlev.cn>
-- **官方文档**：<https://doc.enlev.cn> —— 使用手册 79 页 + 开发手册 40 页，含 316 张截图与演示账号
-- **后端仓库**：`ainb`，Java 17 + Spring Boot 3.5，端口 48080
+- **官方文档**：<https://doc.enlev.cn>
+- **后端仓库**：[ainb](https://gitee.com/enlev/ainb)
 - **五分钟跑起来**：见下文 [🚀 快速开始](#-快速开始)
 
 ### 演示账号
@@ -81,8 +81,6 @@
 - **AI**：SSE 流式对话、推理过程可展开、草稿卡与人工确认（HITL）、知识引用可点来源
 - **编辑器**：Monaco Editor、CodeMirror 6、wangEditor-next、jsoneditor
 - **图表**：ECharts 6 + echarts-wordcloud
-
-> **上游与改名**：本仓库派生自 [yudao-ui-admin-vue3](https://gitee.com/yudaocode/yudao-ui-admin-vue3)（MIT，Copyright (c) 芋道源码），产品已改名为「启凌智搭」。
 
 ---
 
@@ -593,8 +591,6 @@ pnpm test:unit:watch                            # watch
 | 授权 / 诊断页背后的判定逻辑 | 开发手册 `02-permission/` |
 | Agent 前端流式（SSE）实现 | 开发手册 `03-agent/frontend-sse` |
 | 新增一个菜单功能端到端、测试规范、坑位索引 | 开发手册 `05-practice/` |
-
-上游文档：<https://doc.iocoder.cn>（芋道 yudao-ui-admin-vue3）。
 
 ---
 
