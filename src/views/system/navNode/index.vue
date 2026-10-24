@@ -85,15 +85,12 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-alert :closable="false" class="mb-15px" type="info">
-      <template #title>
-        配置「App 菜单」——移动端工作台的导航树：分组 ▸ 子分组 ▸ 导航项。导航项通过「权限标识」关联共享权限目录——留空表示所有登录用户可见，选择后仅拥有其中任一权限的用户可见（服务端按登录用户过滤后下发）。
-      </template>
-    </el-alert>
     <!--
       🔴 与 Web 菜单页同一套虚拟表格（el-table-v2）：行高 41 / 表头 40 对齐「模型列表」的观感，
       表体内部滚动、表头钉住（高度由 useTableV2Height 量出来，写死数字在矮屏上会让整页滚）。
       外层 div 是量高度的锚点，v2 本体拿不到 ref。
+      列的排布也对齐 Web 菜单页：名称 ▸ 图标 ▸ 排序 ▸ 权限标识 ▸ 路径 ▸ 状态 ▸ 操作，
+      两页并着看时同一类信息在同一档位置上，不用重新学一遍表格。
     -->
     <div v-loading="loading" ref="tableHostRef">
       <el-auto-resizer>
@@ -135,6 +132,7 @@ import {
   navNodeTypeLabel,
   navNodeTypeTag
 } from './constants'
+import { ensureWotIconFontFace, wotIconChar, wotIconCode, WOT_ICON_FONT_FAMILY } from './wotIcons'
 
 defineOptions({ name: 'SystemNavNode' })
 
@@ -270,15 +268,60 @@ const columns = computed<Column<NavNodeApi.NavNodeVO>[]>(() => {
       key: 'name',
       title: '名称',
       dataKey: 'name',
-      width: 220,
-      minWidth: 140,
+      width: 240,
+      minWidth: 160,
       flexGrow: 1
+    },
+    {
+      // 图标列与 Web 菜单页同位置同宽度：那边画 iconify 图标，这边画 wot 字形。
+      // 名字不在移动端图标表里时不画任何东西 —— 画个问号反而像在指责用户
+      key: 'icon',
+      title: '图标',
+      dataKey: 'icon',
+      width: 70,
+      flexShrink: 0,
+      align: 'center',
+      cellRenderer: ({ rowData }) => {
+        const code = rowData.icon ? wotIconCode(rowData.icon) : undefined
+        if (code === undefined) {
+          return null
+        }
+        return (
+          <span class="text-16px" style={{ fontFamily: WOT_ICON_FONT_FAMILY }}>
+            {wotIconChar(code)}
+          </span>
+        )
+      }
+    },
+    {
+      key: 'sort',
+      title: '排序',
+      dataKey: 'sort',
+      width: 60,
+      flexShrink: 0
+    },
+    {
+      // 留空＝所有登录用户可见，与 Web 菜单页一样直接留白，不写一句解释进单元格
+      key: 'permissions',
+      title: '权限标识',
+      dataKey: 'permissions',
+      width: 260,
+      minWidth: 160,
+      flexGrow: 1
+    },
+    {
+      key: 'route',
+      title: '页面路径',
+      dataKey: 'route',
+      width: 320,
+      minWidth: 180,
+      flexGrow: 2
     },
     {
       key: 'nodeType',
       title: '类型',
       dataKey: 'nodeType',
-      width: 80,
+      width: 90,
       flexShrink: 0,
       align: 'center',
       cellRenderer: ({ rowData }) => (
@@ -286,42 +329,6 @@ const columns = computed<Column<NavNodeApi.NavNodeVO>[]>(() => {
           {navNodeTypeLabel(rowData.nodeType)}
         </ElTag>
       )
-    },
-    {
-      key: 'route',
-      title: '页面路径',
-      dataKey: 'route',
-      width: 250,
-      minWidth: 140,
-      flexGrow: 1,
-      // 交给 v2 的默认单元格渲染（自带 cell-text 省略号），只把空值换成占位符
-      dataGetter: ({ rowData }) => rowData.route || '-'
-    },
-    {
-      key: 'permissions',
-      title: '权限标识',
-      dataKey: 'permissions',
-      width: 300,
-      minWidth: 160,
-      flexGrow: 2,
-      // 🔴 自定义渲染就拿不到 v2 默认的 .el-table-v2__cell-text（省略号在那条 CSS 上），
-      //    要自己挂回去；长权限串再补一个原生 title，否则截断后无从看全
-      cellRenderer: ({ rowData }) =>
-        rowData.permissions ? (
-          <span class="el-table-v2__cell-text" title={rowData.permissions}>
-            {rowData.permissions}
-          </span>
-        ) : (
-          <span class="el-table-v2__cell-text text-12px text-gray-400">无门槛（登录即可见）</span>
-        )
-    },
-    {
-      key: 'sort',
-      title: '排序',
-      dataKey: 'sort',
-      width: 60,
-      flexShrink: 0,
-      align: 'center'
     },
     {
       key: 'visible',
@@ -340,7 +347,7 @@ const columns = computed<Column<NavNodeApi.NavNodeVO>[]>(() => {
       key: 'status',
       title: '状态',
       dataKey: 'status',
-      width: 80,
+      width: 60,
       flexShrink: 0,
       align: 'center',
       cellRenderer: ({ rowData }) => (
@@ -356,7 +363,7 @@ const columns = computed<Column<NavNodeApi.NavNodeVO>[]>(() => {
       key: 'operations',
       title: '操作',
       align: 'center',
-      width: 180,
+      width: 160,
       flexShrink: 0,
       cellRenderer: ({ rowData }) => <TableActions row={rowData} buttons={rowButtons} />
     }
@@ -444,6 +451,8 @@ const handleDeleteBatch = async () => {
 
 /** 初始化 **/
 onMounted(() => {
+  // 图标列要画 wot 字形，字体不在 web 的图标集里，得自己注入一次
+  ensureWotIconFontFace()
   getList()
 })
 </script>

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { WOT_ICONS, WOT_ICON_FONT_URL, wotIconChar } from './wotIcons'
+import { ensureWotIconFontFace, WOT_ICONS, wotIconChar, wotIconCode, WOT_ICON_FONT_FAMILY } from './wotIcons'
 
 defineOptions({ name: 'WotIconSelect' })
 
@@ -13,27 +13,11 @@ defineOptions({ name: 'WotIconSelect' })
  *
  * 与 `components/Icon/src/IconSelect.vue` 的形态保持一致（输入框 + 追加按钮 + 弹层网格），
  * 但两者数据源完全不同：那份是 iconify 的 ep:/fa: 图标，wd-icon 一个都认不得，不能混用。
- */
-
-/** 字体族名。@font-face 在运行时注入，地址只认 wotIcons.ts 这一个来源 */
-const FONT_FAMILY = 'wd-icons'
-
-let fontInjected = false
-/**
- * 注入 @font-face
  *
- * 写在 <style> 里更省事，但字体地址会在 CSS 和 wotIcons.ts 里各存一份 ——
- * 移动端换字体版本时改了一处漏一处，字形就全变成方块，且看起来像「图标选错了」。
+ * ⚠️ 弹层开关交给 el-popover 自己管（v-model:visible + trigger="click"）：
+ * 单向绑 :visible 时它内部的「点外面关闭」发出来的 update:visible 没人接，
+ * 弹层就永远停在打开状态，点到别处也不收 —— 读起来像弹层坏了。
  */
-function ensureFontFace() {
-  if (fontInjected) {
-    return
-  }
-  fontInjected = true
-  const style = document.createElement('style')
-  style.textContent = `@font-face{font-family:'${FONT_FAMILY}';src:url('${WOT_ICON_FONT_URL}') format('woff');font-display:swap;}`
-  document.head.appendChild(style)
-}
 
 const props = defineProps<{ modelValue?: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
@@ -41,11 +25,9 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 const visible = ref(false) // 图标弹层是否展开
 const keyword = ref('') // 名字过滤词
 
-const nameToCode = new Map(WOT_ICONS.map((item) => [item.name, item.code]))
-
 /** 当前值的字形；填的是表里没有的名字时返回 undefined，输入框仍原样显示文字 */
 const currentChar = computed(() => {
-  const code = props.modelValue ? nameToCode.get(props.modelValue) : undefined
+  const code = props.modelValue ? wotIconCode(props.modelValue) : undefined
   return code === undefined ? undefined : wotIconChar(code)
 })
 
@@ -59,16 +41,7 @@ const filteredIcons = computed(() => {
   return WOT_ICONS.filter((item) => item.name.toLowerCase().includes(kw))
 })
 
-const glyphStyle = computed(() => ({ fontFamily: FONT_FAMILY }))
-
-onMounted(ensureFontFace)
-
-function toggleVisible() {
-  visible.value = !visible.value
-  if (visible.value) {
-    ensureFontFace()
-  }
-}
+const glyphStyle = computed(() => ({ fontFamily: WOT_ICON_FONT_FAMILY }))
 
 function pickIcon(name: string) {
   emit('update:modelValue', name)
@@ -101,14 +74,15 @@ function clearIcon() {
       </template>
       <template #append>
         <el-popover
-          :visible="visible"
+          v-model:visible="visible"
           :width="392"
           placement="bottom-end"
           popper-class="wot-icon-select__popper"
           trigger="click"
+          @show="ensureWotIconFontFace"
         >
           <template #reference>
-            <div class="wot-icon-select__trigger" @click="toggleVisible">
+            <div class="wot-icon-select__trigger">
               <span v-if="currentChar" :style="glyphStyle" class="wot-icon-select__glyph">
                 {{ currentChar }}
               </span>

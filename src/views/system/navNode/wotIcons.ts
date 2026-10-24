@@ -324,3 +324,28 @@ export const WOT_ICONS: WotIcon[] = [
 export function wotIconChar(code: number): string {
   return String.fromCodePoint(code)
 }
+
+/** 图标名 → 码点；表里没有的名字返回 undefined（移动端会渲染成空白方块） */
+const NAME_TO_CODE = new Map(WOT_ICONS.map((item) => [item.name, item.code]))
+export function wotIconCode(name: string): number | undefined {
+  return NAME_TO_CODE.get(name)
+}
+
+/**
+ * 字体族名与 @font-face 注入
+ *
+ * 选择器弹层和列表的图标列都要画字形，两边各写一份 @font-face 必然漂移；
+ * 地址只认本文件这一个来源，注入只做一次。
+ */
+export const WOT_ICON_FONT_FAMILY = 'wd-icons'
+
+let fontInjected = false
+export function ensureWotIconFontFace() {
+  if (fontInjected) {
+    return
+  }
+  fontInjected = true
+  const style = document.createElement('style')
+  style.textContent = `@font-face{font-family:'${WOT_ICON_FONT_FAMILY}';src:url('${WOT_ICON_FONT_URL}') format('woff');font-display:swap;}`
+  document.head.appendChild(style)
+}
