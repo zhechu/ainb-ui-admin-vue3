@@ -167,6 +167,7 @@ import { dateFormatter } from '@/utils/formatTime'
 import * as FormDesignApi from '@/api/infra/formDesign'
 import type { TableActionButton } from '@/components/TableActions'
 import * as MenuApi from '@/api/system/menu'
+import * as NavNodeApi from '@/api/system/navNode'
 import PublishDialog from './components/PublishDialog.vue'
 import VersionDrawer from './components/VersionDrawer.vue'
 
@@ -301,7 +302,8 @@ const rowButtons: TableActionButton[] = [
 /**
  * 下线：同样是两步操作
  *
- * 后端清掉线上版本号与菜单关联并返回菜单编号，前端再回收这些菜单。
+ * 后端清掉线上版本号、菜单编号与 App 导航节点编号，并把「该回收哪些」交还出来，
+ * 前端再去删 system_menu 与 system_nav_node（infra 不能反向依赖 system，删不了也不该删）。
  *
  * 🔴 回收必须用 delete-list 一次删整棵树，不能逐个调 /system/menu/delete。
  *    menuIds 的顺序就是 infra_form_design_menu 的插入顺序，而 bindMenu 是先插父菜单再插按钮，
@@ -321,32 +323,59 @@ const rowButtons: TableActionButton[] = [
 const handleUnpublish = async (row: FormDesignApi.FormDesignVO) => {
   try {
     await message.confirm(
-      `确认下线表单「${row.name}」吗？会删除它生成的菜单与按钮权限，表单状态回到草稿。`
+      `确认下线表单「${row.name}」吗？会删除它生成的菜单与按钮权限` +
+        `${row.appNavNodeId ? '、以及移动端导航入口' : ''}，表单状态回到草稿。`
     )
   } catch {
     return // 用户点了取消
   }
-  let menuIds: number[]
+  let reclaimed: FormDesignApi.FormDesignUnpublishRespVO
   try {
-    menuIds = await FormDesignApi.unpublishFormDesign(row.id)
+    reclaimed = await FormDesignApi.unpublishFormDesign(row.id)
   } catch {
     // 后端事务回滚了，表单侧什么都没变。错误提示由 axios 拦截器给，这里只把列表刷回真实状态
     await getList()
     return
   }
+  // 🔴 到这一步表单侧【已经下线并提交】（unpublish 是它自己的事务，早已提交）。
+  //    下面两侧回收各自容错、互不牵连：菜单删失败不能让 App 入口漏删，反之亦然。
+  //    任一侧没成，都绝不能报「下线成功」，也不能报「可能已被手工删除」把真因说反 ——
+  //    必须直说哪一侧没回收掉、去哪儿收拾，否则留下的就是没人拦得住的孤儿菜单/孤儿导航项。
+  let menuFailed = false
   try {
     // 空数组不能发这个请求：join 出来是空串，后端 @RequestParam List<Long> 绑不上
-    if (menuIds?.length) {
-      await MenuApi.deleteMenuList(menuIds)
+    if (reclaimed?.menuIds?.length) {
+      await MenuApi.deleteMenuList(reclaimed.menuIds)
     }
+  } catch (error) {
+    menuFailed = true
+    console.error('回收菜单失败', error)
+  }
+  let navFailed = false
+  if (reclaimed?.appNavNodeId) {
+    try {
+      await NavNodeApi.deleteNavNode(reclaimed.appNavNodeId)
+    } catch (error) {
+      // 「用户已经手工删过这个节点」照样要容错：删不存在的行后端会抛 NOT_EXISTS，
+      // 而目标其实已经达成。所以失败后再查一次，真的还在才算失败
+      const stillThere = await NavNodeApi.getNavNode(reclaimed.appNavNodeId).catch(() => undefined)
+      if (stillThere) {
+        navFailed = true
+        console.error('回收 App 端导航节点失败', error)
+      }
+    }
+  }
+  if (!menuFailed && !navFailed) {
     message.success('下线成功')
-  } catch {
-    // 🔴 到这一步表单侧【已经下线并提交】（unpublish 是它自己的事务，早已提交），菜单却还活着。
-    //    绝不能报「下线成功」，也绝不能像旧代码那样报「可能已被手工删除」——
-    //    必须直说菜单没回收掉、去哪儿收拾，否则用户看到的就是一棵莫名多出来的孤儿菜单树。
-    message.error(
-      `表单已下线，但菜单回收失败：请到「系统管理 → 菜单管理」手工删除「${row.name}」及其按钮权限`
-    )
+  } else {
+    const parts: string[] = []
+    if (menuFailed) {
+      parts.push(`Web 菜单回收失败，请到「系统管理 → 菜单管理」手工删除「${row.name}」及其按钮权限`)
+    }
+    if (navFailed) {
+      parts.push(`App 端入口回收失败，请到「系统管理 → 移动端导航」手工删除「${row.name}」`)
+    }
+    message.error(`表单已下线，但${parts.join('；')}`)
   }
   await getList()
 }
