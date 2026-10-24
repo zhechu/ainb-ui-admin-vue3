@@ -53,6 +53,12 @@ export type FormDesignVO = {
   publishedVersion?: number
   /** 发布生成的菜单编号 */
   menuId?: number
+  /**
+   * 发布生成的 App 端导航节点编号（system_nav_node.id）。
+   * 有值 = 已发布到移动端；发布弹窗据此默认勾选「App 移动端」，
+   * 下线时据此去删导航节点
+   */
+  appNavNodeId?: number
   sort?: number
   remark?: string
   creator?: string
@@ -142,6 +148,12 @@ export type FormDesignPublishReqVO = {
   /** 上级菜单编号，首次发布时必填 */
   parentMenuId?: number
   menuSort?: number
+  /** 是否同时发布到 App 端（移动端导航树） */
+  publishToApp?: boolean
+  /** App 端导航节点的上级分组，首次发布到 App 时必填 */
+  appParentNavNodeId?: number
+  /** App 端导航节点排序，可选，默认取表单的 sort */
+  appMenuSort?: number
 }
 
 // ==================== 设计态 ====================
@@ -214,16 +226,55 @@ export type PublishMenuConfigVO = {
 }
 
 /**
+ * 待创建/待更新的 App 端导航节点配置。由后端算好，前端拿去调 /system/nav-node/create
+ *
+ * 与 menuConfig 同一条道理：infra 不能反向依赖 system，导航节点的写入必须由前端完成。
+ * 这里只给「表单侧算得出来」的字段；terminal / status / visible / menuRefId 这些
+ * system 侧的取值由前端在调用时补齐。
+ */
+export type PublishNavNodeConfigVO = {
+  name: string
+  /** 上级分组编号（分组或子分组） */
+  parentId: number
+  /** 节点类型，发布产物恒为 3（导航项/叶子） */
+  nodeType: number
+  /** 移动端页面路径 */
+  route: string
+  /** 页面参数，形如 code=customer */
+  query: string
+  /** 权限串，逗号分隔、任一命中即可见。只给 query —— 语义是「能查才显示」 */
+  permissions: string
+  sort: number
+  /** 图标（wot-ui 图标名） */
+  icon: string
+  /** 图标颜色，留空走主题色 */
+  iconColor: string
+}
+
+/**
  * 发布结果
  *
  * infra 模块不能反向依赖 system（system 已依赖 infra，反向会循环依赖），
  * 所以后端只做校验+存版本，菜单由前端拿 menuConfig 再调 /system/menu/create 建。
+ * App 端导航节点同理，走 /system/nav-node/create + bind-app-nav。
  */
 export type FormDesignPublishRespVO = {
   version: number
   /** 是否需要前端建菜单。已有菜单时为 false */
   needCreateMenu: boolean
   menuConfig?: PublishMenuConfigVO
+  /** 是否需要前端新建 App 导航节点。未勾选 App 端、或已有节点时为 false */
+  needCreateNavNode: boolean
+  /** 未勾选 App 端时为 null；needCreateNavNode 为 false 时拿它去更新已有节点 */
+  navNodeConfig?: PublishNavNodeConfigVO
+}
+
+/** 下线结果。菜单与导航节点的物理删除都由前端完成 */
+export type FormDesignUnpublishRespVO = {
+  /** 需要删除的菜单编号列表，父菜单在前 */
+  menuIds: number[]
+  /** 需要删除的 App 导航节点编号，未发布过 App 端时为 null */
+  appNavNodeId?: number
 }
 
 /** 发布。返回版本号与待创建的菜单配置 */
@@ -241,8 +292,20 @@ export const bindMenu = (designId: number, menuId: number, permissionMenuIds?: n
   })
 }
 
-/** 下线。返回需要前端删除的菜单编号列表 */
-export const unpublishFormDesign = (id: number): Promise<number[]> => {
+/**
+ * 登记前端已创建的 App 端导航节点，供下线时精确回收
+ *
+ * 与 bindMenu 同一个两步式：infra 不能反向依赖 system，节点由前端建、编号回调登记。
+ */
+export const bindAppNav = (designId: number, navNodeId: number) => {
+  return request.post({
+    url: '/infra/form-design/bind-app-nav',
+    params: { designId, navNodeId }
+  })
+}
+
+/** 下线。返回需要前端删除的菜单编号与 App 导航节点编号 */
+export const unpublishFormDesign = (id: number): Promise<FormDesignUnpublishRespVO> => {
   return request.post({ url: '/infra/form-design/unpublish', params: { id } })
 }
 
@@ -250,10 +313,7 @@ export const getVersionList = (designId: number): Promise<FormDesignVersionVO[]>
   return request.get({ url: '/infra/form-design/version-list', params: { designId } })
 }
 
-export const getVersion = (
-  designId: number,
-  version: number
-): Promise<FormDesignVersionVO> => {
+export const getVersion = (designId: number, version: number): Promise<FormDesignVersionVO> => {
   return request.get({ url: '/infra/form-design/get-version', params: { designId, version } })
 }
 
