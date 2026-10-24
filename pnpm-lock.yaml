@@ -62,6 +62,12 @@ importers:
       benz-amr-recorder:
         specifier: ^1.1.5
         version: 1.1.5
+      bpmn-js:
+        specifier: ^18.16.1
+        version: 18.16.1
+      bpmn-js-properties-panel:
+        specifier: 5.54.0
+        version: 5.54.0(@bpmn-io/properties-panel@3.55.0)(bpmn-js@18.16.1)(camunda-bpmn-js-behaviors@1.7.2(bpmn-js@18.16.1)(camunda-bpmn-moddle@7.0.1)(zeebe-bpmn-moddle@1.7.0))(diagram-js@15.14.0)
       bpmn-js-token-simulation:
         specifier: ^0.39.3
         version: 0.39.3
@@ -270,12 +276,6 @@ importers:
       autoprefixer:
         specifier: ^10.5.0
         version: 10.5.0(postcss@8.5.14)
-      bpmn-js:
-        specifier: ^18.16.1
-        version: 18.16.1
-      bpmn-js-properties-panel:
-        specifier: 5.54.0
-        version: 5.54.0(@bpmn-io/properties-panel@3.55.0)(bpmn-js@18.16.1)(camunda-bpmn-js-behaviors@1.7.2(bpmn-js@18.16.1)(camunda-bpmn-moddle@7.0.1)(zeebe-bpmn-moddle@1.7.0))(diagram-js@15.14.0)
       consola:
         specifier: ^3.4.2
         version: 3.4.2
