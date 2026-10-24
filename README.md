@@ -77,7 +77,7 @@
 - **多租户**：登录页带租户名，超管顶部可切换租户
 - **主题**：可配置主题 + 暗黑模式 + 项目配置抽屉
 - **国际化**：内置 `zh-CN` / `en` 两套
-- **组件**：64 个通用组件全部自动注册，含 `Form*` 系列重型表单组件、`DiyEditor`、`MagicCubeEditor`、`Portal`、`CodeEditor`、`JsonEditor`、`Table` / `TableActions`
+- **组件**：63 个组件目录全部自动注册（`ls -d src/components/*/ | wc -l`），含 `Form*` 系列重型表单组件、`DiyEditor`、`MagicCubeEditor`、`Portal`、`CodeEditor`、`JsonEditor`、`Table` / `TableActions`
 - **hooks**：`useTable` / `useCrudSchemas` / `useForm` / `useFieldPermission` 等，CRUD 页面按 schema 驱动
 - **设计器**：表单设计器（vendored form-create designer）、门户设计器（24 栏画布）、流程编排画布（`@vue-flow/core`）、BPMN 设计器（bpmn-js）
 - **AI**：SSE 流式对话、推理过程可展开、草稿卡与人工确认（HITL）、知识引用可点来源
@@ -262,7 +262,7 @@
 ├── src/
 │   ├── api/               后端接口封装，一级：agent ai bpm crm im infra login system
 │   ├── assets/            图片、SVG 图标
-│   ├── components/        64 个通用组件（全部自动注册）
+│   ├── components/        63 个组件目录（全部自动注册）
 │   ├── config/axios/      请求与响应拦截、加解密、错误形状
 │   ├── directives/        v-hasPermi / v-hasRole
 │   ├── hooks/web/         useTable / useCrudSchemas / useForm / useFieldPermission …
