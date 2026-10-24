@@ -197,7 +197,7 @@ const rowButtons: TableActionButton[] = [
   },
   {
     key: 'create',
-    label: '新增下级',
+    label: '新增',
     permission: ['system:nav-node:create'],
     // 导航项是叶子，不允许再挂子节点（与移动端三层渲染一致）
     show: (row) => row.nodeType !== NAV_NODE_TYPE.ITEM,
