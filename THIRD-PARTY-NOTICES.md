@@ -385,8 +385,10 @@ devDependencies 下而免除**。
 
 因此：**`unibest`、`uni-app`（Apache-2.0）、`wot-design-uni`、`z-paging` 不出现在本清单**——
 它们是移动端仓的上游与运行时依赖，本仓不含其代码、不打包其产物；其协议全文在移动端仓的
-`licenses/` 目录。同理 **`ruoyi-vue-pro`、Spring Boot、Flowable、MyBatis-Plus、Hutool（MPL-2.0）
-等后端组件也不出现在本清单**，见后端仓自己的 notices。
+`licenses/` 目录。同理 **`ruoyi-vue-pro`、Spring Boot、Flowable、MyBatis-Plus、Hutool、GraalJS
+等后端组件也不出现在本清单**，见后端仓自己的 notices——后端实测解析出 528 个第三方 Maven 坐标，
+其中含木兰宽松许可证（MulanPSL-2.0）、EPL-2.0、LGPL、UPL-1.0 以及 Oracle FUTC / GraalVM GFTC
+等**非开源的专有免费条款**，协议构成与本仓完全不同。
 
 三份清单**内容不同是应当的**，不要互相对齐成一样。
 
