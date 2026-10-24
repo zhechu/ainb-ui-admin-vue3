@@ -86,9 +86,6 @@ importers:
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
-      dhtmlx-gantt:
-        specifier: ^9.1.1
-        version: 9.1.4
       diagram-js:
         specifier: ^15.14.0
         version: 15.14.0
@@ -2932,9 +2929,6 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
-
-  dhtmlx-gantt@9.1.4:
-    resolution: {integrity: sha512-XCNA5QUiuV79Xq1ykNpH9LFNR2IVpDZMqnmBV6dsBeOkHyPMOpkyQ/gqAPCcK2GAvYHoN2nGAMYb2LldCWhMuQ==}
 
   diagram-js-direct-editing@3.3.0:
     resolution: {integrity: sha512-EjXYb35J3qBU8lLz5U81hn7wNykVmF7U5DXZ7BvPok2IX7rmPz+ZyaI5AEMiqaC6lpSnHqPxFcPgKEiJcAiv5w==}
@@ -8365,8 +8359,6 @@ snapshots:
   destr@2.0.5: {}
 
   detect-libc@2.1.2: {}
-
-  dhtmlx-gantt@9.1.4: {}
 
   diagram-js-direct-editing@3.3.0(diagram-js@15.14.0):
     dependencies:
