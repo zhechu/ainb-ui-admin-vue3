@@ -93,11 +93,11 @@
         <el-form-item label="图标">
           <template #label>
             <Tooltip
-              message="移动端 @wot-ui/ui 图标名，如 user / safe / notification（非 Web 图标）"
+              message="移动端 @wot-ui/ui 图标，点右侧按钮可视化选择（非 Web 图标）"
               title="图标"
             />
           </template>
-          <el-input v-model="formData.icon" clearable placeholder="wot-ui 图标名，如 user" />
+          <WotIconSelect v-model="formData.icon" />
         </el-form-item>
         <el-form-item label="图标颜色">
           <el-color-picker v-model="formData.iconColor" />
@@ -138,6 +138,7 @@ import * as NavNodeApi from '@/api/system/navNode'
 import { CommonStatusEnum } from '@/utils/constants'
 import { DICT_TYPE, getIntDictOptions } from '@/utils/dict'
 import { defaultProps, handleTree } from '@/utils/tree'
+import WotIconSelect from './WotIconSelect.vue'
 import { NAV_NODE_TYPE, NAV_NODE_TYPE_OPTIONS, NAV_TERMINAL } from './constants'
 
 defineOptions({ name: 'SystemNavNodeForm' })
