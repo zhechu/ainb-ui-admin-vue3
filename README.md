@@ -20,7 +20,8 @@
   <a href="https://doc.enlev.cn"><b>📚 官方文档</b></a> &nbsp;|&nbsp;
   <a href="https://doc.enlev.cn/guide/"><b>使用手册</b></a> &nbsp;|&nbsp;
   <a href="https://doc.enlev.cn/develop/"><b>开发手册</b></a> &nbsp;|&nbsp;
-  <a href="https://gitee.com/enlev/ainb"><b>后端仓库</b></a> 
+  <a href="https://gitee.com/enlev/ainb"><b>后端仓库</b></a> &nbsp;|&nbsp;
+  <a href="https://gitee.com/enlev/ainb-ui-admin-uniapp"><b>移动端仓库</b></a>
 </p>
 
 ![后台首页](.image/home.jpeg)
@@ -35,6 +36,7 @@
 - **在线演示**：<https://demo.enlev.cn>
 - **官方文档**：<https://doc.enlev.cn>
 - **后端仓库**：[ainb](https://gitee.com/enlev/ainb)
+- **移动端仓库**：[ainb-ui-admin-uniapp](https://gitee.com/enlev/ainb-ui-admin-uniapp)（同一套后端与权限体系，H5 / 微信小程序 / App）
 - **五分钟跑起来**：见下文 [🚀 快速开始](#-快速开始)
 
 ### 演示账号
@@ -79,7 +81,7 @@
 - **hooks**：`useTable` / `useCrudSchemas` / `useForm` / `useFieldPermission` 等，CRUD 页面按 schema 驱动
 - **设计器**：表单设计器（vendored form-create designer）、门户设计器（24 栏画布）、流程编排画布（`@vue-flow/core`）、BPMN 设计器（bpmn-js）
 - **AI**：SSE 流式对话、推理过程可展开、草稿卡与人工确认（HITL）、知识引用可点来源
-- **编辑器**：Monaco Editor、CodeMirror 6、wangEditor-next、jsoneditor
+- **编辑器**：Monaco Editor（`CodeEditor` 现行实现）、CodeMirror 5（只在 vendored form-designer 内）、wangEditor-next、jsoneditor
 - **图表**：ECharts 6 + echarts-wordcloud
 
 ---
@@ -88,10 +90,29 @@
 
 | 仓库 | 技术栈 | 说明 |
 | --- | --- | --- |
-| **ainb-ui-admin-vue3**（本仓库） | Vue 3.5 + Vite 8 + Element Plus | 管理后台前端，`pnpm dev` 起在 80 端口 |
+| **ainb-ui-admin-vue3**（本仓库） | Vue 3.5 + Vite 8 + Element Plus | Web 管理端，`pnpm dev` 起在 80 端口 |
 | **ainb** | Java 17 + Spring Boot 3.5 + Maven | 后端服务，端口 48080，接口前缀 `/admin-api` |
+| **ainb-ui-admin-uniapp** | Vue 3.4 + uni-app 3.0 + wot-ui | 移动端，H5 起在 9000 端口，另出微信小程序 / App 产物 |
 
-🔴 **前端不走 Vite proxy**：`vite.config.ts` 的 `server.proxy` 整段是注释掉的（注释原文：「server 端已经支持跨域」），浏览器**直连** `http://localhost:48080/admin-api`。
+三端**共用同一个后端、同一套 `/admin-api`、同一套权限体系与租户**。移动端不拥有任何私有接口契约，接口能力以本仓已在用的为准。
+
+🔴 **前端不走 Vite proxy**：`vite.config.ts` 的 `server.proxy` 整段是注释掉的（注释原文：「server 端已经支持跨域」），浏览器**直连** `http://localhost:48080/admin-api`。移动端同理（H5 直连 `VITE_SERVER_BASEURL`），且**微信小程序 / App 端还需把后端域名配进小程序后台的 request / uploadFile 合法域名白名单**，否则真机请求被平台拦截。
+
+### 本仓为移动端提供的两处配置入口
+
+移动端工作台**不在移动端代码里写死菜单**，它消费的是服务端分端导航树 `system_nav_node`（`terminal=app` 的自引用树），而维护这棵树的界面在本仓：
+
+| 入口 | 代码位置 | 作用 |
+| --- | --- | --- |
+| 「移动端导航」编辑器（菜单里显示为「App菜单」） | `src/views/system/navNode/` | 维护 `system_nav_node` 的三层树：分组 / 子分组 / 导航项（`NAV_NODE_TYPE` 1/2/3，导航项是叶子、不允许再挂子节点，与移动端三层渲染一致）。`terminal` 固定为 `app`（后端 `NavTerminalEnum` 目前只支持这一端）。列排布与「Web菜单」页对齐：名称 ▸ 图标 ▸ 排序 ▸ 权限标识 ▸ 页面路径 ▸ 类型 ▸ 显示 ▸ 状态 ▸ 操作 |
+| 表单「发布到 App 端」 | `src/views/infra/formDesign/components/PublishDialog.vue` | 发布弹窗勾选后在导航树建一个入口指向该表单的运行页，并回写 `infra_form_design.app_nav_node_id`；表单下线时连带回收该节点 |
+
+两个细节容易踩：
+
+- **图标填的是 wot 字形名，不是 iconify 名**。Web菜单页画 iconify 图标，App菜单页画 wot 字形（`WotIconSelect.vue` + `wotIcons.ts`，与移动端同源注入的字体）——手填错一个名字，移动端只会渲染空白方块，所以这一列是可视化选择器而非输入框。
+- **`route` 必须命中移动端的 `pages.json`**，`query` 承载在线表单 `code=xxx` 一类页面参数，`onlyPc` 节点在移动端点击只弹提示页。**权限标识留空＝所有登录用户可见**，与 Web菜单页口径一致。
+
+改完这些配置，移动端**下次登录即生效**（登录成功后强制刷新导航树），无需重新构建移动端。
 
 ---
 
@@ -178,6 +199,32 @@
 | ★ | **用量看板 / 助手配置** | 按场景与按用户两个维度，配额告警条 + 统计卡 + 占比表 + 调用明细 |
 |  | 知识库 / 对话 / 绘图 / 音乐 / 思维导图 / 写作 | 上游 AI 域界面 |
 
+### 移动端覆盖了其中哪些
+
+上表的功能在移动端（[ainb-ui-admin-uniapp](https://gitee.com/enlev/ainb-ui-admin-uniapp)）**不是全量对等**，按分包如实说明：
+
+| 移动端分包 | 覆盖情况 |
+| --- | --- |
+| 工作台 / 审批 / 消息 / 我的 | ✅ 四个 tab 齐全（`src/pages/{index,bpm,message,user}`）。工作台有 4 种布局（`section` / `accordion` / `sidebar` / `tabs`，默认 `sidebar`，用户可切且本地记住）；审批有 待办 / 已办 / 我的流程 / 抄送 四个列表，详情页内嵌在线表单渲染、审批意见、加签 / 转办 / 退回 / 撤销 |
+| 系统管理、基础设施 | ✅ 用户 / 部门 / 岗位 / 角色 / 菜单 / 字典 / 区域 / 通知公告 / 短信 / 邮件 / OAuth2 / 操作与登录日志 / 租户；文件 / 配置 / 定时任务 / 代码生成 / 数据源 / API 日志 / 在线表单运行时 |
+| 工作流程（BPM） | ✅ 上述审批四列表 + 流程定义 / 分类 / 用户组 / 表达式 / 监听器管理 |
+| AI 域 | ✅ 助手对话、知识库、模型 / 工具 / 角色 / API 密钥管理，以及绘图 / 音乐 / 思维导图 / 写作 / 工作流 |
+| ★ Agent 域（自研） | ❌ **移动端一行代码都没有**：`src/views/agent/` 的智能助手 / 流程编排画布 / 智能体 / 工具 / 提示词模板 / 用量看板，与后端 `enlev-module-agent` 的全部能力，在移动端既无分包也无 API。手机上要用智能助手，只能开 H5 版 Web 管理端 |
+| CRM / ERP / 商城 / 会员 / IM / IoT / MES / 公众号 / 支付 / WMS / 数据统计 | ⚠️ **11 个分包目录仍在仓库里、也仍注册在 `pages.json` 里参与编译**（继承自上游 yudao-ui-admin-uniapp），但后端 `ainb` 只有 `system` / `infra` / `bpm` / `ai` / `agent` 五个业务模块，且 App菜单（`system_nav_node`）不为它们建节点 —— 所以**编译进包但用户永远点不到**，是待清理的死重量，不是可用功能 |
+
+🔴 **在本仓设计表单时必须知道的控件覆盖差**：以本仓的组件契约 [`src/components/FormWidgets/contracts/form-widget-contracts.json`](./src/components/FormWidgets/contracts/form-widget-contracts.json)（`contractVersion: 2`，63 个控件中 **55 个 `supported: true`**）为唯一事实来源，逐个对照移动端渲染器的类型组（`packages/core/src/registry.ts`）、布局解析器（`packages/wot-ui/src/parsers/`）、`fieldRenderer.vue` 的显式分支与适配层（`src/pages-infra/form-design/run/components/rule-adapter.ts`）核对，结果是：
+
+| 移动端表现 | 数量 | 控件 |
+| --- | --- | --- |
+| ✅ 正常渲染 | 44 | 其余全部 |
+| ⚠️ 降级渲染 | 1 | `RemotePicker`（远程选择器）→ 降级成普通下拉，且接口数据源**只在进页面时取一次**，「上级变了下级候选跟着变」的联动在移动端不生效 |
+| ❌ 编辑态整条剔除、只读态降级成纯文本 | 8 | `OrgPicker`（组织选择器）、`RelationForm`（关联表单）、`Formula`（计算公式）、`BillNumberInput`（单据编号）、`SystemValue`（系统值）、`CodeImage`（条码/二维码）、`Link`（超链接）、`timeRange`（时间区间） |
+| ❌ 渲染器完全不认 | 2 | `FormSteps` / `FormStep`（步骤条 / 步骤） |
+
+其中真正会**毁数据或让表单填不下去**的只有两个：`OrgPicker`（值契约是 `{type,id}`，映射到用户/部门选择器会把 `{type:'user',id:1}` 写成 `1`，读回来对不上）与 `RelationForm`（需要「按目标表单弱查询 + 带出字段」的整套交互，接口有、组件没有）。`Formula` / `SystemValue` / `BillNumberInput` 本来由服务端填，剔除不影响结果；`CodeImage` / `Link` 是 `storage: none` 的纯展示控件，不带数据。
+
+**要给移动端用的表单，设计时避开 `OrgPicker` 与 `RelationForm`；用到 `RemotePicker` 时接受「候选不联动」这个代价。**
+
 ---
 
 ## 🐨 技术栈
@@ -197,7 +244,7 @@
 | [bpmn-js](https://github.com/bpmn-io/bpmn-js) | BPMN 流程设计器（+ properties-panel 5.54.0） | 18.x |
 | [@vue-flow/core](https://vueflow.dev/) | 工作流编排画布 | 1.48.2 |
 | [Monaco Editor](https://microsoft.github.io/monaco-editor/) | 代码编辑器 | 0.56.x |
-| [CodeMirror 6](https://codemirror.net/) | 轻量代码编辑器（SQL / JS） | 6.x |
+| [CodeMirror 5](https://codemirror.net/5/) | 轻量代码编辑器，**只在 vendored form-designer 内使用**（`codemirror5` = `npm:codemirror@5.65.7` 别名） | 5.65.7 |
 | [wangEditor-next](https://wangeditor-team.github.io/wangEditor-next/) | 富文本编辑器 | 5.7.x |
 | [ECharts](https://echarts.apache.org/) | 图表（+ echarts-wordcloud） | 6.x |
 | [Vitest](https://cn.vitest.dev/) | 单元测试 | 3.2.x |
@@ -590,13 +637,16 @@ pnpm test:unit:watch                            # watch
 | 低代码四域的前后端链路 | 开发手册 `01-lowcode/` |
 | 授权 / 诊断页背后的判定逻辑 | 开发手册 `02-permission/` |
 | Agent 前端流式（SSE）实现 | 开发手册 `03-agent/frontend-sse` |
+| 移动端工程结构、请求与登录态、`system_nav_node` 全链路、多端构建与坑位 | [移动端仓库 README](https://gitee.com/enlev/ainb-ui-admin-uniapp)（开发手册的 `05-mobile/` 章正在补） |
 | 新增一个菜单功能端到端、测试规范、坑位索引 | 开发手册 `05-practice/` |
 
 ---
 
 ## 🙏 鸣谢
 
-启凌智搭不是从零写出来的。它站在三个优秀的开源项目肩膀上，我们对上游作者的工作抱有真诚的敬意 —— 没有他们的开源，就没有本项目的起点。
+启凌智搭不是从零写出来的。它站在五个优秀的开源项目肩膀上，我们对上游作者的工作抱有真诚的敬意 —— 没有他们的开源，就没有本项目的起点。
+
+其中前三个是**本仓库自己**的上游；后两个是同产品移动端仓库 [`ainb-ui-admin-uniapp`](https://gitee.com/enlev/ainb-ui-admin-uniapp) 的上游，**本仓不含它们的任何代码**，在此一并署名只是为了让「启凌智搭」这个产品整体的归属在一处看全 —— 移动端仓有自己的 `THIRD-PARTY-NOTICES.md` 与 `licenses/`，两份清单内容不同是应当的，不要互相对齐成一样。
 
 ### [yudao-ui-admin-vue3](https://gitee.com/yudaocode/yudao-ui-admin-vue3) · 芋道源码
 
@@ -612,9 +662,25 @@ pnpm test:unit:watch                            # watch
 
 我们没有把它当 npm 依赖装，而是把 `v3.2.38` 的源码 vendored 进 `src/lib/{form-create,form-designer}/`（212 个文件），以便在不 fork 上游包的前提下深度改造渲染层（自研控件、字段映射一键生成、设计期体检、列表设计、逻辑与扩展）。**代价是我们承诺这两个目录与上游保持零 diff**：所有定制都写在外围，ESLint 排除、Vite alias 顺序、手动分包规则都围绕这一点配置，升级流程与 copy 白名单记录在 `src/lib/form-create/VENDOR.md`。感谢 [xaboy](https://github.com/xaboy) 与 form-create 社区的长期维护。
 
+> 移动端**不内嵌** form-create 源码：它把 form-create 的规则模型（rule model）用 uni-app + TypeScript 独立实现了一遍（`src/pages-bpm/components/form-create/packages/{core,utils,wot-ui}`），渲染目标是 `@wot-ui/ui` 而不是 Element Plus。规则格式与 API 概念仍源自 form-create，因此移动端仓同样保留了它的协议文本。在线表单另有适配层 `src/pages-infra/form-design/run/components/rule-adapter.ts`，把 Web 设计器多出来的控件差异全部收在一处，`packages/` 一行不动 —— 这也是上表「控件覆盖差」的判定依据。
+
+### [yudao-ui-admin-uniapp](https://gitee.com/yudaocode/yudao-ui-admin-uniapp) · 芋道源码
+
+移动端仓库 `ainb-ui-admin-uniapp` 的**业务页面底座**：`src/pages-*` 各分包、`src/components/yudao-ui/` 下的 `yd-*` 组件、`src/http/` 请求封装与 `src/store/` 状态管理都来自它。它让移动端能直接复用与 Web 端同一套接口形状、字典约定与分页协议 —— 这也是三仓「同一套后端、同一套权限体系」得以成立的前提。感谢 [芋道源码](https://gitee.com/yudaocode) 与 yudao-ui-admin-uniapp 全体贡献者。
+
+### [unibest](https://github.com/feige996/unibest) · 菲鸽
+
+移动端仓库的**工程骨架**（v4.1.0，MIT，`Copyright (c) 2025 菲鸽`）：Vite 配置、约定式路由（`@uni-helper/vite-plugin-uni-pages` + `definePage`）、UnoCSS 原子化样式、多端构建脚本、`env/` 分环境叠加与 eslint / husky / commitlint 工程化。移动端能一套代码同时出 H5、各家小程序与 App，靠的是这层骨架。感谢 [菲鸽](https://github.com/feige996) 与 unibest 社区。
+
+移动端还依赖 DCloud 的 [uni-app](https://github.com/dcloudio/uni-app) 全家桶（**Apache-2.0**）、[`@wot-ui/ui`](https://github.com/wot-ui/wot-ui)（原 wot-design-uni，MIT，`Copyright (c) 2023 weisheng`）与 [z-paging](https://github.com/SmileZXLee/uni-z-paging)（MIT，`Copyright (c) 2021 李兆祥`）—— 完整清单在移动端仓的 `THIRD-PARTY-NOTICES.md`，本仓不重复收录。
+
 ### 其他开源组件
 
-本项目还依赖 Vue、Vite、TypeScript、Element Plus、Pinia、UnoCSS、vue-i18n、vueuse、bpmn-js、@vue-flow/core、Monaco Editor、CodeMirror、wangEditor-next、ECharts、Vitest 等大量第三方开源组件。各组件按其原始许可协议授权，完整协议文本与版权声明见 [`licenses/`](./licenses) 目录与 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)。
+本项目还依赖 Vue、Vite、TypeScript、Element Plus、Pinia、UnoCSS、vue-i18n、vueuse、bpmn-js、@vue-flow/core、Monaco Editor、CodeMirror 5、wangEditor-next、ECharts、Vitest 等大量第三方开源组件。
+
+各组件**按其原始许可协议授权，不因本项目以 MIT 发布而变成 MIT**。绝大多数是 MIT，另有 Apache-2.0（`echarts`、`jsoneditor`、`livekit-client`）、BSD-3-Clause（`highlight.js`、`qs`）、ISC（`echarts-wordcloud`）、SIL OFL 1.1 与 CC-BY-4.0（Iconify 图标集 `fa` / `fa-solid` 的数据，经 `addCollection()` 编译进主 chunk）。其中一处**附加义务**要单独点名：`bpmn-js` 是 MIT，但附带「不得移除 bpmn.io 水印」条款，流程设计器上那个 logo 请留着。
+
+逐组件的版本、版权行、协议归类与判定依据见 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)，协议全文见 [`licenses/`](./licenses)。
 
 ---
 
@@ -623,3 +689,5 @@ pnpm test:unit:watch                            # watch
 本项目以 **[MIT 协议](./LICENSE)** 开源，Copyright (c) 2026 启凌。
 
 个人与企业可 100% 免费使用，可自由复制、修改、分发，也可用于商业用途。本项目派生自上游 MIT 项目并内嵌 MIT 协议的 form-create 源码副本，完整归属见 [🙏 鸣谢](#-鸣谢)。
+
+⚠️ **MIT 授权只覆盖本项目自己的代码，不覆盖第三方组件**。再分发（含二次开发后对外发布）时请连同 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) 与 [`licenses/`](./licenses) 一起分发，并履行其中非 MIT 组件的归属义务 —— 具体是 Apache-2.0 组件的署名、OFL / CC-BY 图标数据的版权声明，以及 bpmn-js 的水印条款。
