@@ -13,7 +13,7 @@
         >测试中…（已耗时 {{ elapsed }} 秒，最多等 {{ timeoutSeconds }} 秒）</span
       >
       <span class="text-12px text-[var(--el-text-color-secondary)]">
-        正在向厂商发一次真实的最小对话请求，会消耗少量 token
+        正在向厂商发一次真实的最小{{ probeKindText }}请求，会消耗少量 token
       </span>
     </div>
 
@@ -50,10 +50,10 @@
         <pre class="mte__pre">{{ result.errorMsg }}</pre>
       </div>
 
-      <!-- 成功时的回复片段与 token 用量 -->
+      <!-- 成功时的回复片段与 token 用量。向量模型没有「回复」，这一格放的是维度等可核对的事实 -->
       <div v-if="result.success">
         <div class="mte__label">
-          回复片段
+          {{ isEmbedding ? '向量结果' : '回复片段' }}
           <span v-if="tokenText" class="mte__tokens">{{ tokenText }}</span>
         </div>
         <pre class="mte__pre">{{ result.reply }}</pre>
@@ -66,6 +66,12 @@
         <el-descriptions-item label="端点路由">{{ multiModelText }}</el-descriptions-item>
         <!-- A3：思考模式是配置驱动的第三档判定，不回显就只能靠猜「改了配置到底生效没有」 -->
         <el-descriptions-item label="思考模式">{{ thinkingText }}</el-descriptions-item>
+        <!-- 🔴 只对向量模型显示。换 embedding 模型前必须先比这一格：向量文件按 Java 类名而非模型名
+             命名，所有通义 embedding 模型共用一个 simple_DashScopeEmbeddingModel.json，
+             维度不一致就意味着切换会把两个不兼容的向量空间混进同一个文件 -->
+        <el-descriptions-item v-if="isEmbedding" label="向量维度">
+          {{ result.embeddingDimensions ?? '-' }}
+        </el-descriptions-item>
         <el-descriptions-item label="耗时">
           {{ result.durationMs != null ? `${(result.durationMs / 1000).toFixed(1)}s` : '-' }}
         </el-descriptions-item>
@@ -128,6 +134,7 @@
 <script setup lang="ts">
 import { ModelApi, ModelTestVO, ModelVO } from '@/api/ai/model/model'
 import { DICT_TYPE } from '@/utils/dict'
+import { AiModelTypeEnum } from '@/views/ai/utils/constants'
 
 /**
  * AI 模型可用性测试弹窗
@@ -153,6 +160,17 @@ const dialogTitle = computed(() =>
   currentModel.value ? `模型可用性测试 - ${currentModel.value.name}` : '模型可用性测试'
 )
 
+/**
+ * 🔴 后端按模型类型分流测试：对话打 chat 端点、向量打 embedding 端点，弹窗文案必须跟着分流。
+ * 给向量模型显示「最小对话请求」「端点路由」「思考模式」，等于把它压根没有的判定冒充成结论 ——
+ * 与下面 multiModelText 里「null 不能显示成 false」是同一条纪律。
+ * 类型取自列表行（currentModel）而不是 result：后端失败时 result 里可能一格类型信息都没有，
+ * 而文案在请求发出之前就得先决定。
+ */
+const isEmbedding = computed(() => currentModel.value?.type === AiModelTypeEnum.EMBEDDING)
+
+const probeKindText = computed(() => (isEmbedding.value ? '向量' : '对话'))
+
 const durationText = computed(() => {
   const ms = result.value?.durationMs
   return ms != null ? `（耗时 ${(ms / 1000).toFixed(1)}s）` : ''
@@ -163,10 +181,17 @@ const tokenText = computed(() => {
   if (promptTokens == null && completionTokens == null) {
     return ''
   }
+  // 向量模型不生成 token，后端刻意不回 completionTokens：显示成「输出 0」会被读成厂商说了输出是 0
+  if (isEmbedding.value) {
+    return `token：输入 ${promptTokens ?? '-'}`
+  }
   return `token：输入 ${promptTokens ?? '-'} / 输出 ${completionTokens ?? '-'}`
 })
 
 const multiModelText = computed(() => {
+  if (isEmbedding.value) {
+    return '不适用（向量模型无端点分档）'
+  }
   // null 与 false 必须分开：false 是「已确认走文本端点」，null 是「这个平台没有端点分档」。
   // 把 null 显示成 false，等于替厂商编了一个它没说过的结论
   const value = result.value?.multiModel
@@ -177,6 +202,9 @@ const multiModelText = computed(() => {
 })
 
 const thinkingText = computed(() => {
+  if (isEmbedding.value) {
+    return '不适用（向量模型无思考模式）'
+  }
   // 同 multiModelText 的口径：null 是「这个平台没有思考模式这档」，不能显示成「关」
   const value = result.value?.enableThinking
   if (value === null || value === undefined) {

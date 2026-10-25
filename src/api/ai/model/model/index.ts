@@ -26,9 +26,14 @@ export interface ModelTestVO {
   enableThinking?: boolean | null // 实际发给厂商的思考模式开关；非通义平台为 null
   modelStatus?: number // 模型当前启用状态（事实回显，测已禁用模型时尤其重要）
   keyStatus?: number // 密钥当前启用状态（事实回显）
-  reply?: string // 成功时的回复片段
+  reply?: string // 成功时的回复片段；向量模型这一格放的是维度等可核对的事实
+  // 向量维度，只对向量模型（type=5）有值。换 embedding 模型前必须比这一格：
+  // SimpleVectorStore 的向量文件按 Java 类名而不是模型名命名，所有通义 embedding 模型共用一个
+  // simple_DashScopeEmbeddingModel.json —— 维度不一致就意味着切换会把两个不兼容的向量空间
+  // 混进同一个文件，而检索不报错，只静默返回不相关的段落
+  embeddingDimensions?: number
   promptTokens?: number // 输入 token 用量
-  completionTokens?: number // 输出 token 用量
+  completionTokens?: number // 输出 token 用量；向量模型不生成 token，恒为空
   errorMsg?: string // 失败时的厂商原文，逐字带回
   // 失败分型：QUOTA-额度类（不切换候选，冷却 30 分钟）/ CONFIG-配置类（切换候选，冷却 30 分钟）
   //          / TRANSIENT-瞬时类（切换候选，冷却 60 秒）。成功或本地拦截（如硬超时）时为空
