@@ -12,15 +12,29 @@
       <span class="text-14px"
         >测试中…（已耗时 {{ elapsed }} 秒，最多等 {{ timeoutSeconds }} 秒）</span
       >
-      <span class="text-12px text-[var(--el-text-color-secondary)]">
+      <span v-if="isSupported" class="text-12px text-[var(--el-text-color-secondary)]">
         正在向厂商发一次真实的最小{{ probeKindText }}请求，会消耗少量 token
+      </span>
+      <span v-else class="text-12px text-[var(--el-text-color-secondary)]">
+        本类型不会打任何厂商端点，结论由后端直接给出
       </span>
     </div>
 
     <!-- 结果 -->
     <div v-else-if="result" class="flex flex-col gap-12px">
+      <!-- 图片 / 语音 / 视频各自有独立端点，后端一个都不打。这时 errorMsg 是本系统写的
+           「测试方式不对」说明，不是厂商说的话：既不能挂在「厂商原始响应」下，
+           也不能报「模型不可用」——模型可能好好的，只是这条测试路径不覆盖它 -->
       <el-alert
-        v-if="result.success"
+        v-if="!isSupported"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="本类型暂不支持连通性测试"
+        :description="result.errorMsg"
+      />
+      <el-alert
+        v-else-if="result.success"
         type="success"
         :closable="false"
         show-icon
@@ -43,17 +57,18 @@
       />
 
       <!-- 厂商原文：逐字展示，不做任何加工，也不在前端二次截断。
-           超时除外：那时 errorMsg 是本系统自己写的超时说明，不是厂商说的话，
+           超时与「不支持的类型」两处除外：那时 errorMsg 是本系统自己写的话，不是厂商说的话，
            挂在「厂商原始响应」标题下等于把我们的话冒充成厂商原文 -->
-      <div v-if="!result.success && !result.timedOut && result.errorMsg">
+      <div v-if="isSupported && !result.success && !result.timedOut && result.errorMsg">
         <div class="mte__label">厂商原始响应（逐字）</div>
         <pre class="mte__pre">{{ result.errorMsg }}</pre>
       </div>
 
-      <!-- 成功时的回复片段与 token 用量。向量模型没有「回复」，这一格放的是维度等可核对的事实 -->
+      <!-- 成功时的回复片段与 token 用量。向量模型没有「回复」，这一格放的是维度等可核对的事实；
+           重排序模型放的是「返回几条、首条相关度多少、首条是不是相关那条」 -->
       <div v-if="result.success">
         <div class="mte__label">
-          {{ isEmbedding ? '向量结果' : '回复片段' }}
+          {{ resultLabel }}
           <span v-if="tokenText" class="mte__tokens">{{ tokenText }}</span>
         </div>
         <pre class="mte__pre">{{ result.reply }}</pre>
@@ -161,15 +176,38 @@ const dialogTitle = computed(() =>
 )
 
 /**
- * 🔴 后端按模型类型分流测试：对话打 chat 端点、向量打 embedding 端点，弹窗文案必须跟着分流。
- * 给向量模型显示「最小对话请求」「端点路由」「思考模式」，等于把它压根没有的判定冒充成结论 ——
- * 与下面 multiModelText 里「null 不能显示成 false」是同一条纪律。
+ * 🔴 后端按模型类型分流测试：对话打 chat 端点、向量打 embedding 端点、重排打 rerank 端点，
+ * 弹窗文案必须跟着分流。给向量模型显示「最小对话请求」「端点路由」「思考模式」，
+ * 等于把它压根没有的判定冒充成结论 —— 与下面 multiModelText 里「null 不能显示成 false」是同一条纪律。
+ *
  * 类型取自列表行（currentModel）而不是 result：后端失败时 result 里可能一格类型信息都没有，
  * 而文案在请求发出之前就得先决定。
  */
 const isEmbedding = computed(() => currentModel.value?.type === AiModelTypeEnum.EMBEDDING)
 
-const probeKindText = computed(() => (isEmbedding.value ? '向量' : '对话'))
+const isRerank = computed(() => currentModel.value?.type === AiModelTypeEnum.RERANK)
+
+/** 后端 testModel 只覆盖这三类端点；图片 / 语音 / 视频它一个都不打 */
+const isSupported = computed(
+  () => currentModel.value?.type === AiModelTypeEnum.CHAT || isEmbedding.value || isRerank.value
+)
+
+/** 向量与重排都不生成输出 token，两格只显示输入，否则「输出 -」会被读成厂商报了输出 */
+const isNonGenerative = computed(() => isEmbedding.value || isRerank.value)
+
+const probeKindText = computed(() => {
+  if (isEmbedding.value) {
+    return '向量'
+  }
+  return isRerank.value ? '重排序' : '对话'
+})
+
+const resultLabel = computed(() => {
+  if (isEmbedding.value) {
+    return '向量结果'
+  }
+  return isRerank.value ? '重排序结果' : '回复片段'
+})
 
 const durationText = computed(() => {
   const ms = result.value?.durationMs
@@ -181,16 +219,16 @@ const tokenText = computed(() => {
   if (promptTokens == null && completionTokens == null) {
     return ''
   }
-  // 向量模型不生成 token，后端刻意不回 completionTokens：显示成「输出 0」会被读成厂商说了输出是 0
-  if (isEmbedding.value) {
+  // 向量 / 重排模型不生成 token，后端刻意不回 completionTokens：显示成「输出 0」会被读成厂商说了输出是 0
+  if (isNonGenerative.value) {
     return `token：输入 ${promptTokens ?? '-'}`
   }
   return `token：输入 ${promptTokens ?? '-'} / 输出 ${completionTokens ?? '-'}`
 })
 
 const multiModelText = computed(() => {
-  if (isEmbedding.value) {
-    return '不适用（向量模型无端点分档）'
+  if (isNonGenerative.value) {
+    return `不适用（${probeKindText.value}模型无端点分档）`
   }
   // null 与 false 必须分开：false 是「已确认走文本端点」，null 是「这个平台没有端点分档」。
   // 把 null 显示成 false，等于替厂商编了一个它没说过的结论
@@ -202,8 +240,8 @@ const multiModelText = computed(() => {
 })
 
 const thinkingText = computed(() => {
-  if (isEmbedding.value) {
-    return '不适用（向量模型无思考模式）'
+  if (isNonGenerative.value) {
+    return `不适用（${probeKindText.value}模型无思考模式）`
   }
   // 同 multiModelText 的口径：null 是「这个平台没有思考模式这档」，不能显示成「关」
   const value = result.value?.enableThinking
