@@ -220,7 +220,7 @@ const rowButtons: TableActionButton[] = [
  *
  * 🔴 列宽走 flex 而不是「表格 fixed + 固定列」：v2 的 fixed 模式下所有列宽写死，列总宽一旦
  *    超过容器就横向滚，状态开关 / 操作按钮会被推出屏幕外；而 v1 列表（模型列表那套观感）
- *    是 min-width 自适应、永远铺满不横滚。这里给短列 flexShrink:0 锁死宽度、
+ *    是 min-width 自适应、永远铺满不横滚。这里给短列 flexShrink=0 锁死宽度、
  *    长文本列 flexGrow + minWidth 分摊余量与压缩量：宽屏铺满、窄屏先压文本列、压到 minWidth 才横滚。
  *    ⚠️ 不用 v2 的左右固定列：fixed=false 时主网格的列会被 flex 压缩，而左右覆盖层按未压缩的
  *    宽度自己排版，两层会错位，所以这页不做列固定。
