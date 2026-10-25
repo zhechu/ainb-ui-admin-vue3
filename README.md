@@ -633,12 +633,13 @@ pnpm test:unit:watch                            # watch
 | 从零搭一个应用 / 配行级权限 / 表单接审批流 / 让 AI 安全读写数据 | 使用手册 [场景教程](https://doc.enlev.cn/guide/05-scene/build-app) |
 | 六个端到端实操案例 | 使用手册 [场景案例](https://doc.enlev.cn/guide/06-case/) |
 | 本地把前后端跑起来 | 开发手册 [环境准备与启动](https://doc.enlev.cn/develop/00-intro/setup) |
+| 「我要做 X，该看哪一页」 | 开发手册 [任务索引](https://doc.enlev.cn/develop/tasks) |
 | 前端工程结构、路由与权限机制、组件与 hooks、axios 封装 | 开发手册 `00-intro/{frontend-structure,router-permission,components-hooks,axios-api}` |
 | 低代码四域的前后端链路 | 开发手册 `01-lowcode/` |
 | 授权 / 诊断页背后的判定逻辑 | 开发手册 `02-permission/` |
 | Agent 前端流式（SSE）实现 | 开发手册 `03-agent/frontend-sse` |
+| 新增一个菜单功能端到端、测试规范、坑位索引 | 开发手册 `06-practice/` |
 | 移动端工程结构、请求与登录态、`system_nav_node` 全链路、多端构建与坑位 | [移动端仓库 README](https://gitee.com/enlev/ainb-ui-admin-uniapp)（开发手册的 `05-mobile/` 章正在补） |
-| 新增一个菜单功能端到端、测试规范、坑位索引 | 开发手册 `05-practice/` |
 
 ---
 
