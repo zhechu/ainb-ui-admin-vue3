@@ -67,7 +67,14 @@
     </div>
 
     <!-- 版权 -->
-    <div class="login-footer">Copyright @ 2026 启凌 | MIT License</div>
+    <div class="login-footer">
+      <span
+        >Copyright @ 2026 启凌 | MIT License |
+        <a href="https://beian.miit.gov.cn" rel="noopener noreferrer" target="_blank"
+          >粤ICP备2026165134号</a
+        ></span
+      >
+    </div>
   </div>
 </template>
 
@@ -248,11 +255,23 @@ $prefix-cls: #{$namespace}-login;
     position: relative;
     z-index: 1;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    height: 48px;
+    gap: 4px 12px;
+    min-height: 48px;
+    padding: 0 16px;
     font-size: 13px;
     color: var(--el-text-color-secondary);
+
+    a {
+      color: inherit;
+      text-decoration: none;
+
+      &:hover {
+        color: var(--el-color-primary);
+      }
+    }
   }
 }
 
