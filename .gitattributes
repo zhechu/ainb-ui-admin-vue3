@@ -1,0 +1,26 @@
+# 行尾纪律
+#
+# 本仓开着 core.autocrlf=true，而此前【没有】.gitattributes：git 对象里存 LF，
+# Windows 工作区里全是 CRLF。对 vue / ts / scss 这些文件，那只是编辑器里的一点噪音；
+# 但 .dockerignore 是硬故障，而且故障现象完全不指向行尾 ——
+# 它的模式匹配是【逐字】比的，`node_modules\r` 匹配不到任何东西，
+# 于是整份排除规则静默失效，表现是「构建上下文变成好几个 G」，不是报错。
+# pnpm 的 node_modules 是个符号链接农场，被 docker 解引用后体积会炸开。
+#
+# 🔴 这里【刻意只钉这两类】，没有写 `* text=auto`：
+#    全仓规范化会一次性改掉几千个文件的行尾，diff 里什么都看不见，
+#    而任何一处「把二进制当文本」的误判都会静默损坏文件（png、woff2、ico）。
+
+.dockerignore  text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# 二进制：显式声明，免得哪天有人加了 `* text=auto` 之后被当文本处理
+*.png          binary
+*.jpg          binary
+*.gif          binary
+*.ico          binary
+*.webp         binary
+*.woff         binary
+*.woff2        binary
+*.ttf          binary

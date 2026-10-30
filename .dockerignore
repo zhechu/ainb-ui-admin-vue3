@@ -1,0 +1,30 @@
+# 🔴 L0-4：docker build 的上下文**不受 .gitignore 约束**。.gitignore 只管「什么不进 git」，
+#    docker 会把上下文目录里的全部文件打包发给 daemon，包括没被 git 跟踪的本地产物。
+#    本仓当前没有 Dockerfile（script/docker 下的 compose 指向的 ./ainb-ui-admin 目录并不存在），
+#    但一旦加 nginx 镜像，第一个被 COPY 进去的就是下面这些东西。
+#
+# 🔴 排掉 node_modules / dist* 不只是省时间：pnpm 的 node_modules 是符号链接农场，
+#    docker 打包上下文时会把链接**解引用成实体文件**，几个 GB 起步，
+#    而且里面混着平台相关的二进制（esbuild / rollup 的 .node），拿进镜像也跑不起来。
+
+node_modules
+dist
+dist-*
+coverage
+test-results
+
+# 🔴 本地证据与令牌：绝不进镜像层。镜像层删不掉，事后 docker rmi 也清不掉已 push 的那些
+_logs
+_evidence
+*.log
+token.txt
+
+# 版本库与 IDE
+.git
+.gitignore
+.idea
+.vscode
+
+.DS_Store
+**/.DS_Store
+*.swp
