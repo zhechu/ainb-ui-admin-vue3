@@ -197,6 +197,144 @@ const remainingRouter: AppRouteRecordRaw[] = [
     ]
   },
   {
+    // 🔴 这一页**不能**建成 DB 菜单，原因写在下面那条 meta 注释里
+    path: '/qlzg-case',
+    component: Layout,
+    name: 'QlzgCaseRecallCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'recall',
+        component: () => import('@/views/qlzg/case/recall/index.vue'),
+        name: 'QlzgCaseRecall',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '案例召回',
+          // 从标的台账那一行的「召回」进来，所以高亮标的台账
+          activeMenu: '/qlzg/subject'
+          //
+          // 🔴 为什么走 remaining.ts 而不是建菜单（I3-g-5 实测踩到的）
+          //
+          // 非超管的导航集合是 `GrantDecisionService#listAllowedMenuIdsInternal` 从
+          // **sys_resource 反查 menu_id** 得来的，再用 `completeMenuAncestors` 沿
+          // system_menu 的父链**向上**补全祖先。于是：一个既没有 permission、
+          // 又没有按钮子菜单的页面菜单，没有任何资源行指向它 ⟹ 永远进不了那个集合
+          // ⟹ 前端不会为它注册路由 ⟹ 点「召回」落到 404，全程 200、无一条报错。
+          //
+          // 超管走的是 `menuMapper.selectList()` 全量，所以这个洞**只有非超管能撞见**，
+          // 而 I2-g 的端到端验证是用 admin 跑的 ⟹ 当时全绿。
+          //
+          // ⚠️ 不要试图给它挂一个 `qlzg:case:query` 的按钮子菜单来「补上权限点」：
+          // 塌缩后整个 `qlzg:case` 族只有**一行** sys_resource、只有**一个** menu_id，
+          // 而案例台账与案例召回是**兄弟**、不在彼此的父链上 ——
+          // 承载行指向谁，另一个就从导航里消失。两个兄弟页面不可能共用一个权限族。
+          //
+          // 判据（本仓所有 qlzg 隐藏页都照它办）：
+          // **页面自己带权限点（或有按钮子菜单）⟹ 建菜单；一个都不带 ⟹ 写在这里。**
+          // 「测算」带 qlzg:calculation:{query,create} + qlzg:param-snapshot:update，
+          // 「结果确定」带 qlzg:calc-result:{query,create}，所以那两页是菜单；
+          // 召回页唯一的接口 `/qlzg/case/recall-preview` 属于案例台账已经持有的那个族，
+          // 所以它是这条静态路由。
+        }
+      }
+    ]
+  },
+  {
+    // 🔴 报告作业台与模板设计器都走这里，理由与上面那条召回页**同一条**：
+    //    它们各自与自己的台账是**兄弟**、共用一个权限族
+    //    （`qlzg:report` / `qlzg:template`），而塌缩之后整个族只有**一行**
+    //    sys_resource、只有**一个** menu_id —— 承载行指向谁，
+    //    另一个就从非超管的导航集合里消失，点进去落到 404（而本仓 404 的
+    //    HTTP 状态码是 200，浏览器控制台与后端日志都干净）。
+    //    台账带按钮子菜单，所以台账当菜单，这两个详情页是静态路由。
+    path: '/qlzg-report',
+    component: Layout,
+    name: 'QlzgReportCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'workbench',
+        component: () => import('@/views/qlzg/report/ReportWorkbench.vue'),
+        name: 'QlzgReportWorkbench',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '报告作业台',
+          // 从报告台账那一行的「作业台」进来，所以高亮报告台账
+          activeMenu: '/qlzg/report'
+        }
+      }
+    ]
+  },
+  {
+    // 🔴 复核工作台同样走这里，理由与上面那条报告作业台**同一条**，而且更硬一层：
+    //    它的两个数据端点（/qlzg/review/run/latest 与 /workbench）是**「只要登录」**、
+    //    刻意不挂 @PreAuthorize 的（挂上的表现是「黄条不出现」「点进去 403」，
+    //    那正好是 §11.9.2.6 第 3 条要防的「关了就看不见」，只不过换成「没权限就看不见」）。
+    //    于是这一页**一个权限点都不带** ⟹ 建成 DB 菜单的话，
+    //    非超管的导航集合里永远没有它、路由压根不注册，敲 URL 落到 404
+    //    （而本仓 404 的 HTTP 状态码是 200，浏览器控制台与后端日志都干净）。
+    //    ⚠️ 也别为了给它一个路由而去造一个假的权限点 ——
+    //    那会在授权树上多出一个谁也不知道是什么的勾，
+    //    而且会与「只要登录」那个刻意决定直接矛盾
+    path: '/qlzg-review',
+    component: Layout,
+    name: 'QlzgReviewCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        path: 'workbench',
+        component: () => import('@/views/qlzg/review/workbench/index.vue'),
+        name: 'QlzgReviewWorkbench',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '复核工作台',
+          // 从报告作业台顶部那个按钮进来，所以高亮报告台账
+          activeMenu: '/qlzg/report'
+        }
+      }
+    ]
+  },
+  {
+    path: '/qlzg-template',
+    component: Layout,
+    name: 'QlzgTemplateCenter',
+    meta: {
+      hidden: true
+    },
+    children: [
+      {
+        // 🔴 子路由写的是**绝对路径** `/qlzg/template-designer`，不是相对的 `designer`：
+        //    `template/index.vue` 里 push 的就是那个字符串。vue-router 允许子路由用绝对路径
+        //    （此时父的 path 只用来挂 Layout 与 name，不参与拼接），
+        //    于是这一条的 URL 与台账 `/qlzg/template` 同前缀，读起来是一家人。
+        //    ⚠️ 改成相对的 `designer` 就要同步改 push 那一行 ——
+        //    只改一处的表现是点「设计」停在原地（vue-router 只在控制台 warn，界面不动）
+        path: '/qlzg/template-designer',
+        component: () => import('@/views/qlzg/template/TemplateDesigner.vue'),
+        name: 'QlzgTemplateDesigner',
+        meta: {
+          noCache: true,
+          hidden: true,
+          canTo: true,
+          title: '报告模板设计器',
+          activeMenu: '/qlzg/template'
+        }
+      }
+    ]
+  },
+  {
     path: '/dict',
     component: Layout,
     name: 'dict',

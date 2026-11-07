@@ -45,12 +45,20 @@ export type DataModelColumnVO = {
   refColumn?: string
 }
 
-/** 系统列注入策略，仅建表时生效 */
-export const SYSTEM_COLUMN_PROFILES = [
-  { value: 'TENANT', label: '多租户表（推荐）', tip: '含 tenant_id，与框架表一致。业务表一律用这个' },
-  { value: 'GLOBAL', label: '全局表', tip: '不含 tenant_id，数据对所有租户可见。仅用于全租户共享的字典型数据' },
-  { value: 'LEGACY', label: '兼容存量样板表', tip: '含 version、不含 tenant_id，对齐 test_demo_* 结构。新表不要用' }
-]
+/**
+ * 🔴 系统列策略：新建【只有 TENANT 一种】，所以这里不再有可选项
+ *
+ * V5 §5.9.1 F4：GLOBAL / LEGACY 建出来的表没有 tenant_id 列，租户隔离会整表失效
+ * 且【不报错、不记日志】—— 任何租户都能读到它的全部数据。后端已把这两种 profile
+ * 在新建路径上直接拒掉（DATA_MODEL_SYSTEM_COLUMN_PROFILE_NOT_ALLOWED）。
+ *
+ * ⚠️ 这两个值本身【仍然存在】，只是不能由新建表单选：`getSystemColumns(profile)`
+ * 还要靠它们读出存量表的系统列形状（profile 刻意不落库，物理表结构才是事实来源），
+ * 改表界面据此判定哪些列只读。所以别把后端的枚举一起删了。
+ */
+export const SYSTEM_COLUMN_PROFILE_TENANT = 'TENANT'
+/** 存量样板表（test_demo_*）的形状：含 version、不含 tenant_id。仅用于读存量表，新表禁用 */
+export const SYSTEM_COLUMN_PROFILE_LEGACY = 'LEGACY'
 
 /** 数据模型索引 */
 export type DataModelIndexVO = {
@@ -92,7 +100,9 @@ export type DataModelSaveReqVO = {
   riskConfirmed?: boolean
   /**
    * 系统列策略，仅建表时生效，改表传了也会被忽略。
-   * 不传按 TENANT 处理。不落库 —— 物理表有没有 tenant_id 列本身就是唯一事实来源
+   * 🔴 新建只接受 TENANT（不传也按 TENANT 处理）；传 GLOBAL / LEGACY 后端直接拒 ——
+   * 那两种 profile 建出来的表没有 tenant_id 列，租户隔离整表失效且【不报错】。
+   * 不落库 —— 物理表有没有 tenant_id 列本身就是唯一事实来源
    */
   systemColumnProfile?: string
   // ========== AI 产物治理（B4-2 / B4-3 / B4-4）==========
@@ -193,9 +203,14 @@ export const getDataModelStructure = (id: number): Promise<DataModelStructureVO>
 /**
  * 获得系统内置字段列表，新建模型时只读展示
  *
- * ⚠️ 必须带上 profile：新建时界面上的字段是要一并提交的，
- * 若选了 GLOBAL 却仍展示并提交 tenant_id，后端注入器会「让位」，
- * 结果表里照样有 tenant_id —— profile 就成了摆设
+ * ⚠️ 必须带上 profile：界面上的字段是要一并提交的，展示的与建出来的必须是同一份。
+ *
+ * 🔴 但「能传的 profile」与「能建的 profile」不是一回事：新建一律 TENANT（F4，
+ * 传 GLOBAL / LEGACY 后端直接拒），而本接口仍接受另两个值 ——
+ * 它服务的是【读存量表】：profile 刻意不落库，物理表结构才是事实来源，
+ * 所以改表界面要把 TENANT 与 LEGACY 两份取并集，才能判准哪些列只读。
+ * 只按 TENANT 那一份判的话，存量 LEGACY 表的 version 列在界面上可编辑可删，
+ * 而后端的系统列保护会拒绝删它 —— 又一个「界面让做、保存才报错」。
  */
 export const getSystemColumns = (profile?: string): Promise<DataModelColumnVO[]> => {
   return request.get({ url: '/infra/data-model/list-system-column', params: { profile } })
@@ -209,6 +224,31 @@ export const getSystemColumns = (profile?: string): Promise<DataModelColumnVO[]>
  */
 export const getSystemTablePrefixes = (): Promise<string[]> => {
   return request.get({ url: '/infra/data-model/list-system-table-prefix' })
+}
+
+/**
+ * 业务表前缀规则（V5 §5.9.1 F2 / 测试 #33 ④）
+ *
+ * 🔴 与上面那个接口【方向相反】，不能合并、也不能互相替代：
+ * `list-system-table-prefix` 是黑名单（命中 = 禁止），本接口是白名单（命中 = 允许）。
+ * 两张表都要过。
+ */
+export type DataModelTablePrefixVO = {
+  /** 允许的业务表前缀，命中任意一项即合规。第一项是「拿不准就用它」的通用前缀 */
+  businessPrefixes: string[]
+  /**
+   * 是否强制前缀。
+   * 🔴 前端必须读它：运维关掉强制之后（存量库接入的正规姿势），
+   * 后端放行了而前端仍按名单校验，就是「点不动、也没提示」那种最难查的半通状态
+   */
+  tablePrefixEnforced: boolean
+  /** 受管但【禁止物理删表】的前缀。命中的表要隐藏「同时删除真实表」这个选项 */
+  dropForbiddenPrefixes: string[]
+}
+
+/** 获得业务表前缀规则：前端据此校验新建表名，并隐藏禁 DROP 表的删除入口 */
+export const getBusinessTablePrefixes = (): Promise<DataModelTablePrefixVO> => {
+  return request.get({ url: '/infra/data-model/list-business-table-prefix' })
 }
 
 /** 预览待执行的 DDL，不实际执行 */

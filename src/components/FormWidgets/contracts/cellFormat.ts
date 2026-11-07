@@ -2,9 +2,11 @@
  * 列格式化契约 —— 前端访问层
  *
  * 契约的规范副本在后端
- * `yudao-module-infra/src/main/resources/form-design/cell-format-contracts.json`，
- * 本目录下的 JSON 是构建期副本。两份是否一致由
- * `tests/e2e/cell-format-contract-sync.spec.ts` 守着。
+ * `enlev-module-infra/src/main/resources/form-design/cell-format-contracts.json`，
+ * 本目录下的 JSON 是构建期副本。两份是否一致由同目录的 `contractSync.spec.ts` 守着
+ * （它比的是**解析后**的 JSON，不是字节：这份工作副本是 CRLF、后端那份是 LF）。
+ * ⚠️ 只检出了本仓、同级没有 `ainb/` 时那条比对是 **skip**（会打一行说明），不是通过。
+ * 同步流程与「拦不住什么」写在后端同目录的 `SYNC.md` 里。
  *
  * ## 这份契约存在的理由
  *

@@ -14,7 +14,11 @@
           🔴 必须常驻：二次确认弹窗只在那一刻出现，用户点完「确定」就再也看不到自己同意了什么，
              而保存可能是十分钟之后。删列不可回滚，这个状态不该是一次性的
         -->
-        <el-tag v-if="formType === 'update' && confirmedDropColumns.length > 0" type="danger" class="mr-15px">
+        <el-tag
+          v-if="formType === 'update' && confirmedDropColumns.length > 0"
+          type="danger"
+          class="mr-15px"
+        >
           将删除字段：{{ confirmedDropColumns.join('、') }}
         </el-tag>
         <el-checkbox v-if="formType === 'update'" v-model="formData.riskConfirmed" class="mr-15px">
@@ -34,7 +38,7 @@
           <el-form-item label="表名" prop="tableName">
             <el-input
               v-model="formData.tableName"
-              placeholder="如 biz_order"
+              :placeholder="tableNamePlaceholder"
               :disabled="formType === 'update'"
             />
           </el-form-item>
@@ -56,45 +60,21 @@
             <el-input v-model="formData.remark" placeholder="选填" />
           </el-form-item>
         </el-col>
-        <!-- 系统列策略只在新建时可选：它决定建表那一刻注入哪些系统列，建完就不再有意义 -->
-        <el-col v-if="formType === 'create'" :span="8">
-          <el-form-item label="系统列策略">
-            <el-select
-              v-model="formData.systemColumnProfile"
-              class="w-full"
-              @change="handleProfileChange"
-            >
-              <el-option
-                v-for="item in SYSTEM_COLUMN_PROFILES"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              >
-                <span>{{ item.label }}</span>
-                <span class="ml-10px text-gray-400 text-12px">{{ item.tip }}</span>
-              </el-option>
-            </el-select>
+        <!-- 🔴 系统列策略不再是可选项：新建一律 TENANT（V5 §5.9.1 F4）。
+             GLOBAL / LEGACY 建出来的表没有 tenant_id 列，租户隔离会整表失效且【不报错、不记日志】，
+             后端已在新建路径上直接拒。这里保留一句只读说明而不是整块删掉 ——
+             界面上原本能选的东西凭空消失，用户会以为自己漏配了什么 -->
+        <el-col v-if="formType === 'create'" :span="16">
+          <el-form-item label="系统列">
+            <div class="profile-tip">
+              固定为<b>多租户表</b>：建表时自动注入下方 {{ builtinColumns.length }} 个灰色系统列
+              （含 <b>tenant_id</b>），数据按租户隔离。<b>不能选全局表</b> —— 那种表没有
+              tenant_id，所有租户都能读到它的全部数据，而系统不会有任何提示。
+            </div>
           </el-form-item>
-        </el-col>
-        <el-col v-if="formType === 'create'" :span="8">
-          <div class="profile-tip">{{ currentProfileTip }}</div>
         </el-col>
       </el-row>
     </el-form>
-
-    <!-- 选了非默认策略时给出显著提示：丢掉 tenant_id 是有安全含义的，不能悄悄发生 -->
-    <el-alert
-      v-if="formType === 'create' && formData.systemColumnProfile !== 'TENANT'"
-      type="warning"
-      show-icon
-      :closable="false"
-      class="mb-10px"
-    >
-      <template #title>
-        该策略<b>不会注入 tenant_id</b>，这张表的数据将<b>对所有租户可见</b>。
-        请确认这正是你要的 —— 业务表一律应当用「多租户表」。
-      </template>
-    </el-alert>
 
     <!-- 流程表提示：审批类业务表需要 process_instance_id 与 process_status，可用下方「快速添加」一键补齐 -->
     <el-alert type="warning" show-icon :closable="true" class="mb-10px">
@@ -127,7 +107,8 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="__process__">
-                <Icon icon="ep:share" class="mr-5px" /> 流程字段（process_instance_id + process_status）
+                <Icon icon="ep:share" class="mr-5px" /> 流程字段（process_instance_id +
+                process_status）
               </el-dropdown-item>
               <el-dropdown-item disabled divided>常用字段</el-dropdown-item>
               <el-dropdown-item
@@ -187,7 +168,9 @@
               @input="handleColumnNameInput(row)"
             />
             <div
-              v-if="row.columnName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.columnName) && !row.readonly"
+              v-if="
+                row.columnName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.columnName) && !row.readonly
+              "
               class="text-xs text-red-500 mt-1"
             >
               只允许字母、数字、下划线，且以字母或下划线开头
@@ -443,7 +426,8 @@
 <script lang="ts" setup>
 import Sortable from 'sortablejs'
 import * as DataModelApi from '@/api/infra/dataModel'
-import { SYSTEM_COLUMN_PROFILES } from '@/api/infra/dataModel'
+import { SYSTEM_COLUMN_PROFILE_LEGACY, SYSTEM_COLUMN_PROFILE_TENANT } from '@/api/infra/dataModel'
+import { validateNewTableName } from './tablePrefixRule'
 
 /** 数据模型设计表单（页内展示，非弹窗） */
 defineOptions({ name: 'DataModelForm' })
@@ -498,6 +482,26 @@ const formData = ref<{
  */
 const confirmedDropColumns = ref<string[]>([])
 const columnTypeList = ref<DataModelApi.DataModelColumnTypeVO[]>([])
+/**
+ * 业务表前缀规则，每次打开表单时确保已拉到
+ *
+ * 🔴 走接口而不是在下面写死正则：此前表名校验硬编码 `/^biz_[a-z0-9_]*[a-z0-9]$/`，
+ * 而 yaml 的 `enlev.data-model.table-prefix` 是【可配的、且现在是多值的】——
+ * 运维加了 `qlzg_app_`，后端放行了，前端照样拦，保存按钮永远点不动，
+ * 而界面上没有任何提示说为什么。
+ *
+ * ⚠️ 拉不到时【不拦前缀】，只留命名规范那一半，把前缀判断交给后端。
+ * 反过来（拉不到就一律拦）会把一次接口抖动放大成「谁都建不了表」，
+ * 而后端日志干干净净 —— 那是最难查的一种坏法。
+ */
+const prefixRules = ref<DataModelApi.DataModelTablePrefixVO | null>(null)
+/** 表名输入框的占位符跟着接口走：写死 `如 biz_order` 等于又把前缀抄了一份 */
+const tableNamePlaceholder = computed(() => {
+  const first = prefixRules.value?.businessPrefixes?.[0]
+  // 🔴 兜底文案刻意【不含任何前缀】：接口没回来时给一个可能不对的示例，
+  //    比不给示例更坏 —— 用户照着填，然后在保存时撞上前缀校验
+  return first ? `如 ${first}order` : '小写字母开头，只含字母、数字、下划线'
+})
 /** 系统内置字段模板（拉取一次，用于只读判定与新建时展示）：首项是主键 id */
 const systemColumns = ref<ColumnRow[]>([])
 /**
@@ -513,18 +517,14 @@ const formRules = reactive({
       // ⚠️ 只在【新建】时校验规范，与后端口径一致。
       // 改表也校验的话，存量表（test_demo_* 无 biz_ 前缀、导入表可能是驼峰）会立刻改不动，
       // 而它们正在被表单设计器使用。表名本身在改表时是只读的。
+      // 🔴 规则本体抽在 ./tablePrefixRule（有单测），这里只负责「什么时候校验」
       validator: (_rule: any, value: string, callback: any) => {
         if (formType.value !== 'create') {
           callback()
           return
         }
-        if (/^biz_[a-z0-9_]*[a-z0-9]$/.test(value ?? '')) {
-          callback()
-        } else {
-          callback(
-            new Error('表名须以 biz_ 开头，且只允许小写字母、数字、下划线（不以下划线结尾）')
-          )
-        }
+        const error = validateNewTableName(value, prefixRules.value)
+        error ? callback(new Error(error)) : callback()
       },
       trigger: 'blur'
     }
@@ -607,8 +607,16 @@ const open = async (type: string, id?: number) => {
   if (columnTypeList.value.length === 0) {
     columnTypeList.value = await DataModelApi.getColumnTypeList()
   }
-  // 系统内置字段列表：新建时按所选策略只读展示，编辑时用于判定哪些行不可改
-  await loadSystemColumns(formData.value.systemColumnProfile)
+  // 🔴 前缀规则【每次打开都重拉】：它可能被运维改掉（加一个业务应用前缀、或整个关掉强制），
+  //    而本组件是页内常驻的，缓存一次就会一直拿着旧名单校验
+  try {
+    prefixRules.value = await DataModelApi.getBusinessTablePrefixes()
+  } catch {
+    // 拉不到就不校验前缀，把判断交给后端，理由见 prefixRules 的注释
+    prefixRules.value = null
+  }
+  // 系统内置字段列表：新建时只读展示，编辑时用于判定哪些行不可改
+  await loadSystemColumns()
   if (type === 'create') {
     formData.value.columns = []
     // 每次打开都用全新的内置字段副本，避免上一次的主键改选残留
@@ -675,33 +683,26 @@ const handleCancel = () => {
  */
 const systemColumnNames = ref<Set<string>>(new Set())
 
-/** 按策略加载系统内置字段；同时把并集补进 systemColumnNames */
-const loadSystemColumns = async (profile: string) => {
-  const cols = await DataModelApi.getSystemColumns(profile)
+/**
+ * 加载系统内置字段
+ *
+ * 两件事，取的 profile 不同，别混：
+ * - 【展示用】（systemColumns / builtinColumns）只取 TENANT 那一份 ——
+ *   新建一律 TENANT（F4），展示别的策略等于骗人
+ * - 【只读判定用】（systemColumnNames）取 TENANT 与 LEGACY 的<b>并集</b>，
+ *   理由见上面那个 ref 的注释
+ *
+ * 🔴 并集这里【无条件】取两份，不再判 `size < 8`：那个 8 是 TENANT 策略的列数，
+ * 注入器哪天加一列，这个条件就会悄悄翻转，而表现只是「某一列变成可编辑」——
+ * 用户删得掉、保存时后端拒绝删，正是本文件已经修过一次的那类 bug。
+ */
+const loadSystemColumns = async () => {
+  const cols = await DataModelApi.getSystemColumns(SYSTEM_COLUMN_PROFILE_TENANT)
   systemColumns.value = cols.map((col) => ({ ...col, readonly: true }))
   cols.forEach((col) => systemColumnNames.value.add(col.columnName.toLowerCase()))
-  // LEGACY 含 version、TENANT 含 tenant_id，谁也不是谁的超集，取一次并集补齐
-  if (systemColumnNames.value.size < 8) {
-    const others = await DataModelApi.getSystemColumns(profile === 'LEGACY' ? 'TENANT' : 'LEGACY')
-    others.forEach((col) => systemColumnNames.value.add(col.columnName.toLowerCase()))
-  }
+  const legacy = await DataModelApi.getSystemColumns(SYSTEM_COLUMN_PROFILE_LEGACY)
+  legacy.forEach((col) => systemColumnNames.value.add(col.columnName.toLowerCase()))
 }
-
-/** 切换系统列策略：内置字段要跟着变，否则界面展示的与建出来的表不一致 */
-const handleProfileChange = async (profile: string) => {
-  await loadSystemColumns(profile)
-  builtinColumns.value = systemColumns.value.map((col) => ({ ...col }))
-  // 策略变了可能移除了 tenant_id，清掉引用了已消失列的索引，避免提交时报「索引列不存在」
-  const available = new Set(displayColumns.value.map((c) => c.columnName?.toLowerCase()))
-  formData.value.indexes = formData.value.indexes.filter((idx) =>
-    (idx.columnNames || []).every((n) => available.has((n || '').toLowerCase()))
-  )
-}
-
-const currentProfileTip = computed(
-  () =>
-    SYSTEM_COLUMN_PROFILES.find((p) => p.value === formData.value.systemColumnProfile)?.tip ?? ''
-)
 
 /** 是否为系统内置字段（大小写不敏感） */
 const isSystemColumn = (name: string) => systemColumnNames.value.has((name || '').toLowerCase())
@@ -842,7 +843,9 @@ const addPresetColumns = (presets: ColumnRow[]) => {
     //    此前这里只有一句「无需重复添加」，用户被留在死路上（B18）。
     //    具体差在哪由 flowColumnProblem 那条常驻红条说 —— toast 只活 3 秒，说不完也不够改。
     message.info(
-      flowColumnProblem.value ? '相关字段已存在，但类型不合格，见上方红色提示' : '相关字段已存在，无需重复添加'
+      flowColumnProblem.value
+        ? '相关字段已存在，但类型不合格，见上方红色提示'
+        : '相关字段已存在，无需重复添加'
     )
   } else {
     message.success(`已快速添加 ${added} 个字段`)
@@ -903,7 +906,9 @@ const flowColumnProblem = computed(() => {
     const accepted = acceptedTypesOf(preset.columnType)
     const type = (row.columnType || '').toUpperCase()
     if (!accepted.includes(type)) {
-      bad.push(`${preset.columnName} 现在是 ${row.columnType || '未设置'}，要求 ${accepted.join(' / ')}`)
+      bad.push(
+        `${preset.columnName} 现在是 ${row.columnType || '未设置'}，要求 ${accepted.join(' / ')}`
+      )
       return
     }
     if (preset.length && (row.length || 0) < preset.length) {
@@ -1146,8 +1151,7 @@ const buildPayload = (): DataModelApi.DataModelSaveReqVO => {
     schemaFingerprint: isUpdate ? formData.value.schemaFingerprint : undefined,
     // 真删了列才置真（B4-3）。名单来自删字段时那个二次确认弹窗，
     // 所以它为真 ⟺ 有人在那一刻看着字段名点了「确定」
-    confirmDropColumns:
-      isUpdate && confirmedDropColumns.value.length > 0 ? true : undefined
+    confirmDropColumns: isUpdate && confirmedDropColumns.value.length > 0 ? true : undefined
   }
 }
 

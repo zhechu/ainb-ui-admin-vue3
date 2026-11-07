@@ -1,6 +1,23 @@
 <template>
   <doc-alert title="上传下载" url="https://doc.enlev.cn/file/" />
 
+  <!--
+    主存储不支持 presign 时挂这条横幅（方案 §5.2 B10 的处置 ③：启动 WARN + 管理页横幅，不 throw）。
+    没有它，「直传直下没生效」的表现是全程 200 无异常：文件照常能下，只是每一次下载都在过后端的堆，
+    而唯一的线索是 infra_file_usage_log 里 meter_kind 全是 RELAY —— 没人会去翻那一列。
+    notice 由后端给、这里逐字渲染，理由见 FileConfigCapabilityVO 的注释。
+  -->
+  <el-alert
+    v-if="capability && !capability.presignCapable"
+    type="warning"
+    show-icon
+    :closable="false"
+    title="主存储不支持预签名直传直下"
+    class="mb-15px"
+  >
+    <div class="whitespace-pre-wrap">{{ capability.notice }}</div>
+  </el-alert>
+
   <!-- 搜索 -->
   <ContentWrap>
     <el-form
@@ -71,9 +88,21 @@
 
   <!-- 列表 -->
   <ContentWrap>
-    <el-table class="xpy-list-table" stripe v-loading="loading" :data="list" @selection-change="handleRowCheckboxChange">
+    <el-table
+      class="xpy-list-table"
+      stripe
+      v-loading="loading"
+      :data="list"
+      @selection-change="handleRowCheckboxChange"
+    >
       <el-table-column type="selection" width="55" />
-      <el-table-column label="序号" type="index" width="44" align="center" :index="indexMethod(queryParams)" class-name="col-index"
+      <el-table-column
+        label="序号"
+        type="index"
+        width="44"
+        align="center"
+        :index="indexMethod(queryParams)"
+        class-name="col-index"
         label-class-name="col-index"
       />
       <!-- 这里不显示「编号」：文件配置是拿名称认的，自增 id 只在「主配置」确认弹窗里出现 -->
@@ -113,7 +142,7 @@
   </ContentWrap>
 
   <!-- 表单弹窗：添加/修改 -->
-  <FileConfigForm ref="formRef" @success="getList" />
+  <FileConfigForm ref="formRef" @success="onConfigChanged" />
 </template>
 <script lang="ts" setup>
 import * as FileConfigApi from '@/api/infra/fileConfig'
@@ -149,6 +178,27 @@ const getList = async () => {
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 主存储的能力（那条横幅的内容）
+ *
+ * 拿不到就把横幅收起来，不让它把整页拖成失败态：这一条是提示牌、不是安全闸，
+ * 而它挂了的话运维连配置列表都看不到 —— 处置优先级恰好颠倒。
+ * 后端读不出主配置时会自己打一行 ERROR（PresignCapabilityRunner），不会静默。
+ */
+const capability = ref<FileConfigApi.FileConfigCapabilityVO>()
+const getCapability = async () => {
+  try {
+    capability.value = await FileConfigApi.getMasterFileConfigCapability()
+  } catch {
+    capability.value = undefined
+  }
+}
+
+/** 配置变了之后要一起刷的两件事：改的正是主配置的存储器时，横幅的内容跟着变 */
+const onConfigChanged = async () => {
+  await Promise.all([getList(), getCapability()])
 }
 
 /** 搜索按钮操作 */
@@ -216,7 +266,8 @@ const handleMaster = async (row: any) => {
     )
     await FileConfigApi.updateFileConfigMaster(row.id)
     message.success(t('common.updateSuccess'))
-    await getList()
+    // 🔴 切换主配置是全站改「文件存到哪」，直传直下能不能用也跟着翻 —— 横幅必须一起刷
+    await onConfigChanged()
   } catch {}
 }
 
@@ -262,6 +313,6 @@ const rowButtons: TableActionButton[] = [
 
 /** 初始化 **/
 onMounted(() => {
-  getList()
+  onConfigChanged()
 })
 </script>

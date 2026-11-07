@@ -11,9 +11,12 @@
  *    实测更彻底：`src/` 下**没有任何一处**调用那个后端端点（`AgentWorkflowDefController` 的
  *    `GET /node-io-contract`，零前端调用者。这里刻意**不**写行号 —— 原先钉的那个行号已实测漂了 60 行），
  *    UI 用的就是这份镜像 ⟹ 两份漂了连运行期信号都没有。
- *    🔴 台账 #104：照 `tests/e2e/form-widget-contract-sync.spec.ts` 的先例（打**运行中后端**的 HTTP 端点、
- *    与本地副本 diff ⟹ 不需要 CI 同时检出两个仓）把 `_evidence/p97-mirror-diff.py` 的结构比对升成一条 e2e。
- *    ⚠️ 那条 e2e 在**台账 #70**（`agent:workflow:query` 授权给 0 个角色）清账之前只能用超管账号跑。
+ *    🔴 台账 #104：照 `src/components/FormWidgets/contracts/contractSync.spec.ts` 的先例
+ *    （那条守的是**表单控件契约**的前后端两份 JSON：vitest 直接读两个仓的磁盘文件、比**解析后**的
+ *    JSON，检不出同级仓时 skip 并打一行说明）把 `_evidence/p97-mirror-diff.py` 的结构比对升成一条 spec。
+ *    ⚠️ 但那份镜像是 Java 源码、不是 JSON，比不了「解析后的对象」，只能比结构；
+ *    而且本仓**没有** e2e 基建（`playwright.config.ts` 与 `tests/` 都不存在），所以别写成 e2e。
+ *    ⚠️ 那条比对只在同级检出 `ainb` 时才真跑，与它一样：只检出前端仓的 CI 会静默丢掉这道守卫。
  *
  * ⚠️ 本文件的 `InPort.hint` 在前端**没有消费者**（WorkflowPropertyPanel.vue 渲染的是 nodeConfigSchema.ts
  *    的 `f.hint`）。它存在的意义只是与后端那份保持同构，别以为改了这里用户就看得见；

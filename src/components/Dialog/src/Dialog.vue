@@ -14,7 +14,15 @@ const props = defineProps({
   width: propTypes.oneOfType([String, Number]).def('40%'),
   scroll: propTypes.bool.def(false), // 是否开启滚动条。如果是的话，按照 maxHeight 设置最大高度
   maxHeight: propTypes.oneOfType([String, Number]).def('400px'),
-  loading: propTypes.bool.def(false)
+  loading: propTypes.bool.def(false),
+  // 🔴 这两个必须是 prop，不能只靠 attrs 透传：模板里那两行显式绑定排在
+  //    `v-bind="getBindValue"` **之后**，Vue 让后写的赢，于是调用方写的
+  //    `:close-on-click-modal="false"` 一直被这一行的字面量 true 覆盖掉。
+  //    它静默，没有任何报错，而调用方读自己的代码会以为已经挡住了 ——
+  //    实际后果是「误点遮罩 / 误按 Esc 就把填了一半的多步表单整个丢掉」。
+  //    默认值仍是 true，与改之前的行为逐字节相同
+  closeOnClickModal: propTypes.bool.def(true),
+  closeOnPressEsc: propTypes.bool.def(true)
 })
 
 const getBindValue = computed(() => {
@@ -74,7 +82,8 @@ function closedHandler() {
 <template>
   <ElDialog
     v-bind="getBindValue"
-    :close-on-click-modal="true"
+    :close-on-click-modal="closeOnClickModal"
+    :close-on-press-esc="closeOnPressEsc"
     :fullscreen="isFullscreen"
     :width="width"
     destroy-on-close

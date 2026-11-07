@@ -1,15 +1,19 @@
 /**
  * 表单控件契约 —— 前端访问层
  *
- * 契约的规范副本在后端 `yudao-module-infra/src/main/resources/form-design/form-widget-contracts.json`，
- * 本目录下的 JSON 是构建期副本。两份是否一致由 `tests/e2e/form-widget-contract-sync.spec.ts` 守着：
- * 它拉后端 `/infra/form-design/widget-contracts` 接口，与本地副本逐字段比对，不一致即失败。
+ * 契约的规范副本在后端 `enlev-module-infra/src/main/resources/form-design/form-widget-contracts.json`，
+ * 本目录下的 JSON 是构建期副本。两份是否一致由同目录的 `contractSync.spec.ts` 守着：
+ * 它直接读两个仓的磁盘文件、比**解析后**的 JSON，不一致即失败并列出差异路径。
  *
  * 为什么不直接在运行时拉接口：`subTableWidgetType` 这类结构性事实在模块加载期就要用
  * （多个工具模块在顶层就依赖它），改成异步会把一批同步函数染成异步，牵动面过大。
- * 折中方案是「本地副本 + 一致性测试」：运行时零网络依赖，漂移由 CI 拦住，而不是等线上出错。
+ * 折中方案是「本地副本 + 一致性测试」：运行时零网络依赖，漂移由 `pnpm test:unit` 拦住，
+ * 而不是等线上出错。
  *
- * ⚠️ 改契约时必须同时改两份文件。只改一份，一致性测试会失败并告诉你漏了哪边。
+ * ⚠️ 改契约时**先改后端规范副本、再原样复制到前端**，不要在前端直接编辑 JSON ——
+ *    流程与「一致性测试拦不住什么」都写在后端同目录的 `SYNC.md` 里。
+ *    只改一份，`contractSync.spec.ts` 会失败并告诉你漏了哪边。
+ *    ⚠️ 只检出了前端仓时那条比对是 **skip**（会打印一行说明），不是通过。
  */
 import contractFile from './form-widget-contracts.json'
 

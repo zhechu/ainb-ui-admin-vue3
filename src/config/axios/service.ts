@@ -57,6 +57,14 @@ service.interceptors.request.use(
     if (getAccessToken() && isToken) {
       config.headers.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义 token
     }
+    // 端标识（V5 §9.6 / D14 定稿的名字，I6-e）：落 infra_file_usage_log.client_type
+    // 与 qlzg_task.client_type，是按端分摊计量的依据。
+    // 🔴 这一行是本仓唯一发这个头的地方，名字改了就等于没发 —— 后端的判定链认不出来时
+    //    会静默兜到 web，不报错、不告警，表现只是「账单上某一端的流量恒为 0」。
+    //    字面量由 src/views/qlzg/bridge/localBridge.spec.ts 钉住。
+    // ⚠️ 刻意写死 'web' 不去读什么运行时探测：I23 的 Electron 走的是同一份被引用的前端资产
+    //    （§13.4.4：引用不复制），它会在自己的主进程侧覆盖这个头，而不是改这一行。
+    config.headers['X-Client-Type'] = 'web'
     // 设置租户
     if (tenantEnable && tenantEnable === 'true') {
       const tenantId = getTenantId()
@@ -104,6 +112,47 @@ service.interceptors.request.use(
     return Promise.reject(error)
   }
 )
+
+// 🔴 后端回传的「本次提交里有 N 个已停用字段的值没被保存」
+// 判据与理由全在后端 QlzgExtFieldValidator#reportIgnoredEdits：机构停用一个扩展字段之后，
+// 还开着停用前那个表单页的用户仍然会把值提交上来，而那份值不会进库（一律以库里那份为准）。
+// 保存返回成功、界面上一个提示都没有 ⟹ 用户以为自己存上了。V5 §11.20.7 ① 要的就是这句提示。
+// ⚠️ 头值是按字段【逐个】URL 编码后用逗号拼的（HTTP 头是 ASCII，中文原样写会被毁），
+//    所以这里也必须逐个 decode：label 里的逗号被编成 %2C，整串 decode 一次就分不出字段了。
+// ⚠️ 这一处覆盖全部 4 个宿主 7 个写路径，别在各页面里另写一份。
+// 🔴 头名必须与后端 EnlevWebAutoConfiguration.EXPOSED_HEADERS 里那份逐字一致 ——
+//    不同源 + CORS 下，没进那份名单的头在浏览器里恒为 undefined，不报错也没有日志。
+const EXT_FIELD_IGNORED_HEADER = 'x-ext-field-ignored'
+
+function warnIgnoredExtFields(response: AxiosResponse<any>) {
+  const headers = response.headers || {}
+  // 两种大小写都试一次，与上面读加密响应头那一支同一个写法：axios 会把响应头名转成小写，
+  // 但这一条不该靠记忆 —— 读不到的表现是「提示永远不弹」，
+  // 与后端漏配 EXPOSED_HEADERS 一样静默，而两者都没有任何日志
+  const raw = headers[EXT_FIELD_IGNORED_HEADER] ?? headers['X-Ext-Field-Ignored']
+  if (!raw || typeof raw !== 'string') {
+    return
+  }
+  const labels = raw
+    .split(',')
+    .filter((item) => item.length > 0)
+    .map((item) => {
+      try {
+        return decodeURIComponent(item)
+      } catch {
+        return item // 编码坏了一半也要把原样交出去，比静默不提示好
+      }
+    })
+  if (labels.length === 0) {
+    return
+  }
+  ElNotification.warning({
+    title: `有 ${labels.length} 个字段已被机构停用，本次填写未保存`,
+    message: labels.join('、'),
+    // 🔴 不自动关闭：这是一份「你填的东西没存下来」的告知，4.5 秒消失等于没说
+    duration: 0
+  })
+}
 
 // response 拦截器
 service.interceptors.response.use(
@@ -222,6 +271,7 @@ service.interceptors.response.use(
       //    连 e.message 都是 undefined，于是「后端说了什么」在界面上没有任何留得住的落点。
       return Promise.reject(new Error(msg))
     } else {
+      warnIgnoredExtFields(response)
       return data
     }
   },

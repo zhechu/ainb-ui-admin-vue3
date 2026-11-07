@@ -28,29 +28,29 @@ import {
 
 /** 子表控件类型取自控件契约，它的内部规则挂在 props.rule 下 */
 import { SUB_TABLE_WIDGET_TYPE } from '@/components/FormWidgets/contracts'
+import {
+  OPTION_SOURCE_TARGETS,
+  readByPath,
+  renameValueKey,
+  writeByPath,
+  type OptionNode,
+  type OptionSourceTarget
+} from './optionTargets'
 
 /**
- * 支持选项数据源的六个内置控件
+ * 🔴 这几个名字**原样 re-export**，本模块自己不再定义
  *
- * - path：选项该写到规则的哪个属性（与设计器内置选项编辑器写的是同一个位置）
- * - tree：控件本身是否支持层级
- * - valueKey：选项对象里「值」用哪个键。树形控件默认 nodeKey 是 id，
- *   写成 value 的话节点没有 key，选中、回显、勾选全都会失灵
+ * 「选项写在规则的哪个路径上」与「值键要不要改名」都搬去了 {@link ./optionTargets}
+ * （一份零依赖的纯数据 + 纯函数），理由写在它的文件头：本模块 value-import 了
+ * {@code @/utils/dict}，而后者在顶层就建 pinia store，于是任何想测那张表的模块
+ * 都会在 vitest 的 node 环境下收集失败。
+ * 搬走之后启凌智估的扩展字段规则构造器（{@code views/qlzg/components/extFieldRule.ts}）
+ * 与这里读的是**同一份**落点表与同一套改名逻辑，不会再有第二份副本可漂。
+ *
+ * ⚠️ re-export 是为了让既有 import（{@code config/useOptionSource.ts}）一处都不用改，
+ *    不是「兼容层」—— 新代码请直接从 {@code ./optionTargets} 引。
  */
-export interface OptionSourceTarget {
-  path: string
-  tree: boolean
-  valueKey: string
-}
-
-export const OPTION_SOURCE_TARGETS: Record<string, OptionSourceTarget> = {
-  select: { path: 'options', tree: false, valueKey: 'value' },
-  radio: { path: 'options', tree: false, valueKey: 'value' },
-  checkbox: { path: 'options', tree: false, valueKey: 'value' },
-  cascader: { path: 'props.options', tree: true, valueKey: 'value' },
-  elTreeSelect: { path: 'props.data', tree: true, valueKey: 'value' },
-  tree: { path: 'props.data', tree: true, valueKey: 'id' }
-}
+export { OPTION_SOURCE_TARGETS, type OptionNode, type OptionSourceTarget }
 
 /** 选项来源类型。枚举值沿用设计器内置的编号：2=静态、1=远程，3 是我们新增的字典 */
 export const OPTION_SOURCE_TYPE: Record<'STATIC' | 'REMOTE' | 'DICT', number> = {
@@ -68,12 +68,6 @@ export interface DictSource {
   rootValue?: string
   /** 树形字典喂给扁平控件时的展开方式 */
   flatMode?: 'path' | 'indent' | 'leaf'
-}
-
-interface OptionNode {
-  label: string
-  value: any
-  children?: OptionNode[]
 }
 
 // region 字典来源
@@ -189,26 +183,14 @@ export const buildDictOptions = (source: DictSource, tree: boolean): OptionNode[
 
 // endregion
 
-/** 按 'a.b' 形式的路径往规则上写值 */
-const setByPath = (rule: any, path: string, value: any) => {
-  const keys = path.split('.')
-  const last = keys.pop()!
-  let target = rule
-  keys.forEach((key) => {
-    if (!target[key]) {
-      target[key] = {}
-    }
-    target = target[key]
-  })
-  target[last] = value
-}
+/** 按 'a.b' 形式的路径往规则上写值（实现见 {@link ./optionTargets}） */
+const setByPath = writeByPath
 
 /** 按 'a.b' 形式的路径从规则上读值 */
-export const readOptionPath = (rule: any, path: string) =>
-  path.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), rule)
+export const readOptionPath = readByPath
 
 /** 按 'a.b' 形式的路径往规则上写值 */
-export const writeOptionPath = setByPath
+export const writeOptionPath = writeByPath
 
 /**
  * 用户手工配置的静态选项的暂存位置
@@ -221,26 +203,6 @@ export const writeOptionPath = setByPath
  * 单下划线的自定义键会原样保留，能跟着表单 JSON 一起存下来。
  */
 export const STATIC_OPTIONS_STASH = '_staticOptions'
-
-/**
- * 把 {label, value} 结构改写成目标控件要求的键名
- *
- * 树形控件的 nodeKey 是 id，其余控件用 value。
- */
-const renameValueKey = (options: OptionNode[], valueKey: string): any[] => {
-  if (valueKey === 'value') {
-    return options
-  }
-  const map = (list: OptionNode[]): any[] =>
-    list.map((item) => {
-      const next: any = { label: item.label, [valueKey]: item.value }
-      if (item.children?.length) {
-        next.children = map(item.children)
-      }
-      return next
-    })
-  return map(options)
-}
 
 /** 遍历整棵规则树（含布局容器的 children 与子表的 props.rule） */
 const walkRules = (rules: any[], visit: (rule: any) => void) => {

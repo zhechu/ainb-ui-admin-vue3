@@ -14,6 +14,11 @@ output/
 .playwright-cli/
 test-results/
 playwright-report/
+# 端到端走查的产物：innerText 转储、截图、接口响应收集器抓到的非 0 信封。
+# 与后端仓的 `_logs/` 同名同义，此前只在那个仓有，所以这里补一行。
+# 走查会把登录后的真实业务数据（标的地址、委托方名称）整页转储下来，
+# 那批文本没有脱敏，入库等于把个人信息写进 git 历史。
+_logs/
 # T1/T2 真发矩阵的人工评审证据（每轮重新生成，见 prompt-template-chat-matrix.spec.ts）
 # 🔴 这里必须写 `_evidence/*` 而不是 `_evidence/`：git 不会重新包含**父目录已被排除**的文件，
 #    写成 `_evidence/` 的话下面那些 `!` 一行都不生效（gitignore(5)「It is not possible to

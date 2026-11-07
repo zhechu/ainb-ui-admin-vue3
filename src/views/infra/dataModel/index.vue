@@ -168,6 +168,25 @@ const isFrameworkTable = (tableName?: string) => {
 }
 
 /**
+ * 🔴 受管但【禁止物理删表】的前缀（V5 §5.9.8 F6），同样从后端拉
+ *
+ * 与上面那份黑名单方向不同：黑名单命中 = 连登记都不能删；这份命中 = 登记可以删，
+ * 但真实表删不掉（`DROP TABLE` 没有回收站、不可回滚，而这类表整张都是机构自己的台账）。
+ *
+ * <p>前端据此【不问第二个问题】。照原来的流程问下去，用户点了「同时删除真实表」，
+ * 后端拒绝，他白确认一次；而那句拒绝的文案里没有「勾选我已知晓风险」这个关键字，
+ * 下面那个 catch 也接不住 —— 界面上什么都没有发生，只有一条报错。
+ *
+ * <p>⚠️ 拉取失败按空数组处理：那样会多问一次、然后被后端拦下（安全侧），
+ * 而不是把删表入口整个藏掉。
+ */
+const dropForbiddenPrefixes = ref<string[]>([])
+const isDropForbidden = (tableName?: string) => {
+  const name = (tableName || '').toLowerCase()
+  return dropForbiddenPrefixes.value.some((prefix) => name.startsWith(prefix.toLowerCase()))
+}
+
+/**
  * 支持 HTML 的确认框
  *
  * 内容里的换行与强调标记需要 dangerouslyUseHTMLString 才会渲染。
@@ -272,15 +291,23 @@ const handleDelete = async (row: DataModelApi.DataModelVO) => {
     return
   }
   // 第二步：询问是否顺带删表
-  try {
-    await confirmHtml(
-      `是否<b style="color:#f56c6c">同时删除数据库中的真实表 ${row.tableName}</b>？<br/>` +
-        `此操作会丢失该表全部数据，且<b>无法回滚</b>。<br/>点击「取消」则仅删除模型登记。`,
-      '高危操作'
+  // 🔴 受管台账前缀（qlzg_app_）的表【不问】：问了也只能被后端拒，理由见 isDropForbidden 的注释
+  if (isDropForbidden(row.tableName)) {
+    message.info(
+      `表 ${row.tableName} 是机构自建台账，禁止物理删除（DROP TABLE 没有回收站、不可回滚）。` +
+        `本次只删除模型登记，真实表与其中的数据都会保留`
     )
-    dropTable = true
-  } catch {
-    dropTable = false
+  } else {
+    try {
+      await confirmHtml(
+        `是否<b style="color:#f56c6c">同时删除数据库中的真实表 ${row.tableName}</b>？<br/>` +
+          `此操作会丢失该表全部数据，且<b>无法回滚</b>。<br/>点击「取消」则仅删除模型登记。`,
+        '高危操作'
+      )
+      dropTable = true
+    } catch {
+      dropTable = false
+    }
   }
 
   try {
@@ -342,12 +369,15 @@ const rowButtons: TableActionButton[] = [
 ]
 
 onMounted(async () => {
-  // 前缀名单拉取失败不应拖垮列表页 —— 失败时按空数组走，拦截交给后端
-  try {
-    frameworkTablePrefixes.value = await DataModelApi.getSystemTablePrefixes()
-  } catch {
-    frameworkTablePrefixes.value = []
-  }
+  // 两份前缀名单并发拉，且【都不能】拖垮列表页 —— 失败时各自按空数组走，拦截交给后端。
+  // 🔴 两份是不同方向的名单（黑名单命中 = 禁止；白名单命中 = 允许），别想着合并成一次请求
+  const [framework, business] = await Promise.allSettled([
+    DataModelApi.getSystemTablePrefixes(),
+    DataModelApi.getBusinessTablePrefixes()
+  ])
+  frameworkTablePrefixes.value = framework.status === 'fulfilled' ? framework.value || [] : []
+  dropForbiddenPrefixes.value =
+    business.status === 'fulfilled' ? business.value?.dropForbiddenPrefixes || [] : []
   getList()
 })
 </script>

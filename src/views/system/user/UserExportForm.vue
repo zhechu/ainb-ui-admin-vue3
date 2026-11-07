@@ -48,6 +48,7 @@
 import { computed, ref } from 'vue'
 import * as UserApi from '@/api/system/user'
 import download from '@/utils/download'
+import { buildExportFilename } from '@/utils/exportExcel'
 
 /**
  * 用户导出设置弹窗
@@ -124,15 +125,18 @@ const handleExport = async () => {
   loading.value = true
   try {
     const result = await UserApi.exportUser(buildParams(), scope.value)
-    // 文件名带上范围与截断标记 —— 几个文件混在下载目录里要能分出谁是谁
-    const suffix = [
-      scope.value === 'CURRENT_PAGE' ? `第${pageNo.value}页` : '',
-      result.truncated && result.maxRows ? `前${result.maxRows}条` : ''
-    ]
-      .filter(Boolean)
-      .map((part) => `(${part})`)
-      .join('')
-    download.excel(result.blob, `用户数据${suffix}.xlsx`)
+    // 文件名带上范围与截断标记 —— 几个文件混在下载目录里要能分出谁是谁。
+    // 拼法在 `@/utils/exportExcel`，qlzg 四个台账共用同一份
+    download.excel(
+      result.blob,
+      buildExportFilename(
+        '用户数据',
+        scope.value === 'CURRENT_PAGE',
+        pageNo.value,
+        result.truncated,
+        result.maxRows
+      )
+    )
 
     if (result.truncated) {
       // ⚠️ 截断必须说出来。不说的话用户以为导全了，

@@ -14,7 +14,7 @@
  * 「哪些控件能脱敏」是后端发布校验也要用的事实，契约
  * （form-widget-contracts.json）里已经有 `maskable` 位。这里直接读它，
  * 好处是加一个可脱敏控件时只改契约一处，前后端同时生效；
- * 而契约两份副本是否一致由 `form-widget-contract-sync.spec.ts` 守着。
+ * 而契约两份副本是否一致由 `FormWidgets/contracts/contractSync.spec.ts` 守着。
  *
  * ⚠️ 这与隔壁 {@link useValidateRule} 刻意硬编码控件名不是矛盾：
  * 那边要排除的是「值来自选项」的控件，契约里没有对应的能力位可推导；

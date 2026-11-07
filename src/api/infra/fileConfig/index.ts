@@ -28,6 +28,21 @@ export interface FileConfigVO {
   createTime: Date
 }
 
+/**
+ * 主配置的存储能力
+ *
+ * `notice` 由后端给、前端**逐字渲染**，不要在这里或页面里重写一份文案：
+ * 同一句话启动时也会打进日志（后端 `PresignCapabilityRunner`），
+ * 两处各写一份的结果是它们迟早不一致，而运维会照着先看到的那一句去处置。
+ */
+export interface FileConfigCapabilityVO {
+  configId?: number | null
+  configName?: string | null
+  storage?: number | null
+  presignCapable: boolean
+  notice?: string | null
+}
+
 // 查询文件配置列表
 export const getFileConfigPage = (params: PageParam) => {
   return request.get({ url: '/infra/file-config/page', params })
@@ -66,4 +81,9 @@ export const deleteFileConfigList = (ids: number[]) => {
 // 测试文件配置
 export const testFileConfig = (id: number) => {
   return request.get({ url: '/infra/file-config/test?id=' + id })
+}
+
+// 查询主配置的存储能力：能否预签名直传直下（文件字节不经过后端）
+export const getMasterFileConfigCapability = (): Promise<FileConfigCapabilityVO> => {
+  return request.get({ url: '/infra/file-config/master-capability' })
 }

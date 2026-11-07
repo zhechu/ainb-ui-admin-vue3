@@ -28,7 +28,7 @@
       "跨前后端的结构性事实。改这里必须两侧同步，一致性测试会兜住。",
       "",
       "⚠️ subFieldSeparator 还有一个消费方在别的模块里：",
-      "yudao-module-bpm 的 BpmTaskServiceImpl.SUB_FIELD_SEPARATOR（流程节点的字段权限裁剪）。",
+      "enlev-module-bpm 的 BpmTaskServiceImpl.SUB_FIELD_SEPARATOR（流程节点的字段权限裁剪）。",
       "它自台账 #101(b) 起不再是独立副本：Java 侧只有一份常量",
       "（infra 的 api/formdesign/dto/FormResourceDescriptorDTO.SUB_FIELD_SEPARATOR），bpm 引用它，",
       "并由 SubFieldSeparatorSingleSourceTest 把那份常量钉到本 JSON 上（不是恒真断言：一侧是",
