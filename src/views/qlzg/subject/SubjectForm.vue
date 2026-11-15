@@ -145,7 +145,11 @@
           class="!w-240px"
         />
 
-        <!-- 经纬度：🔴 只认 lng / lat 两个键名，且经度在前 -->
+        <!-- 经纬度：🔴 只认 lng / lat 两个键名，且经度在前
+             🔴 这一支是整个模板里**唯一**对 attrsModel[key] 再取一层属性的地方
+                （其余各支都是直接绑 attrsModel[key]，读到 undefined 也无害）。
+                它成立的前提是「schema 里有的键，模型里一定有一个对象」，
+                而那个前提由 applyCategory 的同步块保证 —— 改那边之前先读它的注释 -->
         <div v-else-if="field.item.type === ATTR_TYPE.GEO" class="flex items-center gap-8px">
           <el-input-number
             v-model="attrsModel[field.item.key].lng"
@@ -233,7 +237,7 @@
   </Dialog>
 </template>
 <script lang="ts" setup>
-import { QlzgCategoryApi, subjectAttrSchemaOf, type QlzgParamSchemaItem } from '@/api/qlzg/category'
+import { QlzgCategoryApi, type QlzgParamSchemaItem } from '@/api/qlzg/category'
 import { QlzgMaterialApi } from '@/api/qlzg/material'
 import { QlzgProjectApi, type QlzgProjectVO } from '@/api/qlzg/project'
 import { QlzgSubjectApi, type QlzgSubjectSaveVO } from '@/api/qlzg/subject'
@@ -248,7 +252,8 @@ import {
   displayRange,
   loadAttrsModel,
   missingRequiredLabels,
-  orphanKeys
+  orphanKeys,
+  subjectAttrSchemaOf
 } from './attrSchema'
 
 defineOptions({ name: 'QlzgSubjectForm' })
@@ -402,35 +407,55 @@ const searchProjects = async (keyword: string) => {
 const handleProjectChange = async (projectId?: number) => {
   fileOptions.value = []
   if (!projectId) {
-    categoryName.value = ''
-    subjectType.value = ''
-    attrSchema.value = []
-    resetAttrs()
+    clearCategory()
     return
   }
   const selected = projectOptions.value.find((item) => item.id === projectId)
-  // 🔴 先换 schema 再重建模型：反过来的话模型还是按**上一个**品类的 key 集合建的，
-  //    属性区一片空白，而用户看不出是哪儿断了
-  await loadCategory(selected?.categoryCode)
-  // 换项目 = 换品类 = 属性区整个重来。这里刻意**不保留**已填的值：
+  // 换项目 = 换品类 = 属性区整个重来。这里刻意**不保留**已填的值（第二个参数留空）：
   // 两个品类的 key 集合不同，留着只会得到一批谁也看不见的孤儿键
-  resetAttrs()
+  await applyCategory(selected?.categoryCode)
   await searchMaterials('')
 }
 
-const loadCategory = async (categoryCode?: string) => {
+/** 清空品类与属性区。**同步**，不发请求 */
+const clearCategory = () => {
+  categoryName.value = ''
+  subjectType.value = ''
+  // 🔴 先清 schema 再重建模型：resetAttrs 是照着 attrSchema 建 key 集合的，
+  //    顺序反了会得到一份「按上一个品类建的空模型」，而它和快照相等，
+  //    于是 touched 恒为 false —— 这个 bug 不显形，但它是靠巧合而不是靠代码正确
+  attrSchema.value = []
+  resetAttrs(null)
+}
+
+/**
+ * 按品类码载入品类，并用 {@code attrs} 重建属性区
+ *
+ * <p>🔴 详情接口按 categoryCode 取，不是按 id：品类码是跨机构的稳定标识，
+ *    id 是每个租户各自的自增值。
+ *
+ * <p>🔴 **{@code attrSchema} 与 {@code attrsModel} 必须在同一个同步块里一起换，
+ *    中间一个 {@code await} 都不能夹** —— 夹了就会多刷一次渲染，而那一帧是
+ *    「新品类的 schema + 上一份的模型」，两者的 key 集合不一样。
+ *    GEO 那一支模板写的是 {@code attrsModel[key].lng}（模板里唯一一处对模型再取一层属性的），
+ *    于是读到 {@code undefined.lng} 抛 TypeError、渲染在 {@code ElFormItem} 里中断，
+ *    连带 {@code v-loading} 这一次的更新也没执行 —— 结果是 loading 遮罩**永远不消失**、
+ *    整个弹窗点不动。而四个接口全是 {@code code=0}、后端日志干净、界面上只在转圈，
+ *    看起来就是「点编辑卡住了」（2026-11-08 实测：标的台账的每一行都必中，
+ *    因为住宅品类的 schema 里有「经纬度」这一项）。
+ *    所以下面刻意分成「await 取品类」与「连着四行落状态」两段；
+ *    要往第二段里加东西，先确认它不是 {@code await}。
+ */
+const applyCategory = async (categoryCode?: string, attrs?: Record<string, any> | null) => {
   if (!categoryCode) {
-    categoryName.value = ''
-    subjectType.value = ''
-    attrSchema.value = []
+    clearCategory()
     return
   }
-  // 🔴 详情接口按 categoryCode 取，不是按 id：品类码是跨机构的稳定标识，
-  //    id 是每个租户各自的自增值
   const category = await QlzgCategoryApi.getCategory(categoryCode)
   categoryName.value = category.categoryName
   subjectType.value = category.subjectType
   attrSchema.value = subjectAttrSchemaOf(category)
+  resetAttrs(attrs)
 }
 
 /** 重建属性模型并把快照对齐 —— 之后任何与快照的差异都算「用户动过了」 */
@@ -518,8 +543,7 @@ const open = async (type: string, id?: number) => {
     missingFileIds.value = missing
 
     const project = await QlzgProjectApi.getProject(subject.projectId)
-    await loadCategory(project.categoryCode)
-    resetAttrs(subject.attrs)
+    await applyCategory(project.categoryCode, subject.attrs)
   } finally {
     formLoading.value = false
   }
@@ -574,13 +598,7 @@ const resetForm = () => {
   projectLabel.value = ''
   fileOptions.value = []
   missingFileIds.value = []
-  // 🔴 先清 schema 再重建模型：resetAttrs 是照着 attrSchema 建 key 集合的，
-  //    顺序反了会得到一份「按上一个品类建的空模型」，而它和快照相等，
-  //    于是 touched 恒为 false —— 这个 bug 不显形，但它是靠巧合而不是靠代码正确
-  attrSchema.value = []
-  resetAttrs(null)
-  categoryName.value = ''
-  subjectType.value = ''
+  clearCategory()
   formRef.value?.resetFields()
 }
 </script>

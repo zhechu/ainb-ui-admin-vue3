@@ -1,4 +1,4 @@
-import type { QlzgParamSchemaItem } from '@/api/qlzg/category'
+import type { QlzgCategoryVO, QlzgParamSchemaItem } from '@/api/qlzg/category'
 
 /**
  * 标的属性：品类 schema ↔ 表单模型 ↔ 库里的 attrs，三个形态之间的**唯一**一段转换代码
@@ -218,6 +218,39 @@ export const toStoredValue = (item: QlzgParamSchemaItem, value: unknown): unknow
       return undefined
   }
 }
+
+/**
+ * 品类的 paramSchema → **标的表单该渲染哪些项**，保持后端给的顺序
+ *
+ * 🔴 顺序有意义：标的详情页的 attrViews 就是按这个顺序渲染的（孤儿键排最后），
+ *    前端自己 sort 一遍会让「同一份数据在两个页面上顺序不同」。
+ *
+ * <h3>🔴 排除因素项，这不是可选的清理</h3>
+ * 因素项（{@code factorGroup} 非空白）的 {@code scope} **也是** {@code SUBJECT_ATTR} ——
+ * 它描述的是标的与案例之间的一个可比维度，所以挂在同一个作用域下。只按 scope 过滤的话，
+ * 住宅品类会渲染出 **53 个**「可比因素」输入框（建筑结构、朝向、楼层、临街状况……），
+ * 而它们的取值属于**因素明细（逐案比较）**、落 {@code qlzg_case_adjustment}，
+ * 后端 {@code QlzgSubjectAttrsProcessor#normalize} 对非空值一律报错。三个后果，一个比一个难查：
+ * ① 表单里出现 4 组**同名**字段（坐落 / 建筑面积 / 总层数 / 朝向 各有一个 {@code factor_*} 孪生项），
+ *    评估师填哪一个都是猜；
+ * ② 填了就保存失败，而报错只点名那一个键、不说「这一整批不该出现在这里」；
+ * ③ 后端 {@code CalcContext#canonicalInputParts()} 收的是**整份** attrs，
+ *    所以任何绕过前端写进去的因素值**会进归档指纹** —— 同一份测算口径被判成「结果变了」，
+ *    而那是要存 30 年的档案。
+ *
+ * <h3>🔴 判据必须与后端 {@code QlzgParamSchemaItem#factorItem()} 逐字一致</h3>
+ * 后端是 {@code factorGroup != null && !factorGroup.isBlank()}，所以这里是
+ * {@code (item.factorGroup ?? '').trim() === ''}，**不是** {@code !item.factorGroup}。
+ * 差别只落在一个空白串上，而那一格的失效方向是**静默少一个字段**：
+ * 后端认它不是因素项、照收进 attrs，前端按 {@code !} 判却把它藏起来 ——
+ * 评估师看不到一个后端本来接受的字段，全程无报错。
+ * 这个形状在库里可达：后端 {@code parseParamSchema} 的 {@code validateFactorItem}
+ * 只校 {@code factorItem()} 为真的项，空白分组码不会被 {@code CATEGORY_SCHEMA_INVALID} 拦下。
+ */
+export const subjectAttrSchemaOf = (category?: QlzgCategoryVO | null): QlzgParamSchemaItem[] =>
+  (category?.paramSchema ?? []).filter(
+    (item) => item.scope === 'SUBJECT_ATTR' && (item.factorGroup ?? '').trim() === ''
+  )
 
 /**
  * 库里的 attrs → 表单模型

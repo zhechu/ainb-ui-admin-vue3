@@ -10,6 +10,7 @@ import {
   loadAttrsModel,
   missingRequiredLabels,
   orphanKeys,
+  subjectAttrSchemaOf,
   toDisplayValue,
   toStoredValue
 } from './attrSchema'
@@ -355,5 +356,59 @@ describe('missingRequiredLabels', () => {
   it('label 缺失时退回 key，不留空白', () => {
     const noLabel = [item({ key: 'raw_key', label: '', required: true })]
     expect(missingRequiredLabels(noLabel, {})).toEqual(['raw_key'])
+  })
+})
+
+describe('subjectAttrSchemaOf', () => {
+  /**
+   * 🔴 这一组钉的是「标的表单**不该**长出因素项」，判据与后端
+   *    `QlzgSubjectAttrsProcessor#normalize` 那条同源（对非空的因素值一律报错）。
+   *
+   * 失效形状：住宅品类的 `param_schema` 里有 **53 个** `factor_*` 项，它们的 `scope`
+   * 也是 `SUBJECT_ATTR`。只按 scope 过滤的话表单会多出 53 个输入框，其中 4 个与既有项
+   * **同名**（坐落 / 建筑面积 / 总层数 / 朝向），评估师无从判断该填哪一个；填了则保存失败，
+   * 而报错只点名一个键。全过程没有任何一处提示「这一整批不该出现在这里」。
+   */
+  const category = {
+    categoryCode: 'REAL_ESTATE_MORTGAGE_RESIDENTIAL',
+    paramSchema: [
+      item({ key: 'location', label: '坐落', type: ATTR_TYPE.STRING }),
+      item({
+        key: 'factor_situated_at',
+        label: '坐落',
+        type: ATTR_TYPE.STRING,
+        factorGroup: 'LOCATION_POSITION',
+        factorSort: 1,
+        chainParamKey: 'adj_location'
+      }),
+      item({ key: 'capitalization_rate', scope: 'PARAM' }),
+      item({ key: 'total_price', scope: 'REPORT_FIELD' })
+    ]
+  } as unknown as Parameters<typeof subjectAttrSchemaOf>[0]
+
+  it('排除因素项，也排除另两个 scope', () => {
+    expect(subjectAttrSchemaOf(category).map((i) => i.key)).toEqual(['location'])
+  })
+
+  it('保持后端给的顺序——详情页的 attrViews 就是按它渲染的', () => {
+    const ordered = {
+      paramSchema: [
+        item({ key: 'b_second', label: '第二' }),
+        item({ key: 'a_first', label: '第一' })
+      ]
+    } as unknown as Parameters<typeof subjectAttrSchemaOf>[0]
+    expect(subjectAttrSchemaOf(ordered).map((i) => i.key)).toEqual(['b_second', 'a_first'])
+  })
+
+  it('品类为空时返回空数组，不是 undefined', () => {
+    expect(subjectAttrSchemaOf(null)).toEqual([])
+    expect(subjectAttrSchemaOf(undefined)).toEqual([])
+  })
+
+  it('factorGroup 是空串时不算因素项——与后端 factorItem() 的判据逐字一致', () => {
+    const blank = {
+      paramSchema: [item({ key: 'k', factorGroup: '   ' })]
+    } as unknown as Parameters<typeof subjectAttrSchemaOf>[0]
+    expect(subjectAttrSchemaOf(blank).map((i) => i.key)).toEqual(['k'])
   })
 })

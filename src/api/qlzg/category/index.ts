@@ -68,6 +68,41 @@ export interface QlzgParamSchemaItem {
   clauseRef?: string
   /** 绑定的规则码，如 ["R29"]，可空 */
   boundRules?: string[]
+  /**
+   * 因素分组（`QlzgFactorGroupEnum` 的九个取值之一），可空
+   *
+   * 🔴 **非空即「这一项不是标的属性」**，判据与后端 `QlzgParamSchemaItem#factorItem()` 同源。
+   *    因素项的 `scope` 也是 `SUBJECT_ATTR`（它描述的是标的与案例之间的一个可比维度），
+   *    但它的取值落 `qlzg_case_adjustment`、由聚合器读，**不进** `subject.attrs`。
+   *    所以标的表单必须把它们过滤掉，见 {@link subjectAttrSchemaOf}。
+   */
+  factorGroup?: string
+  /** 组内序，因素表按它排；非因素项为空 */
+  factorSort?: number
+  /** 归属哪个修正链步（`adj_*`，五个类别之一）；非因素项为空 */
+  chainParamKey?: string
+  /** 挂版本化参考表的钩子，MVP 一律为空（那张表在 I5） */
+  refTableCode?: string
+  /**
+   * 这一项**要不要上纸**，可空；`false` = 不产生报告里的必填位
+   *
+   * 🔴 **只管报告，不管表单** —— 不要拿它去过滤标的属性格子。
+   *    后端只有两个消费方（`QlzgTemplateGateB#requiredFieldsFor` 的反向检查、
+   *    工厂的补位节 S99），两者都在**模板生成**那一条路上。
+   *    标了 `false` 的那几项（`city_code` / `district_code` / `area_type`）是
+   *    **机器读的内部码**，照旧必填、照旧校验、照旧进 `qlzg_subject_index` 投影：
+   *    案例召回第 1 层的 SQL 硬过滤读 `city_code`，参数查表的辖区阶梯读
+   *    `district_code`（要求**恰好 6 位**，写「锦江区」就静默退化成只查全国），
+   *    比较法算式的面积口径读 `area_type`。把它们从表单里藏起来的后果是
+   *    「标的存下来了、召回 0 条、参数查不到」，而**全程 200、无异常、无日志**。
+   *
+   * 🔴 **缺键 = 上纸**（`undefined` 与 `true` 同义），判据与后端 `hiddenFromReport()`
+   *    逐字同源：只有**显式 `false`** 才算不上纸。方向是刻意取安全的那一侧 ——
+   *    忘了标的后果是纸上多印一行「城市：510100」（读者一眼看得见），
+   *    而不是正文静默少一段。所以判据写 `item.reportVisible === false`，
+   *    **不要**写 `!item.reportVisible`。
+   */
+  reportVisible?: boolean
 }
 
 /**
@@ -188,13 +223,18 @@ export const QlzgCategoryApi = {
 }
 
 /**
- * 从品类的 paramSchema 里挑出标的属性那一类，保持后端给的顺序
+ * 🔴 **「挑出标的属性那一类」的 selector 不在这里，在
+ * {@link @/views/qlzg/subject/attrSchema#subjectAttrSchemaOf}，别搬回来**
  *
- * 🔴 顺序有意义：标的详情页的 attrViews 就是按这个顺序渲染的（孤儿键排最后），
- *    前端自己 sort 一遍会让「同一份数据在两个页面上顺序不同」。
+ * 下面这四个 helper 产出的都是**下拉候选**（`{key,label,scope}` 这类展示对象），
+ * 只有标的属性那一个产出的是**要拿去驱动校验与归一化的 schema 项**，
+ * 与 `attrSchema.ts` 里那一整组纯函数（`loadAttrsModel` / `buildAttrsPayload` /
+ * `orphanKeys` / `missingRequiredLabels`）是同一件事的四段，必须放在一起测。
+ * 而本文件 `import request from '@/config/axios'`：本仓 vitest 是 **node** 环境、没有 jsdom，
+ * 任何 **value-import** 到 axios 的模块在收集阶段就以 `window is not defined` 死掉
+ * （`attrSchema.ts` 的模块注释把这条写全了，所以它对 API 模块只用 `import type`）。
+ * 搬回来 = 那个 selector 从此没有任何测试能覆盖。
  */
-export const subjectAttrSchemaOf = (category?: QlzgCategoryVO | null): QlzgParamSchemaItem[] =>
-  (category?.paramSchema ?? []).filter((item) => item.scope === 'SUBJECT_ATTR')
 
 /**
  * 从品类的 paramSchema 里挑出**测算参数**那一类（I3）
